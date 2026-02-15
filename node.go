@@ -935,7 +935,7 @@ func parseBraceSegment(pattern string) (int, string) {
 		key = "*"
 	}
 
-	end := braceIndice(pattern, 0)
+	end := braceIndex(pattern, 0)
 	if end <= 0 {
 		return 0, ""
 	}

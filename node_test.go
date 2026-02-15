@@ -196,7 +196,7 @@ func TestParseBraceSegment(t *testing.T) {
 		{
 			name:    "double opening brace",
 			pattern: "{{name}",
-			wantEnd: 0, // braceIndice needs balanced braces at level 0, {{name} ends at level 1
+			wantEnd: 0, // braceIndex needs balanced braces at level 0, {{name} ends at level 1
 			wantKey: "",
 		},
 		{
