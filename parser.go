@@ -28,20 +28,22 @@ func (e *PatternError) Error() string {
 	sb.WriteString(e.Reason)
 	sb.WriteString(": ")
 	sb.WriteString(e.Hint)
-	sb.WriteByte('\n')
-	sb.WriteString("      ")
-	sb.WriteString(e.Pattern)
-	sb.WriteByte('\n')
-	sb.WriteString("      ")
-	for i := 0; i < e.Start; i++ {
-		sb.WriteByte(' ')
-	}
-	n := e.End - e.Start
-	if n <= 0 {
-		n = 1
-	}
-	for i := 0; i < n; i++ {
-		sb.WriteByte('^')
+	if e.Pattern != "" {
+		sb.WriteByte('\n')
+		sb.WriteString("      ")
+		sb.WriteString(e.Pattern)
+		sb.WriteByte('\n')
+		sb.WriteString("      ")
+		for i := 0; i < e.Start; i++ {
+			sb.WriteByte(' ')
+		}
+		n := e.End - e.Start
+		if n <= 0 {
+			n = 1
+		}
+		for i := 0; i < n; i++ {
+			sb.WriteByte('^')
+		}
 	}
 	return sb.String()
 }
@@ -56,28 +58,26 @@ func newPatternError(reason string, start, end int, msg string) *PatternError {
 }
 
 type pattern struct {
-	// Canonical cleaned pattern: hostname + CleanPath(path).
-	str              string
+	str              string // canonical cleaned pattern
 	tokens           []token
 	optionalCatchAll bool
 	endHost          int
 }
 
-// parsePattern parses and validates a route pattern by splitting it into hostname and path,
-// cleaning the path, and delegating to focused sub-parsers.
 func (fox *Router) parsePattern(raw string) (*pattern, int, error) {
 	endHost := strings.IndexByte(raw, '/')
 	if endHost == -1 {
-		return nil, 0, &PatternError{
-			Pattern: raw,
-			Reason:  "syntax",
-			Start:   0,
-			End:     len(raw),
-			Hint:    "missing trailing '/'",
+		if len(raw) == 0 {
+			return nil, 0, &PatternError{
+				Pattern: raw,
+				Reason:  "syntax",
+				Hint:    "empty pattern",
+			}
 		}
+		raw += "/"
+		endHost = len(raw) - 1
 	}
 
-	// Build canonical pattern early so sub-parser errors can reference it.
 	cleanedPath := CleanPath(raw[endHost:])
 	canonicalPattern := raw[:endHost] + cleanedPath
 
@@ -92,7 +92,6 @@ func (fox *Router) parsePattern(raw string) (*pattern, int, error) {
 		if pe != nil {
 			pe.Pattern = canonicalPattern
 			pe.Type = "hostname"
-			// hostname offset is 0, no adjustment needed.
 			return nil, 0, pe
 		}
 	}
@@ -118,8 +117,6 @@ func (fox *Router) parsePattern(raw string) (*pattern, int, error) {
 	}, paramCount, nil
 }
 
-// hostnameValidator tracks RFC 5890 hostname label state during parsing.
-// It validates static characters one at a time, while the caller handles parameter tokenization.
 type hostnameValidator struct {
 	partLen    int  // Current label length in bytes.
 	totalLen   int  // Total hostname length in bytes.
@@ -127,9 +124,6 @@ type hostnameValidator struct {
 	nonNumeric bool // True once we've seen a letter, hyphen, or parameter.
 }
 
-// checkByte validates a single static hostname character against RFC 5890 rules
-// (dot/dash adjacency, label length, uppercase, illegal characters) and updates tracking state.
-// pos is the byte offset of c in the hostname string.
 func (v *hostnameValidator) checkByte(c byte, pos int) *PatternError {
 	switch {
 	case 'a' <= c && c <= 'z' || c == '_':
@@ -164,14 +158,11 @@ func (v *hostnameValidator) checkByte(c byte, pos int) *PatternError {
 	return nil
 }
 
-// skipParam resets adjacency state after a {param} and marks the hostname as non-numeric.
 func (v *hostnameValidator) skipParam() {
 	v.last = 0
 	v.nonNumeric = true
 }
 
-// postCheck runs final hostname validation: trailing dash/dot, all-numeric, label and total length.
-// hostnameLen is len(hostname), used to compute error positions.
 func (v *hostnameValidator) postCheck(hostnameLen int) *PatternError {
 	v.totalLen += v.partLen
 	if v.last == '-' {
@@ -192,14 +183,10 @@ func (v *hostnameValidator) postCheck(hostnameLen int) *PatternError {
 	return nil
 }
 
-// parseHostname validates and tokenizes the hostname portion of a route pattern.
-// It enforces RFC 5890 rules for labels and returns the number of parameters found.
-// Positions in the returned PatternError are relative to hostname.
 func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) {
 	var sb strings.Builder
 	sb.Grow(len(hostname))
-	tokens := make([]token, 0, 1) // At least one token.
-	// Initialize last to dotDelim so that a leading '-' is caught by the "dash after dot" rule.
+	tokens := make([]token, 0, 5)
 	validator := hostnameValidator{last: dotDelim}
 	var (
 		paramCount      int
@@ -250,13 +237,11 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 			tokens = append(tokens, token{typ: kind, value: name, regexp: re})
 			i += n
 			validator.skipParam()
-			// After closing brace, next char must be '.' (hostname delimiter) or end.
 			if i < len(hostname) && hostname[i] != '.' {
 				return nil, 0, newPatternError("syntax", i, i+1, "illegal character after parameter")
 			}
 
 		case '*':
-			// Optional wildcard *{param} is suffix-only; hostname always has a path after it.
 			i++
 			if i < len(hostname) && hostname[i] == '{' {
 				return nil, 0, newPatternError("syntax", i-1, i+1, "optional wildcard allowed only as suffix")
@@ -279,21 +264,14 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 
 	if sb.Len() > 0 {
 		tokens = append(tokens, token{typ: nodeStatic, value: sb.String(), hsplit: true})
-		sb.Reset()
 	}
-
 	return tokens, paramCount, nil
 }
 
-// parsePath validates and tokenizes the path portion of a route pattern.
-// The path must already be cleaned via CleanPath. paramCount is the number of parameters
-// already parsed (e.g. from the hostname). Returns tokens, whether the path ends with an
-// optional catch-all *{param}, and the updated total parameter count.
-// Positions in the returned PatternError are relative to path.
 func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *PatternError) {
 	var sb strings.Builder
 	sb.Grow(len(path))
-	tokens := make([]token, 0, 1) // At least one token.
+	tokens := make([]token, 0, 5)
 	var (
 		prevWild        bool
 		staticSinceWild int
@@ -343,20 +321,17 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			}
 			tokens = append(tokens, token{typ: kind, value: name, regexp: re})
 			i += n
-			// Optional wildcard *{param} is only allowed as suffix (last thing in path).
 			if isOpt {
 				if i < len(path) {
 					return nil, false, 0, newPatternError("syntax", paramStart, i, "optional wildcard allowed only as suffix")
 				}
 				optCatchAll = true
 			}
-			// After closing brace, next char must be '/' or end of path.
 			if i < len(path) && path[i] != '/' {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal character after parameter")
 			}
 
 		default:
-			// Reject ASCII control characters.
 			if c < ' ' || c == 0x7f {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
@@ -368,16 +343,10 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 
 	if sb.Len() > 0 {
 		tokens = append(tokens, token{typ: nodeStatic, value: sb.String()})
-		sb.Reset()
 	}
 	return tokens, optCatchAll, paramCount, nil
 }
 
-// parseBrace parses a parameter starting at '{' in s. It returns the parameter name,
-// compiled regexp (nil if none), and total bytes consumed (including '{' and '}').
-// delim is the segment delimiter ('/' for path, '.' for hostname).
-// isOptional indicates *{} (optional catch-all, which disallows regexp constraints).
-// Positions in the returned PatternError are relative to s.
 func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *regexp.Regexp, int, *PatternError) {
 	// Skip s[0] (the opening '{') and start at nesting level 1 to account for it.
 	idx := braceIndex(s[1:], 1)
@@ -388,7 +357,6 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 	content := s[1 : 1+idx] // Everything between { and }.
 	consumed := 1 + idx + 1 // { + content + }
 
-	// Split into name and optional regex on first ':'.
 	name := content
 	var rawRegex string
 	hasRegex := false
@@ -400,7 +368,6 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 		hasRegex = true
 	}
 
-	// Validate name length before possibly expensive regexp compilation.
 	if len(name) > fox.maxParamKeyBytes {
 		return "", nil, 0, newPatternError("constraint", 1, 1+len(name), "key too large")
 	}
@@ -409,7 +376,6 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 		return "", nil, 0, newPatternError("parameter", 0, consumed, "missing name")
 	}
 
-	// Validate name characters: no delimiters, no special chars.
 	for j := 0; j < len(name); j++ {
 		switch name[j] {
 		// TODO: just put . and /, add also }
@@ -422,15 +388,12 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 		return name, nil, consumed, nil
 	}
 
-	// Optional wildcards (*{param}) cannot have regexps because they match empty strings,
-	// making it impossible to disambiguate routes with different regexps.
 	if isOptional {
 		return "", nil, 0, newPatternError("regexp", 0, consumed, "not allowed in optional wildcard")
 	}
 
 	re, pe := fox.compileParamRegexp(rawRegex)
 	if pe != nil {
-		// Adjust positions: rawRegex starts at 1 ('{') + colonIdx + 1 (':') within s.
 		regexOffset := 1 + colonIdx + 1
 		pe.Start += regexOffset
 		pe.End += regexOffset
@@ -443,7 +406,7 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 // Positions in the returned PatternError are relative to rawRegex.
 func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *PatternError) {
 	if !fox.allowRegexp {
-		return nil, newPatternError("regexp", 0, len(rawRegex), "not enabled")
+		return nil, newPatternError("regexp", 0, len(rawRegex), "feature not enabled")
 	}
 	if rawRegex == "" {
 		return nil, newPatternError("regexp", 0, 0, "missing expression")
@@ -462,9 +425,6 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 
 // braceIndex returns the index of the closing brace that balances an opening
 // brace. It starts at startLevel opened brace.
-//
-// Example: For pattern "{id:[0-9]{1,3}}", the caller would pass "[0-9]{1,3}}" and 1
-// (everything after the initial '{'), and this returns 10 (index of the final '}').
 func braceIndex(s string, startLevel int) int {
 	level := startLevel
 
@@ -493,7 +453,7 @@ type parsedRoute struct {
 // parseRoute wraps parsePattern to provide the old parsedRoute return type.
 // Callers should migrate to parsePattern directly.
 func (fox *Router) parseRoute(url string) (parsedRoute, error) {
-	p, _, err := fox.parsePattern(url)
+	p, paramCnt, err := fox.parsePattern(url)
 	if err != nil {
 		return parsedRoute{}, err
 	}
@@ -517,13 +477,6 @@ func (fox *Router) parseRoute(url string) (parsedRoute, error) {
 		}
 	}
 
-	paramCnt := 0
-	for _, tk := range p.tokens {
-		if tk.typ != nodeStatic {
-			paramCnt++
-		}
-	}
-
 	startCatchAll := 0
 	if p.optionalCatchAll {
 		// Reconstruct the startCatchAll index for backwards compatibility.
@@ -538,4 +491,15 @@ func (fox *Router) parseRoute(url string) (parsedRoute, error) {
 		endHost:       p.endHost,
 		startCatchAll: startCatchAll,
 	}, nil
+}
+
+func cleanPattern(pattern string) string {
+	idx := strings.IndexByte(pattern, '/')
+	if idx == -1 {
+		if len(pattern) == 0 {
+			return pattern
+		}
+		return pattern + "/"
+	}
+	return pattern[:idx] + CleanPath(pattern[idx+1:])
 }

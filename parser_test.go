@@ -1,8 +1,6 @@
 package fox
 
 import (
-	"errors"
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -47,12 +45,11 @@ func TestParsePattern(t *testing.T) {
 	}
 
 	cases := []struct {
-		name                 string
-		path                 string
-		wantStr              string // Expected parsed.str (defaults to path if empty).
-		wantTokens           []token
-		wantErr              bool
-		wantOptionalCatchAll bool
+		name             string
+		path             string
+		wantN            int
+		wantTokens       []token
+		optionalCatchAll bool
 	}{
 		{
 			name:       "valid static route",
@@ -60,40 +57,45 @@ func TestParsePattern(t *testing.T) {
 			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar", false))),
 		},
 		{
-			name: "top level domain param",
-			path: "{tld}/foo/bar",
+			name:  "top level domain param",
+			path:  "{tld}/foo/bar",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				paramToken("tld", ""),
 				staticToken("/foo/bar", false),
 			)),
 		},
 		{
-			name: "top level domain wildcard",
-			path: "+{tld}/foo/bar",
+			name:  "top level domain wildcard",
+			path:  "+{tld}/foo/bar",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				wildcardToken("tld", ""),
 				staticToken("/foo/bar", false),
 			)),
 		},
 		{
-			name: "valid catch all route",
-			path: "/foo/bar/+{arg}",
+			name:  "valid catch all route",
+			path:  "/foo/bar/+{arg}",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/bar/", false),
 				wildcardToken("arg", ""),
 			)),
 		},
 		{
-			name: "valid param route",
-			path: "/foo/bar/{baz}",
+			name:  "valid param route",
+			path:  "/foo/bar/{baz}",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/bar/", false),
 				paramToken("baz", ""),
 			)),
 		},
 		{
-			name: "valid multi params route",
-			path: "/foo/{bar}/{baz}",
+			name:  "valid multi params route",
+			path:  "/foo/{bar}/{baz}",
+			wantN: 2,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/", false),
 				paramToken("bar", ""),
@@ -102,8 +104,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "valid same params route",
-			path: "/foo/{bar}/{bar}",
+			name:  "valid same params route",
+			path:  "/foo/{bar}/{bar}",
+			wantN: 2,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/", false),
 				paramToken("bar", ""),
@@ -112,8 +115,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "valid multi params and catch all route",
-			path: "/foo/{bar}/{baz}/+{arg}",
+			name:  "valid multi params and catch all route",
+			path:  "/foo/{bar}/{baz}/+{arg}",
+			wantN: 3,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/", false),
 				paramToken("bar", ""),
@@ -124,24 +128,27 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "valid inflight param",
-			path: "/foo/xyz:{bar}",
+			name:  "valid inflight param",
+			path:  "/foo/xyz:{bar}",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/xyz:", false),
 				paramToken("bar", ""),
 			)),
 		},
 		{
-			name: "valid inflight catchall",
-			path: "/foo/xyz:+{bar}",
+			name:  "valid inflight catchall",
+			path:  "/foo/xyz:+{bar}",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/xyz:", false),
 				wildcardToken("bar", ""),
 			)),
 		},
 		{
-			name: "valid multi inflight param and catch all",
-			path: "/foo/xyz:{bar}/abc:{bar}/+{arg}",
+			name:  "valid multi inflight param and catch all",
+			path:  "/foo/xyz:{bar}/abc:{bar}/+{arg}",
+			wantN: 3,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/xyz:", false),
 				paramToken("bar", ""),
@@ -152,8 +159,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "catch all with arg in the middle of the route",
-			path: "/foo/bar/+{bar}/baz",
+			name:  "catch all with arg in the middle of the route",
+			path:  "/foo/bar/+{bar}/baz",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/bar/", false),
 				wildcardToken("bar", ""),
@@ -161,8 +169,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "multiple catch all suffix and inflight with arg in the middle of the route",
-			path: "/foo/bar/+{bar}/x+{args}/y/+{z}/{b}",
+			name:  "multiple catch all suffix and inflight with arg in the middle of the route",
+			path:  "/foo/bar/+{bar}/x+{args}/y/+{z}/{b}",
+			wantN: 4,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/bar/", false),
 				wildcardToken("bar", ""),
@@ -175,8 +184,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "inflight catch all with arg in the middle of the route",
-			path: "/foo/bar/damn+{bar}/baz",
+			name:  "inflight catch all with arg in the middle of the route",
+			path:  "/foo/bar/damn+{bar}/baz",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/bar/damn", false),
 				wildcardToken("bar", ""),
@@ -184,8 +194,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "catch all with arg in the middle of the route and param after",
-			path: "/foo/bar/+{bar}/{baz}",
+			name:  "catch all with arg in the middle of the route and param after",
+			path:  "/foo/bar/+{bar}/{baz}",
+			wantN: 2,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/bar/", false),
 				wildcardToken("bar", ""),
@@ -194,24 +205,27 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "simple domain and path",
-			path: "foo/bar",
+			name:  "simple domain and path",
+			path:  "foo/bar",
+			wantN: 0,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("foo", true),
 				staticToken("/bar", false),
 			)),
 		},
 		{
-			name: "simple domain with trailing slash",
-			path: "foo/",
+			name:  "simple domain with trailing slash",
+			path:  "foo/",
+			wantN: 0,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("foo", true),
 				staticToken("/", false),
 			)),
 		},
 		{
-			name: "period in param path allowed",
-			path: "foo/{.bar}",
+			name:  "period in param path allowed",
+			path:  "foo/{.bar}",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("foo", true),
 				staticToken("/", false),
@@ -219,133 +233,138 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name:    "missing a least one slash",
-			path:    "foo.com",
-			wantErr: true,
+			name:  "missing a least one slash",
+			path:  "foo.com",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("foo.com", true),
+				staticToken("/", false),
+			)),
 		},
 		{
-			name:    "empty parameter",
-			path:    "/foo/bar{}",
-			wantErr: true,
+			name:  "empty parameter",
+			path:  "/foo/bar{}",
+			wantN: 0,
 		},
 		{
-			name:    "missing arguments name after catch all",
-			path:    "/foo/bar/*",
-			wantErr: true,
+			name:  "missing arguments name after catch all",
+			path:  "/foo/bar/*",
+			wantN: 0,
 		},
 		{
-			name:    "missing arguments name after param",
-			path:    "/foo/bar/{",
-			wantErr: true,
+			name:  "missing arguments name after param",
+			path:  "/foo/bar/{",
+			wantN: 0,
 		},
 		{
-			name:    "catch all in the middle of the route",
-			path:    "/foo/bar/*/baz",
-			wantErr: true,
+			name:  "catch all in the middle of the route",
+			path:  "/foo/bar/*/baz",
+			wantN: 0,
 		},
 		{
-			name:    "empty infix catch all",
-			path:    "/foo/bar/+{}/baz",
-			wantErr: true,
+			name:  "empty infix catch all",
+			path:  "/foo/bar/+{}/baz",
+			wantN: 0,
 		},
 		{
-			name:    "empty ending catch all",
-			path:    "/foo/bar/baz/+{}",
-			wantErr: true,
+			name:  "empty ending catch all",
+			path:  "/foo/bar/baz/+{}",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in param",
-			path:    "/foo/{{bar}",
-			wantErr: true,
+			name:  "unexpected character in param",
+			path:  "/foo/{{bar}",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in param",
-			path:    "/foo/{*bar}",
-			wantErr: true,
+			name:  "unexpected character in param",
+			path:  "/foo/{*bar}",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in catch-all",
-			path:    "/foo/+{/bar}",
-			wantErr: true,
+			name:  "unexpected character in catch-all",
+			path:  "/foo/+{/bar}",
+			wantN: 0,
 		},
 		{
-			name:    "catch all not supported in hostname",
-			path:    "a.b.c*/",
-			wantErr: true,
+			name:  "catch all not supported in hostname",
+			path:  "a.b.c*/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal character in params hostname",
-			path:    "a.b.c{/",
-			wantErr: true,
+			name:  "illegal character in params hostname",
+			path:  "a.b.c{/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal character in hostname label",
-			path:    "a.b.c}/",
-			wantErr: true,
+			name:  "illegal character in hostname label",
+			path:  "a.b.c}/",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in param hostname",
-			path:    "a.{.bar}.c/",
-			wantErr: true,
+			name:  "unexpected character in param hostname",
+			path:  "a.{.bar}.c/",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in wildcard hostname",
-			path:    "a.+{.bar}.c/",
-			wantErr: true,
+			name:  "unexpected character in wildcard hostname",
+			path:  "a.+{.bar}.c/",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in param hostname",
-			path:    "a.{/bar}.c/",
-			wantErr: true,
+			name:  "unexpected character in param hostname",
+			path:  "a.{/bar}.c/",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected character in wildcard hostname",
-			path:    "a.+{/bar}.c/",
-			wantErr: true,
+			name:  "unexpected character in wildcard hostname",
+			path:  "a.+{/bar}.c/",
+			wantN: 0,
 		},
 		{
-			name:    "in flight catch-all after param in one route segment",
-			path:    "/foo/{bar}+{baz}",
-			wantErr: true,
+			name:  "in flight catch-all after param in one route segment",
+			path:  "/foo/{bar}+{baz}",
+			wantN: 0,
 		},
 		{
-			name:    "multiple param in one route segment",
-			path:    "/foo/{bar}{baz}",
-			wantErr: true,
+			name:  "multiple param in one route segment",
+			path:  "/foo/{bar}{baz}",
+			wantN: 0,
 		},
 		{
-			name:    "in flight param after catch all",
-			path:    "/foo/+{args}{param}",
-			wantErr: true,
+			name:  "in flight param after catch all",
+			path:  "/foo/+{args}{param}",
+			wantN: 0,
 		},
 		{
-			name:    "consecutive catch all with no slash",
-			path:    "/foo/+{args}+{param}",
-			wantErr: true,
+			name:  "consecutive catch all with no slash",
+			path:  "/foo/+{args}+{param}",
+			wantN: 0,
 		},
 		{
-			name:    "consecutive catch all",
-			path:    "/foo/+{args}/+{param}",
-			wantErr: true,
+			name:  "consecutive catch all",
+			path:  "/foo/+{args}/+{param}",
+			wantN: 0,
 		},
 		{
-			name:    "consecutive catch all with inflight",
-			path:    "/foo/ab+{args}/+{param}",
-			wantErr: true,
+			name:  "consecutive catch all with inflight",
+			path:  "/foo/ab+{args}/+{param}",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected char after inflight catch all",
-			path:    "/foo/ab+{args}a",
-			wantErr: true,
+			name:  "unexpected char after inflight catch all",
+			path:  "/foo/ab+{args}a",
+			wantN: 0,
 		},
 		{
-			name:    "unexpected char after catch all",
-			path:    "/foo/+{args}a",
-			wantErr: true,
+			name:  "unexpected char after catch all",
+			path:  "/foo/+{args}a",
+			wantN: 0,
 		},
 		{
-			name: "prefix catch-all in hostname",
-			path: "+{any}.com/foo",
+			name:  "prefix catch-all in hostname",
+			path:  "+{any}.com/foo",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				wildcardToken("any", ""),
 				staticToken(".com", true),
@@ -353,8 +372,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "infix catch-all in hostname",
-			path: "a.+{any}.com/foo",
+			name:  "infix catch-all in hostname",
+			path:  "a.+{any}.com/foo",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("a.", true),
 				wildcardToken("any", ""),
@@ -363,8 +383,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "illegal catch-all in hostname",
-			path: "a.b.+{any}/foo",
+			name:  "illegal catch-all in hostname",
+			path:  "a.b.+{any}/foo",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("a.b.", true),
 				wildcardToken("any", ""),
@@ -372,8 +393,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "static hostname with catch-all path",
-			path: "a.b.com/+{any}",
+			name:  "static hostname with catch-all path",
+			path:  "a.b.com/+{any}",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("a.b.com", true),
 				staticToken("/", false),
@@ -381,103 +403,104 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name:    "illegal control character in path",
-			path:    "example.com/foo\x00",
-			wantErr: true,
+			name:  "illegal control character in path",
+			path:  "example.com/foo\x00",
+			wantN: 0,
 		},
 		{
-			name:    "illegal leading hyphen in hostname",
-			path:    "-a.com/",
-			wantErr: true,
+			name:  "illegal leading hyphen in hostname",
+			path:  "-a.com/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal leading dot in hostname",
-			path:    ".a.com/",
-			wantErr: true,
+			name:  "illegal leading dot in hostname",
+			path:  ".a.com/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal trailing hyphen in hostname",
-			path:    "a.com-/",
-			wantErr: true,
+			name:  "illegal trailing hyphen in hostname",
+			path:  "a.com-/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal trailing dot in hostname",
-			path:    "a.com./",
-			wantErr: true,
+			name:  "illegal trailing dot in hostname",
+			path:  "a.com./",
+			wantN: 0,
 		},
 		{
-			name:    "illegal trailing dot in hostname after param",
-			path:    "{tld}./foo/bar",
-			wantErr: true,
+			name:  "illegal trailing dot in hostname after param",
+			path:  "{tld}./foo/bar",
+			wantN: 0,
 		},
 		{
-			name:    "illegal single dot in hostname",
-			path:    "./",
-			wantErr: true,
+			name:  "illegal single dot in hostname",
+			path:  "./",
+			wantN: 0,
 		},
 		{
-			name:    "illegal hyphen before dot",
-			path:    "a-.com/",
-			wantErr: true,
+			name:  "illegal hyphen before dot",
+			path:  "a-.com/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal hyphen after dot",
-			path:    "a.-com/",
-			wantErr: true,
+			name:  "illegal hyphen after dot",
+			path:  "a.-com/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal double dot",
-			path:    "a..com/",
-			wantErr: true,
+			name:  "illegal double dot",
+			path:  "a..com/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal double dot with param state",
-			path:    "{b}..com/",
-			wantErr: true,
+			name:  "illegal double dot with param state",
+			path:  "{b}..com/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal double dot with inflight param state",
-			path:    "a{b}..com/",
-			wantErr: true,
+			name:  "illegal double dot with inflight param state",
+			path:  "a{b}..com/",
+			wantN: 0,
 		},
 		{
-			name:    "param not finishing with delimiter in hostname",
-			path:    "{a}b{b}.com/",
-			wantErr: true,
+			name:  "param not finishing with delimiter in hostname",
+			path:  "{a}b{b}.com/",
+			wantN: 0,
 		},
 		{
-			name:    "consecutive parameter in hostname",
-			path:    "{a}{b}.com/",
-			wantErr: true,
+			name:  "consecutive parameter in hostname",
+			path:  "{a}{b}.com/",
+			wantN: 0,
 		},
 		{
-			name:    "leading hostname label exceed 63 characters",
-			path:    "uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu.b.com/",
-			wantErr: true,
+			name:  "leading hostname label exceed 63 characters",
+			path:  "uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu.b.com/",
+			wantN: 0,
 		},
 		{
-			name:    "middle hostname label exceed 63 characters",
-			path:    "a.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu.com/",
-			wantErr: true,
+			name:  "middle hostname label exceed 63 characters",
+			path:  "a.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu.com/",
+			wantN: 0,
 		},
 		{
-			name:    "trailing hostname label exceed 63 characters",
-			path:    "a.b.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu/",
-			wantErr: true,
+			name:  "trailing hostname label exceed 63 characters",
+			path:  "a.b.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu/",
+			wantN: 0,
 		},
 		{
-			name:    "illegal character in domain",
-			path:    "a.b!.com/",
-			wantErr: true,
+			name:  "illegal character in domain",
+			path:  "a.b!.com/",
+			wantN: 0,
 		},
 		{
-			name:    "invalid all-numeric label",
-			path:    "123/",
-			wantErr: true,
+			name:  "invalid all-numeric label",
+			path:  "123/",
+			wantN: 0,
 		},
 		{
-			name: "all-numeric label with param",
-			path: "123.{a}.456/",
+			name:  "all-numeric label with param",
+			path:  "123.{a}.456/",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("123.", true),
 				paramToken("a", ""),
@@ -486,8 +509,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "all-numeric label with wildcard",
-			path: "123.+{a}.456/",
+			name:  "all-numeric label with wildcard",
+			path:  "123.+{a}.456/",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("123.", true),
 				wildcardToken("a", ""),
@@ -496,28 +520,29 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name:    "all-numeric label with path wildcard",
-			path:    "123.456/{abc}",
-			wantErr: true,
+			name:  "all-numeric label with path wildcard",
+			path:  "123.456/{abc}",
+			wantN: 0,
 		},
 		{
-			name:    "hostname exceed 255 character",
-			path:    "a.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr/",
-			wantErr: true,
+			name:  "hostname exceed 255 character",
+			path:  "a.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr/",
+			wantN: 0,
 		},
 		{
-			name:    "invalid all-numeric label",
-			path:    "11.22.33/",
-			wantErr: true,
+			name:  "invalid all-numeric label",
+			path:  "11.22.33/",
+			wantN: 0,
 		},
 		{
-			name:    "invalid uppercase label",
-			path:    "ABC/",
-			wantErr: true,
+			name:  "invalid uppercase label",
+			path:  "ABC/",
+			wantN: 0,
 		},
 		{
-			name: "2 regular params in domain",
-			path: "{a}.{b}.com/",
+			name:  "2 regular params in domain",
+			path:  "{a}.{b}.com/",
+			wantN: 2,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				paramToken("a", ""),
 				staticToken(".", true),
@@ -527,16 +552,18 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "253 character with .",
-			path: "78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzj/",
+			name:  "253 character with .",
+			path:  "78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzj/",
+			wantN: 0,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzj", true),
 				staticToken("/", false),
 			)),
 		},
 		{
-			name: "param does not count at character",
-			path: "{a}.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzj/",
+			name:  "param does not count at character",
+			path:  "{a}.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzj/",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				paramToken("a", ""),
 				staticToken(".78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzj", true),
@@ -544,8 +571,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "hostname variant with multiple catch all suffix and inflight with arg in the middle of the route",
-			path: "example.com/foo/bar/+{bar}/x+{args}/y/+{z}/{b}",
+			name:  "hostname variant with multiple catch all suffix and inflight with arg in the middle of the route",
+			path:  "example.com/foo/bar/+{bar}/x+{args}/y/+{z}/{b}",
+			wantN: 4,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("example.com", true),
 				staticToken("/foo/bar/", false),
@@ -559,8 +587,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "hostname variant with inflight catch all with arg in the middle of the route",
-			path: "example.com/foo/bar/damn+{bar}/baz",
+			name:  "hostname variant with inflight catch all with arg in the middle of the route",
+			path:  "example.com/foo/bar/damn+{bar}/baz",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("example.com", true),
 				staticToken("/foo/bar/damn", false),
@@ -569,8 +598,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "hostname variant catch all with arg in the middle of the route and param after",
-			path: "example.com/foo/bar/+{bar}/{baz}",
+			name:  "hostname variant catch all with arg in the middle of the route and param after",
+			path:  "example.com/foo/bar/+{bar}/{baz}",
+			wantN: 2,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("example.com", true),
 				staticToken("/foo/bar/", false),
@@ -580,8 +610,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "complex domain and path",
-			path: "{ab}.{c}.de{f}.com/foo/bar/+{bar}/x+{args}/y/+{z}/{b}",
+			name:  "complex domain and path",
+			path:  "{ab}.{c}.de{f}.com/foo/bar/+{bar}/x+{args}/y/+{z}/{b}",
+			wantN: 7,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				paramToken("ab", ""),
 				staticToken(".", true),
@@ -599,68 +630,87 @@ func TestParsePattern(t *testing.T) {
 				paramToken("b", ""),
 			)),
 		},
-		// CleanPath normalizes traversal patterns instead of rejecting them.
 		{
-			name:       "double slash cleaned",
-			path:       "/foo//bar",
-			wantStr:    "/foo/bar",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar", false))),
+			name:  "path with double slash",
+			path:  "/foo//bar",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo/bar", false),
+			)),
 		},
 		{
-			name:       "triple slash cleaned",
-			path:       "/foo///bar",
-			wantStr:    "/foo/bar",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar", false))),
+			name:  "path with > double slash",
+			path:  "/foo///bar",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo/bar", false),
+			)),
 		},
 		{
-			name:       "slash dot slash cleaned",
-			path:       "/foo/./bar",
-			wantStr:    "/foo/bar",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar", false))),
+			name:  "path with slash dot slash",
+			path:  "/foo/./bar",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo/bar", false),
+			)),
 		},
 		{
-			name:       "slash dot slash dot slash cleaned",
-			path:       "/foo/././bar",
-			wantStr:    "/foo/bar",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar", false))),
+			name:  "path with slash dot slash",
+			path:  "/foo/././bar",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo/bar", false),
+			)),
 		},
 		{
-			name:       "double dot parent reference cleaned",
-			path:       "/foo/../bar",
-			wantStr:    "/bar",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/bar", false))),
+			name:  "path with double dot parent reference",
+			path:  "/foo/../bar",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/bar", false),
+			)),
 		},
 		{
-			name:       "double parent reference cleaned",
-			path:       "/foo/../../bar",
-			wantStr:    "/bar",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/bar", false))),
+			name:  "path with double dot parent reference",
+			path:  "/foo/../../bar",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/bar", false),
+			)),
 		},
 		{
-			name:       "trailing slash dot cleaned",
-			path:       "/foo/.",
-			wantStr:    "/foo/",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/", false))),
+			name:  "path ending with slash dot",
+			path:  "/foo/.",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo/", false),
+			)),
 		},
 		{
-			name:       "trailing slash double dot cleaned",
-			path:       "/foo/..",
-			wantStr:    "/",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/", false))),
+			name:  "path ending with slash double dot",
+			path:  "/foo/..",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/", false),
+			)),
 		},
 		{
-			name:       "root slash dot cleaned",
-			path:       "/.",
-			wantStr:    "/",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/", false))),
+			name:  "path ending with slash dot",
+			path:  "/.",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/", false),
+			)),
 		},
 		{
-			name:       "root slash double dot cleaned",
-			path:       "/..",
-			wantStr:    "/",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/", false))),
+			name:  "path ending with slash double dot",
+			path:  "/..",
+			wantN: 0,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/", false),
+			)),
 		},
-		// Allowed dot and slash combination
+		// Allowed dot and slash combinaison
 		{
 			name: "last path segment starting with slash dot and text",
 			path: "/foo/.bar",
@@ -683,8 +733,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "path segment starting with slash dot and param",
-			path: "/foo/.{foo}/baz",
+			name:  "path segment starting with slash dot and param",
+			path:  "/foo/.{foo}/baz",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/.", false),
 				paramToken("foo", ""),
@@ -699,8 +750,9 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name: "path segment starting with slash dot and param",
-			path: "/foo/..{foo}/baz",
+			name:  "path segment starting with slash dot and param",
+			path:  "/foo/..{foo}/baz",
+			wantN: 1,
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("/foo/..", false),
 				paramToken("foo", ""),
@@ -771,6 +823,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/foo/", false),
 				paramToken("bar", "[A-z]+"),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "simple ending param with regexp",
@@ -779,6 +832,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/foo/", false),
 				wildcardToken("bar", "[A-z]+"),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "simple infix param with regexp",
@@ -788,6 +842,7 @@ func TestParsePattern(t *testing.T) {
 				paramToken("bar", "[A-z]+"),
 				staticToken("/baz", false),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "multi infix and ending param with regexp",
@@ -798,6 +853,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/", false),
 				paramToken("baz", "[0-9]+"),
 			)),
+			wantN: 2,
 		},
 		{
 			name: "multi infix and ending wildcard with regexp",
@@ -808,6 +864,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/a", false),
 				wildcardToken("baz", "[0-9]+"),
 			)),
+			wantN: 2,
 		},
 		{
 			name: "consecutive infix regexp wildcard and regexp param allowed",
@@ -818,6 +875,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/", false),
 				paramToken("baz", "[0-9]+"),
 			)),
+			wantN: 2,
 		},
 		{
 			name: "hostname starting with regexp",
@@ -827,6 +885,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken(".b.c", true),
 				staticToken("/foo", false),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "hostname with middle param regexp",
@@ -837,6 +896,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken(".c", true),
 				staticToken("/foo", false),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "hostname ending with param regexp",
@@ -846,6 +906,7 @@ func TestParsePattern(t *testing.T) {
 				paramToken("c", "[A-z]+"),
 				staticToken("/foo", false),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "non capturing group allowed in regexp",
@@ -854,6 +915,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/foo/", false),
 				paramToken("bar", "(?:foo|bar)"),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "regexp wildcard at the beginning of the path",
@@ -863,6 +925,7 @@ func TestParsePattern(t *testing.T) {
 				wildcardToken("foo", "[A-z]+"),
 				staticToken("/bar", false),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "regexp wildcard at the beginning of the host",
@@ -872,6 +935,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken(".b.c", true),
 				staticToken("/", false),
 			)),
+			wantN: 1,
 		},
 		{
 			name: "consecutive wildcard from hostname to path",
@@ -881,6 +945,7 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/", false),
 				wildcardToken("bar", ""),
 			)),
+			wantN: 2,
 		},
 		{
 			name: "consecutive wildcard with empty catch all from hostname to path",
@@ -890,7 +955,8 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/", false),
 				wildcardToken("bar", ""),
 			)),
-			wantOptionalCatchAll: true,
+			wantN:            2,
+			optionalCatchAll: true,
 		},
 		{
 			name: "param then wildcard regexp",
@@ -901,6 +967,7 @@ func TestParsePattern(t *testing.T) {
 				wildcardToken("b", "b"),
 				staticToken("/", false),
 			)),
+			wantN: 2,
 		},
 		{
 			name: "param regexp then wildcard regexp",
@@ -911,6 +978,7 @@ func TestParsePattern(t *testing.T) {
 				wildcardToken("b", "b"),
 				staticToken("/", false),
 			)),
+			wantN: 2,
 		},
 		{
 			name: "catch all empty as suffix",
@@ -919,208 +987,164 @@ func TestParsePattern(t *testing.T) {
 				staticToken("/foo/", false),
 				wildcardToken("any", ""),
 			)),
-			wantOptionalCatchAll: true,
+			wantN:            1,
+			optionalCatchAll: true,
 		},
 		{
-			name:    "consecutive infix wildcard at start with regexp not allowed",
-			path:    "/+{foo:[A-z]+}/+{baz:[0-9]+}",
-			wantErr: true,
+			name: "consecutive infix wildcard at start with regexp not allowed",
+			path: "/+{foo:[A-z]+}/+{baz:[0-9]+}",
 		},
 		{
-			name:    "consecutive wildcard with catch all empty not allowed",
-			path:    "/+{foo}/*{baz}",
-			wantErr: true,
+			name: "consecutive wildcard with catch all empty not allowed",
+			path: "/+{foo}/*{baz}",
 		},
 		{
-			name:    "consecutive infix wildcard with catch all empty at start with regexp not allowed",
-			path:    "/+{foo:[A-z]+}/*{baz:[0-9]+}",
-			wantErr: true,
+			name: "consecutive infix wildcard with catch all empty at start with regexp not allowed",
+			path: "/+{foo:[A-z]+}/*{baz:[0-9]+}",
 		},
 		{
-			name:    "hostname consecutive infix wildcard at start with regexp not allowed",
-			path:    "/{foo:[A-z]+}.+{baz:[0-9]+}/",
-			wantErr: true,
+			name: "hostname consecutive infix wildcard at start with regexp not allowed",
+			path: "/{foo:[A-z]+}.+{baz:[0-9]+}/",
 		},
 		{
-			name:    "consecutive infix wildcard at start with and without regexp not allowed",
-			path:    "/+{foo:[A-z]+}/+{baz}",
-			wantErr: true,
+			name: "consecutive infix wildcard at start with and without regexp not allowed",
+			path: "/+{foo:[A-z]+}/+{baz}",
 		},
 		{
-			name:    "hostname consecutive infix wildcard at start with and without regexp not allowed",
-			path:    "+{foo:[A-z]+}.+{baz}/",
-			wantErr: true,
+			name: "hostname consecutive infix wildcard at start with and without regexp not allowed",
+			path: "+{foo:[A-z]+}.+{baz}/",
 		},
 		{
-			name:    "consecutive infix wildcard at start with regexp not allowed",
-			path:    "/+{foo}/+{baz:[0-9]+}/",
-			wantErr: true,
+			name: "consecutive infix wildcard at start with regexp not allowed",
+			path: "/+{foo}/+{baz:[0-9]+}/",
 		},
 		{
-			name:    "hostname consecutive infix wildcard at start with regexp not allowed",
-			path:    "+{foo}.+{baz:[0-9]+}/",
-			wantErr: true,
+			name: "hostname consecutive infix wildcard at start with regexp not allowed",
+			path: "+{foo}.+{baz:[0-9]+}/",
 		},
 		{
-			name:    "consecutive infix wildcard with regexp not allowed",
-			path:    "/foo/+{bar:[A-z]+}/+{baz:[0-9]+}",
-			wantErr: true,
+			name: "consecutive infix wildcard with regexp not allowed",
+			path: "/foo/+{bar:[A-z]+}/+{baz:[0-9]+}",
 		},
 		{
-			name:    "hostname consecutive infix wildcard with regexp not allowed",
-			path:    "foo.+{bar:[A-z]+}.+{baz:[0-9]+}/",
-			wantErr: true,
+			name: "hostname consecutive infix wildcard with regexp not allowed",
+			path: "foo.+{bar:[A-z]+}.+{baz:[0-9]+}/",
 		},
 		{
-			name:    "consecutive infix wildcard with first regexp not allowed",
-			path:    "/foo/+{bar:[A-z]+}/+{baz}",
-			wantErr: true,
+			name: "consecutive infix wildcard with first regexp not allowed",
+			path: "/foo/+{bar:[A-z]+}/+{baz}",
 		},
 		{
-			name:    "hostname consecutive infix wildcard with first regexp not allowed",
-			path:    "foo.+{bar:[A-z]+}.+{baz}/",
-			wantErr: true,
+			name: "hostname consecutive infix wildcard with first regexp not allowed",
+			path: "foo.+{bar:[A-z]+}.+{baz}/",
 		},
 		{
-			name:    "consecutive infix wildcard with second regexp not allowed",
-			path:    "/foo/+{bar}/+{baz:[A-z]+}/",
-			wantErr: true,
+			name: "consecutive infix wildcard with second regexp not allowed",
+			path: "/foo/+{bar}/+{baz:[A-z]+}/",
 		},
 		{
-			name:    "hostname consecutive infix wildcard with second regexp not allowed",
-			path:    "foo.+{bar}.+{baz:[A-z]+}/",
-			wantErr: true,
+			name: "hostname consecutive infix wildcard with second regexp not allowed",
+			path: "foo.+{bar}.+{baz:[A-z]+}/",
 		},
 		{
-			name:    "non slash char after regexp param not allowed",
-			path:    "/foo/{bar:[A-z]+}a/",
-			wantErr: true,
+			name: "non slash char after regexp param not allowed",
+			path: "/foo/{bar:[A-z]+}a/",
 		},
 		{
-			name:    "non slash char after regexp wildcard not allowed",
-			path:    "/foo/+{bar:[A-z]+}a/",
-			wantErr: true,
+			name: "non slash char after regexp wildcard not allowed",
+			path: "/foo/+{bar:[A-z]+}a/",
 		},
 		{
-			name:    "regexp wildcard not allowed in hostname",
-			path:    "+{a.{b:[A-z]+}}.c/",
-			wantErr: true,
+			name: "regexp wildcard not allowed in hostname",
+			path: "+{a.{b:[A-z]+}}.c/",
 		},
 		{
-			name:    "regexp wildcard not allowed in hostname",
-			path:    "+{a.b.{c:[A-z]+}/",
-			wantErr: true,
+			name: "regexp wildcard not allowed in hostname",
+			path: "+{a.b.{c:[A-z]+}/",
 		},
 		{
-			name:    "missing param name with regexp",
-			path:    "/foo/{:[A-z]+}",
-			wantErr: true,
+			name: "missing param name with regexp",
+			path: "/foo/{:[A-z]+}",
 		},
 		{
-			name:    "missing wildcard name with regexp",
-			path:    "/foo/+{:[A-z]+}",
-			wantErr: true,
+			name: "missing wildcard name with regexp",
+			path: "/foo/+{:[A-z]+}",
 		},
 		{
-			name:    "missing regular expression",
-			path:    "/foo/{a:}",
-			wantErr: true,
+			name: "missing regular expression",
+			path: "/foo/{a:}",
 		},
 		{
-			name:    "missing regular expression with only ':'",
-			path:    "/foo/{:}",
-			wantErr: true,
+			name: "missing regular expression with only ':'",
+			path: "/foo/{:}",
 		},
 		{
-			name:    "unsupported regexp in optional wildcard",
-			path:    "/foo/*{any:[A-z]+}",
-			wantErr: true,
+			name: "unsupported regexp in optional wildcard",
+			path: "/foo/*{any:[A-z]+}",
 		},
 		{
-			name:    "unbalanced braces in param regexp",
-			path:    "/foo/{bar:[A-z]+",
-			wantErr: true,
+			name: "unbalanced braces in param regexp",
+			path: "/foo/{bar:[A-z]+",
 		},
 		{
-			name:    "unbalanced braces in wildcard regexp",
-			path:    "/foo/+{bar:[A-z]+",
-			wantErr: true,
+			name: "unbalanced braces in wildcard regexp",
+			path: "/foo/+{bar:[A-z]+",
 		},
 		{
-			name:    "balanced braces in param regexp with invalid char after",
-			path:    "/foo/{bar:{}}a",
-			wantErr: true,
+			name: "balanced braces in param regexp with invalid char after",
+			path: "/foo/{bar:{}}a",
 		},
 		{
-			name:    "balanced braces in wildcard regexp with invalid brace after",
-			path:    "/foo/{bar:{}}}",
-			wantErr: true,
+			name: "balanced braces in wildcard regexp with invalid brace after",
+			path: "/foo/{bar:{}}}",
 		},
 		{
-			name:    "unbalanced braces in regexp complex",
-			path:    "/foo/{bar:{{{{}}}}",
-			wantErr: true,
+			name: "unbalanced braces in regexp complex",
+			path: "/foo/{bar:{{{{}}}}",
 		},
 		{
-			name:    "invalid regular expression",
-			path:    "/foo/{bar:a{5,2}}",
-			wantErr: true,
+			name: "invalid regular expression",
+			path: "/foo/{bar:a{5,2}}",
 		},
 		{
-			name:    "invalid regular expression",
-			path:    "/foo/{bar:\\k}",
-			wantErr: true,
+			name: "invalid regular expression",
+			path: "/foo/{bar:\\k}",
 		},
 		{
-			name:    "capture group in regexp are not allowed",
-			path:    "/foo/{bar:(foo|bar)}",
-			wantErr: true,
+			name: "capture group in regexp are not allowed",
+			path: "/foo/{bar:(foo|bar)}",
 		},
 		{
-			name:    "no opening brace after * wildcard",
-			path:    "/foo/*:bar}",
-			wantErr: true,
+			name: "no opening brace after * wildcard",
+			path: "/foo/*:bar}",
 		},
 		{
-			name:    "no infix catch all empty",
-			path:    "/foo/*{any}/bar",
-			wantErr: true,
+			name: "no infix catch all empty",
+			path: "/foo/*{any}/bar",
 		},
 		{
-			name:    "no infix inflight catch all empty",
-			path:    "/foo/uuid_*{any}/bar",
-			wantErr: true,
+			name: "no infix inflight catch all empty",
+			path: "/foo/uuid_*{any}/bar",
 		},
 		{
-			name:    "no suffix catch all empty in hostname",
-			path:    "a.b.*{any}/",
-			wantErr: true,
+			name: "no suffix catch all empty in hostname",
+			path: "a.b.*{any}/",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			parsed, _, err := f.parsePattern(tc.path)
-			if tc.wantErr {
-				require.Error(t, err)
-				var pe *PatternError
-				require.True(t, errors.As(err, &pe), "expected *PatternError, got %T", err)
-				assert.True(t, errors.Is(err, ErrInvalidRoute), "PatternError should unwrap to ErrInvalidRoute")
-				assert.NotEmpty(t, pe.Pattern, "Pattern must be set")
-				assert.NotEmpty(t, pe.Reason, "Reason must be set")
-				assert.True(t, pe.Start >= 0, "Start must be >= 0")
-				assert.True(t, pe.End >= pe.Start, "End must be >= Start")
-				assert.True(t, pe.End <= len(pe.Pattern), "End must be <= len(Pattern)")
+			pat, paramCnt, err := f.parsePattern(tc.path)
+			if err != nil {
+				var patErr *PatternError
+				require.ErrorAs(t, err, &patErr)
 				return
 			}
-			require.NoError(t, err)
-			wantStr := tc.wantStr
-			if wantStr == "" {
-				wantStr = tc.path
+			assert.Equal(t, tc.wantN, paramCnt)
+			assert.Equal(t, tc.wantTokens, pat.tokens)
+			assert.Equal(t, tc.optionalCatchAll, pat.optionalCatchAll)
+			if err == nil {
+				assert.Equal(t, strings.IndexByte(cleanPattern(tc.path), '/'), pat.endHost)
 			}
-			assert.Equal(t, wantStr, parsed.str)
-			assert.Equal(t, tc.wantTokens, parsed.tokens)
-			assert.Equal(t, tc.wantOptionalCatchAll, parsed.optionalCatchAll)
-			assert.Equal(t, strings.IndexByte(tc.path, '/'), parsed.endHost)
 		})
 	}
 }
@@ -1201,7 +1225,8 @@ func TestParsePatternParamsConstraint(t *testing.T) {
 func TestPatternErrorPosition(t *testing.T) {
 	cases := []struct {
 		name       string
-		path       string
+		pattern    string
+		options    []GlobalOption
 		wantType   string
 		wantReason string
 		wantStart  int
@@ -1209,263 +1234,27 @@ func TestPatternErrorPosition(t *testing.T) {
 		wantMsg    string
 	}{
 		{
-			name:       "uppercase character in hostname",
-			path:       "example.Com/path",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  8,
-			wantEnd:    9,
-			wantMsg:    "uppercase character in label",
-		},
-		{
-			name:       "all numeric hostname",
-			path:       "1234567/path",
-			wantType:   "hostname",
+			name:       "empty raw pattern",
+			pattern:    "",
 			wantReason: "syntax",
 			wantStart:  0,
-			wantEnd:    7,
-			wantMsg:    "all numeric",
-		},
-		{
-			name:       "missing trailing slash",
-			path:       "foo.com",
-			wantReason: "syntax",
-			wantStart:  0,
-			wantEnd:    7,
-			wantMsg:    "missing trailing '/'",
-		},
-		{
-			name:       "empty parameter in path",
-			path:       "/foo/bar{}",
-			wantType:   "path",
-			wantReason: "parameter",
-			wantStart:  8,
-			wantEnd:    10,
-			wantMsg:    "missing name",
-		},
-		{
-			name:       "illegal char in param name",
-			path:       "/foo/{*bar}",
-			wantType:   "path",
-			wantReason: "parameter",
-			wantStart:  6,
-			wantEnd:    7,
-			wantMsg:    "illegal character in name",
-		},
-		{
-			name:       "unbalanced braces in path",
-			path:       "/foo/{bar:[A-z]+",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  5,
-			wantEnd:    16,
-			wantMsg:    "unbalanced braces",
-		},
-		{
-			name:       "missing param after + in path",
-			path:       "/foo/bar/+baz",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  9,
-			wantEnd:    10,
-			wantMsg:    "missing parameter after delimiter",
-		},
-		{
-			name:       "consecutive wildcard in path",
-			path:       "/foo/+{args}/+{param}",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  13,
-			wantEnd:    14,
-			wantMsg:    "consecutive wildcard",
-		},
-		{
-			name:       "illegal character after param in path",
-			path:       "/foo/{bar}+{baz}",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  10,
-			wantEnd:    11,
-			wantMsg:    "character after parameter",
-		},
-		{
-			name:       "illegal control character in path",
-			path:       "example.com/foo\x00",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  15,
-			wantEnd:    16,
-			wantMsg:    "control character",
-		},
-		{
-			name:       "capture group in regexp",
-			path:       "/foo/{bar:(foo|bar)}",
-			wantType:   "path",
-			wantReason: "regexp",
-			wantStart:  10,
-			wantEnd:    19,
-			wantMsg:    "capture group, use (?:...) instead",
-		},
-		{
-			name:       "missing regular expression",
-			path:       "/foo/{a:}",
-			wantType:   "path",
-			wantReason: "regexp",
-			wantStart:  8,
-			wantEnd:    8,
-			wantMsg:    "missing expression",
-		},
-		{
-			name:       "regexp not allowed in optional wildcard",
-			path:       "/foo/*{any:[A-z]+}",
-			wantType:   "path",
-			wantReason: "regexp",
-			wantStart:  6,
-			wantEnd:    18,
-			wantMsg:    "not allowed in optional wildcard",
-		},
-		{
-			name:       "optional wildcard only as suffix",
-			path:       "/foo/*{any}/bar",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  5,
-			wantEnd:    11,
-			wantMsg:    "optional wildcard allowed only as suffix",
-		},
-		{
-			name:       "trailing dot in hostname",
-			path:       "a.com./",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  5,
-			wantEnd:    6,
-			wantMsg:    "trailing '.'",
-		},
-		{
-			name:       "trailing hyphen in hostname",
-			path:       "a.com-/",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  5,
-			wantEnd:    6,
-			wantMsg:    "illegal trailing '-'",
-		},
-		{
-			name:       "hostname label exceed 63 characters",
-			path:       "a.b.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu/",
-			wantType:   "hostname",
-			wantReason: "constraint",
-			wantStart:  4,
-			wantEnd:    68,
-			wantMsg:    "label exceeds 63 characters",
-		},
-		{
-			name:       "too many params",
-			path:       "/{1}/{2}/{3}/{4}",
-			wantType:   "path",
-			wantReason: "constraint",
-			wantStart:  13,
-			wantEnd:    16,
-			wantMsg:    "too many parameters",
-		},
-		{
-			name:       "param key too large",
-			path:       "/{abcd}",
-			wantType:   "path",
-			wantReason: "constraint",
-			wantStart:  2,
-			wantEnd:    6,
-			wantMsg:    "key too large",
-		},
-		{
-			name:       "hostname illegal character after param",
-			path:       "{a}b{b}.com/",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  3,
-			wantEnd:    4,
-			wantMsg:    "character after parameter",
-		},
-		{
-			name:       "hostname consecutive dot",
-			path:       "a..com/",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  2,
-			wantEnd:    3,
-			wantMsg:    "consecutive '.'",
-		},
-		{
-			name:       "regexp not allowed with disabled regexp",
-			path:       "/{a:a}",
-			wantType:   "path",
-			wantReason: "regexp",
-			wantStart:  4,
-			wantEnd:    5,
-			wantMsg:    "not enabled",
-		},
-		{
-			name:       "hostname missing param after + delimiter",
-			path:       "+baz.com/",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  0,
-			wantEnd:    1,
-			wantMsg:    "missing parameter after delimiter",
-		},
-		{
-			name:       "hostname optional wildcard only as suffix",
-			path:       "a.b.*{any}/",
-			wantType:   "hostname",
-			wantReason: "syntax",
-			wantStart:  4,
-			wantEnd:    6,
-			wantMsg:    "optional wildcard allowed only as suffix",
-		},
-		{
-			name:       "missing param name with regexp",
-			path:       "/foo/{:[A-z]+}",
-			wantType:   "path",
-			wantReason: "parameter",
-			wantStart:  5,
-			wantEnd:    14,
-			wantMsg:    "missing name",
+			wantEnd:    0,
+			wantMsg:    "empty pattern",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var f *Router
-			if tc.name == "regexp not allowed with disabled regexp" {
-				f = MustRouter()
-			} else if tc.name == "too many params" {
-				var err error
-				f, err = NewRouter(WithMaxRouteParams(3), AllowRegexpParam(true))
-				require.NoError(t, err)
-			} else if tc.name == "param key too large" {
-				var err error
-				f, err = NewRouter(WithMaxRouteParamKeyBytes(3), AllowRegexpParam(true))
-				require.NoError(t, err)
-			} else {
-				f = MustRouter(AllowRegexpParam(true))
-			}
-
-			_, _, err := f.parsePattern(tc.path)
+			f := MustRouter(tc.options...)
+			_, _, err := f.parsePattern(tc.pattern)
 			require.Error(t, err)
 			var pe *PatternError
-			require.True(t, errors.As(err, &pe), "expected *PatternError, got %T: %v", err, err)
-			assert.Equal(t, tc.wantType, pe.Type, "type mismatch")
-			assert.Equal(t, tc.wantReason, pe.Reason, "reason mismatch")
-			assert.Equal(t, tc.wantStart, pe.Start, "start mismatch")
-			assert.Equal(t, tc.wantEnd, pe.End, "end mismatch")
-			assert.Contains(t, pe.Error(), tc.wantMsg, "message mismatch")
-			fmt.Println(pe)
+			require.ErrorAs(t, err, &pe)
+			assert.Equal(t, tc.wantType, pe.Type)
+			assert.Equal(t, tc.wantReason, pe.Reason)
+			assert.Equal(t, tc.wantStart, pe.Start)
+			assert.Equal(t, tc.wantEnd, pe.End)
+			assert.Contains(t, pe.Error(), tc.wantMsg)
 		})
 	}
-}
-
-func TestX(t *testing.T) {
-	f := MustRouter()
-	f.MustAdd(MethodGet, "/foo/{asfsadf*}/baz", emptyHandler)
 }
