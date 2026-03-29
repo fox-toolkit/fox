@@ -14,12 +14,12 @@ type Route struct {
 	hself       HandlerFunc
 	hall        HandlerFunc
 	annots      map[any]any
-	pattern     pattern
 	name        string
 	methods     []string
 	mws         []middleware
 	params      []string
 	matchers    []Matcher
+	pattern     pattern
 	priority    uint
 	handleSlash TrailingSlashOption
 }
