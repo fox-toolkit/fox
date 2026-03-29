@@ -98,7 +98,7 @@ func newRouteNotFoundError(route *Route) error {
 }
 
 type PatternError struct {
-	Pattern string // canonical form of the route pattern
+	Pattern string // provided pattern
 	Type    string // hostname | path
 	Reason  string // syntax | parameter | regexp | constraint
 	Hint    string // hint
