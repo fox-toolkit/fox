@@ -1228,7 +1228,7 @@ func TestDomainLookup(t *testing.T) {
 			c := newTestContext(f)
 			idx, n, tsr := tree.lookup(http.MethodGet, tc.host, tc.path, c, false)
 			require.NotNil(t, n)
-			assert.Equal(t, tc.wantPath, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
 			*c.paramsKeys = c.route.params
@@ -1499,7 +1499,7 @@ func TestMatchersLookup(t *testing.T) {
 			c.req = req
 			idx, n, tsr := tree.lookup(http.MethodGet, tc.host, c.Path(), c, false)
 			require.NotNil(t, n)
-			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
 			*c.paramsKeys = c.route.params
@@ -1645,7 +1645,7 @@ func TestMatchersLookupWithPriority(t *testing.T) {
 			c.req = req
 			idx, n, _ := tree.lookup(http.MethodGet, "", c.Path(), c, false)
 			require.NotNil(t, n)
-			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantMatcher, n.routes[idx].matchers)
 			c.route = n.routes[idx]
 			*c.paramsKeys = c.route.params

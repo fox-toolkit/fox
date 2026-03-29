@@ -14,17 +14,14 @@ type Route struct {
 	hself       HandlerFunc
 	hall        HandlerFunc
 	annots      map[any]any
-	pattern     string
+	pattern     pattern
 	name        string
 	methods     []string
 	mws         []middleware
 	params      []string
-	tokens      []token
 	matchers    []Matcher
-	hostEnd     int
 	priority    uint
 	handleSlash TrailingSlashOption
-	catchEmpty  bool
 }
 
 // Handle calls the handler with the provided [Context]. See also [Route.HandleMiddleware].
@@ -55,17 +52,17 @@ func (r *Route) Methods() iter.Seq[string] {
 
 // Pattern returns the registered route pattern.
 func (r *Route) Pattern() string {
-	return r.pattern
+	return r.pattern.str
 }
 
 // Hostname returns the hostname part of the registered pattern if any.
 func (r *Route) Hostname() string {
-	return r.pattern[:r.hostEnd]
+	return r.pattern.str[:r.pattern.endHost]
 }
 
 // Path returns the path part of the registered pattern.
 func (r *Route) Path() string {
-	return r.pattern[r.hostEnd:]
+	return r.pattern.str[r.pattern.endHost:]
 }
 
 // Name returns the name of this [Route].
@@ -201,7 +198,7 @@ func routef(sb *strings.Builder, route *Route, pad int, showName bool) {
 	}
 
 	sb.WriteString(" pattern:")
-	sb.WriteString(route.pattern)
+	sb.WriteString(route.pattern.str)
 
 	if route.name != "" && showName {
 		sb.WriteString(" name:")

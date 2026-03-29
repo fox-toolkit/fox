@@ -6,69 +6,18 @@ import (
 	"strings"
 )
 
-// PatternError is a structured error for invalid route patterns. It carries the reason,
-// the offending position, and the pattern itself, enabling programmatic diagnostics.
-type PatternError struct {
-	Pattern string // canonical form of the route pattern
-	Type    string // hostname | path
-	Reason  string // syntax | parameter | regexp | constraint
-	Hint    string // hint
-	Start   int    // start offset of the offending segment
-	End     int    // end offset of the offending segment
-}
-
-// Error returns a human-readable error message with a visual pointer to the offending segment.
-func (e *PatternError) Error() string {
-	var sb strings.Builder
-	sb.WriteString("pattern: ")
-	if e.Type != "" {
-		sb.WriteString(e.Type)
-		sb.WriteString(": ")
-	}
-	sb.WriteString(e.Reason)
-	sb.WriteString(": ")
-	sb.WriteString(e.Hint)
-	if e.Pattern != "" {
-		sb.WriteByte('\n')
-		sb.WriteString("      ")
-		sb.WriteString(e.Pattern)
-		sb.WriteByte('\n')
-		sb.WriteString("      ")
-		for i := 0; i < e.Start; i++ {
-			sb.WriteByte(' ')
-		}
-		n := e.End - e.Start
-		if n <= 0 {
-			n = 1
-		}
-		for i := 0; i < n; i++ {
-			sb.WriteByte('^')
-		}
-	}
-	return sb.String()
-}
-
-func newPatternError(reason string, start, end int, msg string) *PatternError {
-	return &PatternError{
-		Reason: reason,
-		Start:  start,
-		End:    end,
-		Hint:   msg,
-	}
-}
-
 type pattern struct {
-	str              string // canonical cleaned pattern
+	str              string // canonical pattern
 	tokens           []token
 	optionalCatchAll bool
 	endHost          int
 }
 
-func (fox *Router) parsePattern(raw string) (*pattern, int, error) {
+func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 	endHost := strings.IndexByte(raw, '/')
 	if endHost == -1 {
 		if len(raw) == 0 {
-			return nil, 0, &PatternError{
+			return pattern{}, 0, &PatternError{
 				Pattern: raw,
 				Reason:  "syntax",
 				Hint:    "empty pattern",
@@ -78,8 +27,7 @@ func (fox *Router) parsePattern(raw string) (*pattern, int, error) {
 		endHost = len(raw) - 1
 	}
 
-	cleanedPath := CleanPath(raw[endHost:])
-	canonicalPattern := raw[:endHost] + cleanedPath
+	path := raw[endHost:]
 
 	var (
 		paramCount int
@@ -90,27 +38,27 @@ func (fox *Router) parsePattern(raw string) (*pattern, int, error) {
 		var pe *PatternError
 		hostTokens, paramCount, pe = fox.parseHostname(raw[:endHost])
 		if pe != nil {
-			pe.Pattern = canonicalPattern
+			pe.Pattern = raw
 			pe.Type = "hostname"
-			return nil, 0, pe
+			return pattern{}, 0, pe
 		}
 	}
 
-	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(cleanedPath, paramCount)
+	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(path, paramCount)
 	if pe != nil {
-		pe.Pattern = canonicalPattern
+		pe.Pattern = raw
 		pe.Type = "path"
 		pe.Start += endHost
 		pe.End += endHost
-		return nil, 0, pe
+		return pattern{}, 0, pe
 	}
 
 	tokens := make([]token, 0, len(hostTokens)+len(pathTokens))
 	tokens = append(tokens, hostTokens...)
 	tokens = append(tokens, pathTokens...)
 
-	return &pattern{
-		str:              canonicalPattern,
+	return pattern{
+		str:              raw,
 		tokens:           tokens,
 		endHost:          endHost,
 		optionalCatchAll: optCatchAll,
@@ -335,6 +283,31 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if c < ' ' || c == 0x7f {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
+			if c == '/' && i > 0 && path[i-1] == '/' {
+				return nil, false, 0, newPatternError("syntax", i-1, i+1, "consecutive '/'")
+			}
+			if c == '.' && i > 0 && path[i-1] == '/' {
+				next := i + 1
+				if next >= len(path) || path[next] == '/' {
+					// "/." at end or "/./"
+					end := next
+					if next < len(path) {
+						end = next + 1
+					}
+					return nil, false, 0, newPatternError("syntax", i-1, end, "dot segment")
+				}
+				if path[next] == '.' {
+					afterDots := next + 1
+					if afterDots >= len(path) || path[afterDots] == '/' {
+						// "/.." at end or "/../"
+						end := afterDots
+						if afterDots < len(path) {
+							end = afterDots + 1
+						}
+						return nil, false, 0, newPatternError("syntax", i-1, end, "dot segment")
+					}
+				}
+			}
 			sb.WriteByte(c)
 			staticSinceWild++
 			i++
@@ -441,65 +414,9 @@ func braceIndex(s string, startLevel int) int {
 	return -1
 }
 
-// parsedRoute is a compatibility bridge for callers that have not yet migrated to parsePattern.
-// It translates the new pattern type back into the old field layout.
-type parsedRoute struct {
-	token         []token
-	paramCnt      int
-	endHost       int
-	startCatchAll int
-}
-
-// parseRoute wraps parsePattern to provide the old parsedRoute return type.
-// Callers should migrate to parsePattern directly.
-func (fox *Router) parseRoute(url string) (parsedRoute, error) {
-	p, paramCnt, err := fox.parsePattern(url)
-	if err != nil {
-		return parsedRoute{}, err
+func normalizeHost(pattern string) string {
+	if pattern == "" || strings.IndexByte(pattern, slashDelim) >= 0 {
+		return pattern
 	}
-
-	// Backward compatibility: callers store the original url as the route pattern,
-	// so we must reject paths that CleanPath would normalize (e.g. //, ./, ../).
-	// Once callers migrate to parsePattern (which returns the cleaned canonical form),
-	// this check can be removed.
-	if p.str != url {
-		endHost := strings.IndexByte(url, '/')
-		if endHost == -1 {
-			endHost = 0
-		}
-		return parsedRoute{}, &PatternError{
-			Pattern: url,
-			Type:    "path",
-			Reason:  "syntax",
-			Start:   endHost,
-			End:     len(url),
-			Hint:    "not clean, use CleanPath",
-		}
-	}
-
-	startCatchAll := 0
-	if p.optionalCatchAll {
-		// Reconstruct the startCatchAll index for backwards compatibility.
-		// Callers use: startCatchAll > 0 && pattern[startCatchAll] == '*'
-		// So we need the index of '*' in the original pattern string.
-		startCatchAll = strings.LastIndexByte(url, '*')
-	}
-
-	return parsedRoute{
-		token:         p.tokens,
-		paramCnt:      paramCnt,
-		endHost:       p.endHost,
-		startCatchAll: startCatchAll,
-	}, nil
-}
-
-func cleanPattern(pattern string) string {
-	idx := strings.IndexByte(pattern, '/')
-	if idx == -1 {
-		if len(pattern) == 0 {
-			return pattern
-		}
-		return pattern + "/"
-	}
-	return pattern[:idx] + CleanPath(pattern[idx+1:])
+	return pattern + "/"
 }

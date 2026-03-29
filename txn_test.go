@@ -432,7 +432,7 @@ func TestUpdateWithName(t *testing.T) {
 			WithHeaderMatcher("Authorization", "secret"),
 		)
 		require.NoError(t, err)
-		assert.Equal(t, "/users/{name}", route.pattern)
+		assert.Equal(t, "/users/{name}", route.pattern.str)
 		assert.Empty(t, route.name)
 		assert.Nil(t, txn.Name("users_name"))
 		txn.Commit()
@@ -446,7 +446,7 @@ func TestUpdateWithName(t *testing.T) {
 			WithName("foo"),
 		)
 		require.NoError(t, err)
-		assert.Equal(t, "/users", route.pattern)
+		assert.Equal(t, "/users", route.pattern.str)
 		assert.Equal(t, "foo", route.name)
 		assert.NotNil(t, txn.Name("foo"))
 		txn.Commit()
@@ -462,7 +462,7 @@ func TestUpdateWithName(t *testing.T) {
 			WithName("users"),
 		)
 		require.NoError(t, err)
-		assert.Equal(t, "/users", route.pattern)
+		assert.Equal(t, "/users", route.pattern.str)
 		assert.Equal(t, "users", route.name)
 		assert.NotNil(t, txn.Name("users"))
 		txn.Commit()
@@ -478,7 +478,7 @@ func TestUpdateWithName(t *testing.T) {
 			WithName("new_users"),
 		)
 		require.NoError(t, err)
-		assert.Equal(t, "/users", route.pattern)
+		assert.Equal(t, "/users", route.pattern.str)
 		assert.Equal(t, "new_users", route.name)
 		assert.Nil(t, txn.Name("users"))
 		assert.NotNil(t, txn.Name("new_users"))

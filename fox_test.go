@@ -2049,7 +2049,7 @@ func TestInsertConflict(t *testing.T) {
 			var conflict *RouteConflictError
 			require.ErrorAs(t, got, &conflict)
 			patterns := iterutil.Map(slices.Values(conflict.Conflicts), func(a *Route) string {
-				return a.pattern
+				return a.pattern.str
 			})
 			assert.Equal(t, tc.wantMatch, slices.Collect(patterns))
 		})
@@ -2119,16 +2119,18 @@ func TestUpdateConflict(t *testing.T) {
 
 func TestInvalidRoute(t *testing.T) {
 	f := MustRouter()
+	var pe *PatternError
+
 	// Invalid route on insert
 	assert.ErrorIs(t, onlyError(f.Add([]string{"G\x00ET"}, "/foo", emptyHandler)), ErrInvalidRoute)
 	assert.ErrorIs(t, onlyError(f.Add([]string{""}, "/foo", emptyHandler)), ErrInvalidRoute)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo", nil)), ErrInvalidRoute)
-	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo\x00", emptyHandler)), ErrInvalidRoute)
+	assert.ErrorAs(t, onlyError(f.Add(MethodGet, "/foo\x00", emptyHandler)), &pe)
 
 	// Invalid route on update
 	assert.ErrorIs(t, onlyError(f.Update([]string{""}, "/foo", emptyHandler)), ErrInvalidRoute)
 	assert.ErrorIs(t, onlyError(f.Update(MethodGet, "/foo", nil)), ErrInvalidRoute)
-	assert.ErrorIs(t, onlyError(f.Update(MethodGet, "/foo\x00", emptyHandler)), ErrInvalidRoute)
+	assert.ErrorAs(t, onlyError(f.Update(MethodGet, "/foo\x00", emptyHandler)), &pe)
 }
 
 func TestUpdateRoute(t *testing.T) {
@@ -3248,7 +3250,8 @@ func TestRouter_DeleteError(t *testing.T) {
 	})
 	t.Run("delete invalid route", func(t *testing.T) {
 		r, err := f.Delete(MethodGet, "/{")
-		assert.ErrorIs(t, err, ErrInvalidRoute)
+		var pe *PatternError
+		assert.ErrorAs(t, err, &pe)
 		assert.Nil(t, r)
 	})
 	t.Run("route does not exist", func(t *testing.T) {

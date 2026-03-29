@@ -1,6 +1,7 @@
 package fox
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -631,84 +632,44 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name:  "path with double slash",
-			path:  "/foo//bar",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/foo/bar", false),
-			)),
+			name: "path with double slash",
+			path: "/foo//bar",
 		},
 		{
-			name:  "path with > double slash",
-			path:  "/foo///bar",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/foo/bar", false),
-			)),
+			name: "path with > double slash",
+			path: "/foo///bar",
 		},
 		{
-			name:  "path with slash dot slash",
-			path:  "/foo/./bar",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/foo/bar", false),
-			)),
+			name: "path with slash dot slash",
+			path: "/foo/./bar",
 		},
 		{
-			name:  "path with slash dot slash",
-			path:  "/foo/././bar",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/foo/bar", false),
-			)),
+			name: "path with slash dot slash",
+			path: "/foo/././bar",
 		},
 		{
-			name:  "path with double dot parent reference",
-			path:  "/foo/../bar",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/bar", false),
-			)),
+			name: "path with double dot parent reference",
+			path: "/foo/../bar",
 		},
 		{
-			name:  "path with double dot parent reference",
-			path:  "/foo/../../bar",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/bar", false),
-			)),
+			name: "path with double dot parent reference",
+			path: "/foo/../../bar",
 		},
 		{
-			name:  "path ending with slash dot",
-			path:  "/foo/.",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/foo/", false),
-			)),
+			name: "path ending with slash dot",
+			path: "/foo/.",
 		},
 		{
-			name:  "path ending with slash double dot",
-			path:  "/foo/..",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/", false),
-			)),
+			name: "path ending with slash double dot",
+			path: "/foo/..",
 		},
 		{
-			name:  "path ending with slash dot",
-			path:  "/.",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/", false),
-			)),
+			name: "path ending with slash dot",
+			path: "/.",
 		},
 		{
-			name:  "path ending with slash double dot",
-			path:  "/..",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("/", false),
-			)),
+			name: "path ending with slash double dot",
+			path: "/..",
 		},
 		// Allowed dot and slash combinaison
 		{
@@ -1143,7 +1104,7 @@ func TestParsePattern(t *testing.T) {
 			assert.Equal(t, tc.wantTokens, pat.tokens)
 			assert.Equal(t, tc.optionalCatchAll, pat.optionalCatchAll)
 			if err == nil {
-				assert.Equal(t, strings.IndexByte(cleanPattern(tc.path), '/'), pat.endHost)
+				assert.Equal(t, strings.IndexByte(normalizeHost(tc.path), '/'), pat.endHost)
 			}
 		})
 	}
@@ -1241,6 +1202,372 @@ func TestPatternErrorPosition(t *testing.T) {
 			wantEnd:    0,
 			wantMsg:    "empty pattern",
 		},
+		{
+			name:       "hostname dash after dot",
+			pattern:    "-a.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    1,
+			wantMsg:    "illegal character after '.'",
+		},
+		{
+			name:       "hostname consecutive dots",
+			pattern:    "a..com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    3,
+			wantMsg:    "illegal consecutive '.'",
+		},
+		{
+			name:       "hostname label ends with dash",
+			pattern:    "a-.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  1,
+			wantEnd:    2,
+			wantMsg:    "label ends with '-'",
+		},
+		{
+			name:       "hostname label exceeds 63 chars at dot",
+			pattern:    "uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu.com/",
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  0,
+			wantEnd:    64,
+			wantMsg:    "label exceeds 63 characters",
+		},
+		{
+			name:       "hostname uppercase character",
+			pattern:    "A.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    1,
+			wantMsg:    "uppercase character in label",
+		},
+		{
+			name:       "hostname illegal character in label",
+			pattern:    "a!.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  1,
+			wantEnd:    2,
+			wantMsg:    "illegal character in label",
+		},
+		{
+			name:       "hostname trailing dash",
+			pattern:    "a.com-/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    6,
+			wantMsg:    "illegal trailing '-'",
+		},
+		{
+			name:       "hostname trailing dot",
+			pattern:    "a.com./",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    6,
+			wantMsg:    "illegal trailing '.'",
+		},
+		{
+			name:       "hostname all numeric",
+			pattern:    "123/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    3,
+			wantMsg:    "all numeric",
+		},
+		{
+			name:       "hostname trailing label exceeds 63 chars",
+			pattern:    "a.b.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu/",
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  4,
+			wantEnd:    68,
+			wantMsg:    "label exceeds 63 characters",
+		},
+		{
+			name:       "hostname exceeds 253 characters",
+			pattern:    "a.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr/",
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  0,
+			wantEnd:    256,
+			wantMsg:    "exceeds 253 characters",
+		},
+		{
+			name:       "hostname missing parameter after + delimiter",
+			pattern:    "+a.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    1,
+			wantMsg:    "missing parameter after delimiter",
+		},
+		{
+			name:       "hostname consecutive wildcard",
+			pattern:    "+{a}.+{b}.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    6,
+			wantMsg:    "consecutive wildcard",
+		},
+		{
+			name:       "hostname too many parameters",
+			pattern:    "{a}.{b}.com/",
+			options:    []GlobalOption{WithMaxRouteParams(1)},
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  4,
+			wantEnd:    7,
+			wantMsg:    "too many parameters",
+		},
+		{
+			name:       "hostname illegal character after parameter",
+			pattern:    "{a}b.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  3,
+			wantEnd:    4,
+			wantMsg:    "illegal character after parameter",
+		},
+		{
+			name:       "hostname optional wildcard not allowed",
+			pattern:    "a.*{any}/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    4,
+			wantMsg:    "optional wildcard allowed only as suffix",
+		},
+		{
+			name:       "hostname bare star missing parameter",
+			pattern:    "a.b*/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  3,
+			wantEnd:    4,
+			wantMsg:    "missing parameter after delimiter",
+		},
+		{
+			name:       "path missing parameter after + delimiter",
+			pattern:    "/foo/+bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    6,
+			wantMsg:    "missing parameter after delimiter",
+		},
+		{
+			name:       "path consecutive wildcard",
+			pattern:    "/+{a}/+{b}",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  6,
+			wantEnd:    7,
+			wantMsg:    "consecutive wildcard",
+		},
+		{
+			name:       "path too many parameters",
+			pattern:    "/foo/{a}/{b}",
+			options:    []GlobalOption{WithMaxRouteParams(1)},
+			wantType:   "path",
+			wantReason: "constraint",
+			wantStart:  9,
+			wantEnd:    12,
+			wantMsg:    "too many parameters",
+		},
+		{
+			name:       "path optional wildcard not as suffix",
+			pattern:    "/foo/*{any}/bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    11,
+			wantMsg:    "optional wildcard allowed only as suffix",
+		},
+		{
+			name:       "path illegal character after parameter",
+			pattern:    "/foo/{a}b",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  8,
+			wantEnd:    9,
+			wantMsg:    "illegal character after parameter",
+		},
+		{
+			name:       "path illegal control character",
+			pattern:    "/foo\x01bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    5,
+			wantMsg:    "illegal control character",
+		},
+		{
+			name:       "path consecutive slashes",
+			pattern:    "/foo//bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    6,
+			wantMsg:    "consecutive '/'",
+		},
+		{
+			name:       "path consecutive slashes with hostname",
+			pattern:    "example.com/foo//bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  15,
+			wantEnd:    17,
+			wantMsg:    "consecutive '/'",
+		},
+		{
+			name:       "path dot segment single dot mid",
+			pattern:    "/foo/./bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    7,
+			wantMsg:    "dot segment",
+		},
+		{
+			name:       "path dot segment single dot end",
+			pattern:    "/foo/.",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    6,
+			wantMsg:    "dot segment",
+		},
+		{
+			name:       "path dot segment double dot mid",
+			pattern:    "/foo/../bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    8,
+			wantMsg:    "dot segment",
+		},
+		{
+			name:       "path dot segment double dot end",
+			pattern:    "/foo/..",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    7,
+			wantMsg:    "dot segment",
+		},
+		{
+			name:       "path root single dot",
+			pattern:    "/.",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    2,
+			wantMsg:    "dot segment",
+		},
+		{
+			name:       "path root double dot",
+			pattern:    "/..",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    3,
+			wantMsg:    "dot segment",
+		},
+		{
+			name:       "unbalanced braces",
+			pattern:    "/foo/{bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    9,
+			wantMsg:    "unbalanced braces",
+		},
+		{
+			name:       "parameter key too large",
+			pattern:    "/foo/{abcd}",
+			options:    []GlobalOption{WithMaxRouteParamKeyBytes(3)},
+			wantType:   "path",
+			wantReason: "constraint",
+			wantStart:  6,
+			wantEnd:    10,
+			wantMsg:    "key too large",
+		},
+		{
+			name:       "missing parameter name",
+			pattern:    "/foo/{}",
+			wantType:   "path",
+			wantReason: "parameter",
+			wantStart:  5,
+			wantEnd:    7,
+			wantMsg:    "missing name",
+		},
+		{
+			name:       "illegal character in parameter name",
+			pattern:    "/foo/{*bar}",
+			wantType:   "path",
+			wantReason: "parameter",
+			wantStart:  6,
+			wantEnd:    7,
+			wantMsg:    "illegal character in name",
+		},
+		{
+			name:       "regexp not allowed in optional wildcard",
+			pattern:    "/foo/*{any:[A-z]+}",
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  6,
+			wantEnd:    18,
+			wantMsg:    "not allowed in optional wildcard",
+		},
+		{
+			name:       "regexp feature not enabled",
+			pattern:    "/foo/{a:[A-z]+}",
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  8,
+			wantEnd:    14,
+			wantMsg:    "feature not enabled",
+		},
+		{
+			name:       "regexp missing expression",
+			pattern:    "/foo/{a:}",
+			options:    []GlobalOption{AllowRegexpParam(true)},
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  8,
+			wantEnd:    8,
+			wantMsg:    "missing expression",
+		},
+		{
+			name:       "regexp compile error",
+			pattern:    "/foo/{a:a{5,2}}",
+			options:    []GlobalOption{AllowRegexpParam(true)},
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  8,
+			wantEnd:    14,
+			wantMsg:    "compile error",
+		},
+		{
+			name:       "regexp capture group not allowed",
+			pattern:    "/foo/{a:(foo|bar)}",
+			options:    []GlobalOption{AllowRegexpParam(true)},
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  8,
+			wantEnd:    17,
+			wantMsg:    "capture group",
+		},
 	}
 
 	for _, tc := range cases {
@@ -1255,6 +1582,52 @@ func TestPatternErrorPosition(t *testing.T) {
 			assert.Equal(t, tc.wantStart, pe.Start)
 			assert.Equal(t, tc.wantEnd, pe.End)
 			assert.Contains(t, pe.Error(), tc.wantMsg)
+			fmt.Println(err)
+		})
+	}
+}
+
+func TestNormalizeHost(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "empty string",
+			in:   "",
+			want: "",
+		},
+		{
+			name: "path only",
+			in:   "/foo/bar",
+			want: "/foo/bar",
+		},
+		{
+			name: "host with trailing slash",
+			in:   "example.com/",
+			want: "example.com/",
+		},
+		{
+			name: "host with path",
+			in:   "example.com/foo",
+			want: "example.com/foo",
+		},
+		{
+			name: "host only without slash",
+			in:   "example.com",
+			want: "example.com/",
+		},
+		{
+			name: "root slash only",
+			in:   "/",
+			want: "/",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, normalizeHost(tc.in))
 		})
 	}
 }

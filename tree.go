@@ -258,13 +258,13 @@ func (t *tXn) deleteNameIn(root, n *node, search string) *node {
 func (t *tXn) insert(route *Route, mode insertMode) error {
 	t.mode = mode
 
-	newRoot, err := t.insertTokens(nil, t.patterns, route.tokens, route)
+	newRoot, err := t.insertTokens(nil, t.patterns, route.pattern.tokens, route)
 	if err != nil {
 		return err
 	}
 	if newRoot != nil {
 		t.patterns = newRoot
-		t.maxDepth = max(t.maxDepth, t.computePathDepth(newRoot, route.tokens))
+		t.maxDepth = max(t.maxDepth, t.computePathDepth(newRoot, route.pattern.tokens))
 		t.maxParams = max(t.maxParams, len(route.params))
 		t.size++
 		if len(route.methods) > 0 && t.mode == modeInsert {
@@ -308,7 +308,7 @@ func (t *tXn) insertTokens(p, n *node, tokens []token, route *Route) (*node, err
 			// Since pattern matching precedes matcher evaluation, a conflict occurs when the exact path has no matchers (shadows all requests
 			// to that pattern) or matchers equal to the catch-empty's (both match the same request).
 			var conflicts []*Route
-			if route.catchEmpty && p != nil {
+			if route.pattern.optionalCatchAll && p != nil {
 				for _, r := range p.routes {
 					if (len(r.matchers) == 0 || r.matchersEqual(route.matchers)) && slicesutil.Overlap(r.methods, route.methods) {
 						conflicts = append(conflicts, r)
@@ -321,7 +321,7 @@ func (t *tXn) insertTokens(p, n *node, tokens []token, route *Route) (*node, err
 
 			for _, wildcard := range n.wildcards {
 				for _, r := range wildcard.routes {
-					if r.catchEmpty && (len(route.matchers) == 0 || route.matchersEqual(r.matchers)) && slicesutil.Overlap(route.methods, r.methods) {
+					if r.pattern.optionalCatchAll && (len(route.matchers) == 0 || route.matchersEqual(r.matchers)) && slicesutil.Overlap(route.methods, r.methods) {
 						conflicts = append(conflicts, r)
 					}
 				}
@@ -341,7 +341,7 @@ func (t *tXn) insertTokens(p, n *node, tokens []token, route *Route) (*node, err
 			return nc, nil
 		case modeUpdate:
 			idx := slices.IndexFunc(n.routes, func(r *Route) bool {
-				return r.pattern == route.pattern && slices.Equal(r.methods, route.methods) && r.matchersEqual(route.matchers)
+				return r.pattern.str == route.pattern.str && slices.Equal(r.methods, route.methods) && r.matchersEqual(route.matchers)
 			})
 			if idx == -1 {
 				return nil, newRouteNotFoundError(route)
@@ -606,7 +606,7 @@ func (t *tXn) insertWildcard(n *node, tk token, remaining []token, route *Route)
 // delete performs a recursive copy-on-write deletion.
 func (t *tXn) delete(route *Route) (*Route, bool) {
 
-	newRoot, oldRoute := t.deleteTokens(t.patterns, t.patterns, route.tokens, route)
+	newRoot, oldRoute := t.deleteTokens(t.patterns, t.patterns, route.pattern.tokens, route)
 	if newRoot != nil {
 		t.patterns = newRoot
 		if !t.forked && len(route.methods) > 0 {
@@ -636,7 +636,7 @@ func (t *tXn) deleteTokens(root, n *node, tokens []token, route *Route) (*node, 
 		}
 
 		idx := slices.IndexFunc(n.routes, func(r *Route) bool {
-			return r.pattern == route.pattern && slices.Equal(r.methods, route.methods) && r.matchersEqual(route.matchers)
+			return r.pattern.str == route.pattern.str && slices.Equal(r.methods, route.methods) && r.matchersEqual(route.matchers)
 		})
 		if idx == -1 {
 			return nil, nil

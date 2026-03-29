@@ -440,7 +440,7 @@ func TestRouteWithParams(t *testing.T) {
 		require.NotNilf(t, n, "route: %s", rte)
 		require.NotNilf(t, n.routes[idx], "route: %s", rte)
 		assert.False(t, tsr)
-		assert.Equal(t, rte, n.routes[idx].pattern)
+		assert.Equal(t, rte, n.routes[idx].pattern.str)
 	}
 }
 
@@ -1515,7 +1515,7 @@ func TestOverlappingRoute(t *testing.T) {
 			require.NotNil(t, n)
 			require.NotNil(t, n.routes[idx])
 			assert.False(t, tsr)
-			assert.Equal(t, tc.wantMatch, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantMatch, n.routes[idx].pattern.str)
 			c.route = n.routes[idx]
 			*c.paramsKeys = c.route.params
 			if len(tc.wantParams) == 0 {
@@ -1533,7 +1533,7 @@ func TestOverlappingRoute(t *testing.T) {
 			assert.False(t, tsr)
 			c.route = n.routes[idx]
 			assert.Empty(t, slices.Collect(c.Params()))
-			assert.Equal(t, tc.wantMatch, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantMatch, n.routes[idx].pattern.str)
 		})
 	}
 }
@@ -2667,7 +2667,7 @@ func TestInfixWildcard(t *testing.T) {
 			c := newTestContext(f)
 			idx, n, tsr := lookupByPath(tree.patterns, http.MethodGet, tc.path, c, false, 0)
 			require.NotNil(t, n)
-			assert.Equal(t, tc.wantPath, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
 			*c.paramsKeys = c.route.params
@@ -3038,7 +3038,7 @@ func TestInfixWildcardTsr(t *testing.T) {
 			c := newTestContext(f)
 			idx, n, tsr := lookupByPath(tree.patterns, http.MethodGet, tc.path, c, false, 0)
 			require.NotNil(t, n)
-			assert.Equal(t, tc.wantPath, n.routes[idx].pattern)
+			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
 			*c.paramsKeys = c.route.params
@@ -3133,7 +3133,7 @@ func TestTree_LookupTsr(t *testing.T) {
 			if tc.want {
 				require.NotNil(t, n)
 				require.NotNil(t, n.routes[idx])
-				assert.Equal(t, tc.wantPath, n.routes[idx].pattern)
+				assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			}
 		})
 	}

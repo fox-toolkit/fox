@@ -363,7 +363,7 @@ Walk:
 					// to search for match empty catch-all.
 					for _, wildcardNode := range child.wildcards {
 						for i, route := range wildcardNode.routes {
-							if route.handleSlash != StrictSlash && route.catchEmpty && route.match(method, c) {
+							if route.handleSlash != StrictSlash && route.pattern.optionalCatchAll && route.match(method, c) {
 								if !lazy {
 									// record empty match
 									*c.params = append(*c.params, "")
@@ -571,7 +571,7 @@ Walk:
 	// Try to catch empty for wildcard supporting it.
 	for _, wildcardNode := range matched.wildcards {
 		for i, route := range wildcardNode.routes {
-			if route.catchEmpty && route.match(method, c) {
+			if route.pattern.optionalCatchAll && route.match(method, c) {
 				if !lazy {
 					*c.params = append(*c.params, "")
 				}
@@ -989,7 +989,7 @@ func (n *node) string(space int) string {
 		sb.WriteByte('\n')
 		sb.WriteString(strings.Repeat(" ", space+8))
 		sb.WriteString("=> ")
-		sb.WriteString(route.pattern)
+		sb.WriteString(route.pattern.str)
 
 		if len(route.methods) > 0 {
 			sb.WriteString(" [methods: ")

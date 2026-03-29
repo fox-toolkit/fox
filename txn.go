@@ -148,15 +148,13 @@ func (txn *Txn) Delete(methods []string, pattern string, opts ...MatcherOption) 
 		}
 	}
 
-	parsed, err := txn.fox.parseRoute(pattern)
+	pat, _, err := txn.fox.parsePattern(pattern)
 	if err != nil {
 		return nil, err
 	}
 
 	rte := &Route{
-		pattern: pattern,
-		hostEnd: parsed.endHost,
-		tokens:  parsed.token,
+		pattern: pat,
 	}
 
 	for _, opt := range opts {
@@ -250,7 +248,7 @@ func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Ro
 		return nil
 	}
 	idx := slices.IndexFunc(matched.routes, func(r *Route) bool {
-		return r.pattern == pattern && slicesutil.EqualUnsorted(r.methods, methods) && r.matchersEqual(matchers)
+		return r.pattern.str == pattern && slicesutil.EqualUnsorted(r.methods, methods) && r.matchersEqual(matchers)
 	})
 	if idx < 0 {
 		return nil
@@ -317,7 +315,7 @@ func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Con
 	idx, n, tsr := txn.rootTxn.patterns.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {
 		c.route = n.routes[idx]
-		c.pattern = c.route.pattern
+		c.pattern = c.route.pattern.str
 		*c.paramsKeys = c.route.params
 		return c.route, c, tsr
 	}

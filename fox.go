@@ -325,7 +325,7 @@ func (fox *Router) Route(methods []string, pattern string, matchers ...Matcher) 
 		return nil
 	}
 	idx := slices.IndexFunc(matched.routes, func(r *Route) bool {
-		return r.pattern == pattern && slicesutil.EqualUnsorted(r.methods, methods) && r.matchersEqual(matchers)
+		return r.pattern.str == pattern && slicesutil.EqualUnsorted(r.methods, methods) && r.matchersEqual(matchers)
 	})
 	if idx < 0 {
 		return nil
@@ -386,7 +386,7 @@ func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {
 		c.route = n.routes[idx]
-		c.pattern = c.route.pattern
+		c.pattern = c.route.pattern.str
 		*c.paramsKeys = c.route.params
 		return c.route, c, tsr
 	}
@@ -411,7 +411,7 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 		}
 	}
 
-	parsed, err := fox.parseRoute(pattern)
+	pat, paramsCnt, err := fox.parsePattern(pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -419,15 +419,12 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 	rte := &Route{
 		clientip:    fox.clientip,
 		hbase:       handler,
-		pattern:     pattern,
+		pattern:     pat,
 		handleSlash: fox.handleSlash,
-		hostEnd:     parsed.endHost,
-		tokens:      parsed.token,
-		catchEmpty:  parsed.startCatchAll > 0 && pattern[parsed.startCatchAll] == starDelim,
 	}
 
-	rte.params = make([]string, 0, parsed.paramCnt)
-	for _, tk := range parsed.token {
+	rte.params = make([]string, 0, paramsCnt)
+	for _, tk := range pat.tokens {
 		if tk.typ != nodeStatic {
 			rte.params = append(rte.params, tk.value)
 		}
@@ -596,7 +593,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if !tsr && n != nil {
 		c.route = n.routes[idx]
-		c.pattern = c.route.pattern
+		c.pattern = c.route.pattern.str
 		*c.paramsKeys = c.route.params
 		c.route.hall(c)
 		tree.pool.Put(c)
@@ -608,7 +605,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route := n.routes[idx]
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
-				c.pattern = c.route.pattern
+				c.pattern = c.route.pattern.str
 				*c.paramsKeys = c.route.params
 				route.hall(c)
 				tree.pool.Put(c)
@@ -631,7 +628,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			*c.params = (*c.params)[:0]
 			if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
 				c.route = n.routes[idx]
-				c.pattern = c.route.pattern
+				c.pattern = c.route.pattern.str
 				*c.paramsKeys = c.route.params
 				c.route.hall(c)
 				tree.pool.Put(c)
@@ -797,7 +794,7 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 	if !tsr && n != nil {
 		c.route = n.routes[idx]
 		*c.paramsKeys = append(*c.paramsKeys, c.route.params...)
-		c.pattern = c.route.pattern
+		c.pattern = c.route.pattern.str
 		c.route.hall(c)
 		return
 	}
@@ -808,7 +805,7 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
 				*c.paramsKeys = append(*c.paramsKeys, route.params...)
-				c.pattern = c.route.pattern
+				c.pattern = c.route.pattern.str
 				route.hall(c)
 				return
 			}
@@ -829,7 +826,7 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 			if idx, n, tsr := tree.lookupByPath(r.Method, CleanPath(path), c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
 				c.route = n.routes[idx]
 				*c.paramsKeys = append(*c.paramsKeys, c.route.params...)
-				c.pattern = c.route.pattern
+				c.pattern = c.route.pattern.str
 				c.route.hall(c)
 				return
 			}
@@ -972,7 +969,7 @@ func Sub(router *Router) HandlerFunc {
 
 		*subCtx.subPatterns = append(*subCtx.subPatterns, *c.subPatterns...)
 
-		lastTkType := route.tokens[len(route.tokens)-1].typ
+		lastTkType := route.pattern.tokens[len(route.pattern.tokens)-1].typ
 		var p string
 		switch lastTkType {
 		case nodeWildcard:
