@@ -1,8 +1,10 @@
 package fox
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"slices"
 	"strings"
 	"testing"
@@ -234,13 +236,8 @@ func TestParsePattern(t *testing.T) {
 			)),
 		},
 		{
-			name:  "missing a least one slash",
-			path:  "foo.com",
-			wantN: 0,
-			wantTokens: slices.Collect(iterutil.SeqOf(
-				staticToken("foo.com", true),
-				staticToken("/", false),
-			)),
+			name: "missing trailing slash after hostname",
+			path: "foo.com",
 		},
 		{
 			name:  "empty parameter",
@@ -1104,7 +1101,7 @@ func TestParsePattern(t *testing.T) {
 			assert.Equal(t, tc.wantTokens, pat.tokens)
 			assert.Equal(t, tc.optionalCatchAll, pat.optionalCatchAll)
 			if err == nil {
-				assert.Equal(t, strings.IndexByte(normalizeHost(tc.path), '/'), pat.endHost)
+				assert.Equal(t, strings.IndexByte(tc.path, '/'), pat.endHost)
 			}
 		})
 	}
@@ -1195,12 +1192,13 @@ func TestPatternErrorPosition(t *testing.T) {
 		wantMsg    string
 	}{
 		{
-			name:       "empty raw pattern",
-			pattern:    "",
+			name:       "hostname missing trailing slash",
+			pattern:    "foo.com",
+			wantType:   "hostname",
 			wantReason: "syntax",
 			wantStart:  0,
 			wantEnd:    0,
-			wantMsg:    "empty pattern",
+			wantMsg:    "missing trailing '/' after hostname",
 		},
 		{
 			name:       "hostname dash after dot",
@@ -1587,47 +1585,30 @@ func TestPatternErrorPosition(t *testing.T) {
 	}
 }
 
-func TestNormalizeHost(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{
-			name: "empty string",
-			in:   "",
-			want: "",
-		},
-		{
-			name: "path only",
-			in:   "/foo/bar",
-			want: "/foo/bar",
-		},
-		{
-			name: "host with trailing slash",
-			in:   "example.com/",
-			want: "example.com/",
-		},
-		{
-			name: "host with path",
-			in:   "example.com/foo",
-			want: "example.com/foo",
-		},
-		{
-			name: "host only without slash",
-			in:   "example.com",
-			want: "example.com/",
-		},
-		{
-			name: "root slash only",
-			in:   "/",
-			want: "/",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, normalizeHost(tc.in))
-		})
-	}
+func TestPatternErrorUnwrap(t *testing.T) {
+	t.Run("regexp compile error wraps underlying error", func(t *testing.T) {
+		f := MustRouter(AllowRegexpParam(true))
+		_, _, err := f.parsePattern("/foo/{a:a{5,2}}")
+		require.Error(t, err)
+		var pe *PatternError
+		require.ErrorAs(t, err, &pe)
+		var syntaxErr *syntax.Error
+		assert.ErrorAs(t, pe, &syntaxErr)
+	})
+	t.Run("non-regexp error returns nil on unwrap", func(t *testing.T) {
+		f := MustRouter()
+		_, _, err := f.parsePattern("/foo//bar")
+		require.Error(t, err)
+		var pe *PatternError
+		require.ErrorAs(t, err, &pe)
+		assert.Nil(t, pe.Unwrap())
+	})
+	t.Run("empty pattern returns ErrInvalidRoute", func(t *testing.T) {
+		f := MustRouter()
+		_, _, err := f.parsePattern("")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidRoute)
+		var pe *PatternError
+		assert.False(t, errors.As(err, &pe))
+	})
 }

@@ -164,7 +164,7 @@ func WithHandleFixedPath(opt FixedPathOption) GlobalOption {
 }
 
 // WithMaxRouteParams set the maximum number of parameters allowed in a route. The default max is math.MaxUint8.
-// Routes exceeding this limit will fail with an error that is ErrInvalidRoute and ErrTooManyParams.
+// Routes exceeding this limit will fail with a [*PatternError].
 func WithMaxRouteParams(max int) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.maxParams = max
@@ -173,8 +173,7 @@ func WithMaxRouteParams(max int) GlobalOption {
 }
 
 // WithMaxRouteParamKeyBytes set the maximum number of bytes allowed per parameter key in a route. The default max is
-// math.MaxUint8. Routes with parameter keys exceeding this limit will fail with an error that Is ErrInvalidRoute and
-// ErrParamKeyTooLarge.
+// math.MaxUint8. Routes with parameter keys exceeding this limit will fail with a [*PatternError].
 func WithMaxRouteParamKeyBytes(max int) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.maxParamKeyBytes = max
@@ -192,8 +191,7 @@ func WithMaxRouteMatchers(max int) GlobalOption {
 }
 
 // AllowRegexpParam enables support for regular expressions in route parameters. When enabled, parameters can include
-// regex patterns (e.g., {id:[0-9]+}). When disabled, routes containing regex patterns will fail with and error that
-// Is ErrInvalidRoute and ErrRegexpNotAllowed.
+// regex patterns (e.g., {id:[0-9]+}). When disabled, routes containing regex patterns will fail with a [*PatternError].
 func AllowRegexpParam(enable bool) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.allowRegexp = enable

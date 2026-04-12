@@ -17,14 +17,14 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 	endHost := strings.IndexByte(raw, '/')
 	if endHost == -1 {
 		if len(raw) == 0 {
-			return pattern{}, 0, &PatternError{
-				Pattern: raw,
-				Reason:  "syntax",
-				Hint:    "empty pattern",
-			}
+			return pattern{}, 0, fmt.Errorf("%w: empty pattern", ErrInvalidRoute)
 		}
-		raw += "/"
-		endHost = len(raw) - 1
+		return pattern{}, 0, &PatternError{
+			Pattern: raw,
+			Type:    "hostname",
+			Reason:  "syntax",
+			Hint:    "missing trailing '/' after hostname",
+		}
 	}
 
 	path := raw[endHost:]
@@ -387,7 +387,13 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 
 	re, err := regexp.Compile("^" + rawRegex + "$")
 	if err != nil {
-		return nil, newPatternError("regexp", 0, len(rawRegex), fmt.Sprintf("compile error: %s", err))
+		return nil, &PatternError{
+			Reason: "regexp",
+			Start:  0,
+			End:    len(rawRegex),
+			Hint:   "compile error: " + err.Error(),
+			err:    err,
+		}
 	}
 	if re.NumSubexp() > 0 {
 		return nil, newPatternError("regexp", 0, len(rawRegex), "capture group, use (?:...) instead")
@@ -412,11 +418,4 @@ func braceIndex(s string, startLevel int) int {
 		}
 	}
 	return -1
-}
-
-func normalizeHost(pattern string) string {
-	if pattern == "" || strings.IndexByte(pattern, slashDelim) >= 0 {
-		return pattern
-	}
-	return pattern + "/"
 }
