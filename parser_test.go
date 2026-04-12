@@ -1635,7 +1635,7 @@ func TestPatternErrorPosition(t *testing.T) {
 			wantReason: "regexp",
 			wantStart:  8,
 			wantEnd:    14,
-			wantMsg:    "compile error",
+			wantMsg:    "error parsing regexp",
 		},
 		{
 			name:       "regexp capture group not allowed",

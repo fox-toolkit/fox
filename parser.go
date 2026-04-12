@@ -392,7 +392,7 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 			Reason: "regexp",
 			Start:  0,
 			End:    len(rawRegex),
-			Hint:   "compile error: " + err.Error(),
+			Hint:   err.Error(),
 			err:    err,
 		}
 	}
