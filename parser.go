@@ -65,81 +65,18 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 	}, paramCount, nil
 }
 
-type hostnameValidator struct {
-	partLen    int  // Current label length in bytes.
-	totalLen   int  // Total hostname length in bytes.
-	last       byte // Last static char for dot/dash adjacency rules.
-	nonNumeric bool // True once we've seen a letter, hyphen, or parameter.
-}
-
-func (v *hostnameValidator) checkByte(c byte, pos int) *PatternError {
-	switch {
-	case 'a' <= c && c <= 'z' || c == '_':
-		v.nonNumeric = true
-		v.partLen++
-	case '0' <= c && c <= '9':
-		v.partLen++
-	case c == '-':
-		if v.last == '.' {
-			return newPatternError("syntax", pos, pos+1, "illegal character after '.'")
-		}
-		v.partLen++
-		v.nonNumeric = true
-	case c == '.':
-		if v.last == '.' {
-			return newPatternError("syntax", pos, pos+1, "illegal consecutive '.'")
-		}
-		if v.last == '-' {
-			return newPatternError("syntax", pos-1, pos, "label ends with '-'")
-		}
-		if v.partLen > 63 {
-			return newPatternError("constraint", pos-v.partLen, pos, "label exceeds 63 characters")
-		}
-		v.totalLen += v.partLen + 1 // +1 counts the current dot.
-		v.partLen = 0
-	case 'A' <= c && c <= 'Z':
-		return newPatternError("syntax", pos, pos+1, "uppercase character in label")
-	default:
-		return newPatternError("syntax", pos, pos+1, "illegal character in label")
-	}
-	v.last = c
-	return nil
-}
-
-func (v *hostnameValidator) skipParam() {
-	v.last = 0
-	v.nonNumeric = true
-}
-
-func (v *hostnameValidator) postCheck(hostnameLen int) *PatternError {
-	v.totalLen += v.partLen
-	if v.last == '-' {
-		return newPatternError("syntax", hostnameLen-1, hostnameLen, "illegal trailing '-'")
-	}
-	if v.last == '.' {
-		return newPatternError("syntax", hostnameLen-1, hostnameLen, "illegal trailing '.'")
-	}
-	if !v.nonNumeric {
-		return newPatternError("syntax", 0, hostnameLen, "all numeric")
-	}
-	if v.partLen > 63 {
-		return newPatternError("constraint", hostnameLen-v.partLen, hostnameLen, "label exceeds 63 characters")
-	}
-	if v.totalLen > 253 {
-		return newPatternError("constraint", 0, hostnameLen, "exceeds 253 characters")
-	}
-	return nil
-}
-
 func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) {
 	var sb strings.Builder
 	sb.Grow(len(hostname))
 	tokens := make([]token, 0, 5)
-	validator := hostnameValidator{last: dotDelim}
 	var (
 		paramCount      int
 		prevWild        bool
 		staticSinceWild int
+		partLen         int
+		totalLen        int
+		last            = dotDelim
+		nonNumeric      bool
 	)
 
 	i := 0
@@ -184,7 +121,8 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 			}
 			tokens = append(tokens, token{typ: kind, value: name, regexp: re})
 			i += n
-			validator.skipParam()
+			last = 0
+			nonNumeric = true
 			if i < len(hostname) && hostname[i] != '.' {
 				return nil, 0, newPatternError("syntax", i, i+1, "illegal character after parameter")
 			}
@@ -197,17 +135,57 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 			return nil, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
 
 		default:
-			if pe := validator.checkByte(c, i); pe != nil {
-				return nil, 0, pe
+			switch {
+			case 'a' <= c && c <= 'z' || c == '_':
+				nonNumeric = true
+				partLen++
+			case '0' <= c && c <= '9':
+				partLen++
+			case c == '-':
+				if last == '.' {
+					return nil, 0, newPatternError("syntax", i, i+1, "illegal character after '.'")
+				}
+				partLen++
+				nonNumeric = true
+			case c == '.':
+				if last == '.' {
+					return nil, 0, newPatternError("syntax", i, i+1, "illegal consecutive '.'")
+				}
+				if last == '-' {
+					return nil, 0, newPatternError("syntax", i-1, i, "label ends with '-'")
+				}
+				if partLen > 63 {
+					return nil, 0, newPatternError("constraint", i-partLen, i, "label exceeds 63 characters")
+				}
+				totalLen += partLen + 1 // +1 counts the current dot.
+				partLen = 0
+			case 'A' <= c && c <= 'Z':
+				return nil, 0, newPatternError("syntax", i, i+1, "uppercase character in label")
+			default:
+				return nil, 0, newPatternError("syntax", i, i+1, "illegal character in label")
 			}
+			last = c
 			sb.WriteByte(c)
 			staticSinceWild++
 			i++
 		}
 	}
 
-	if pe := validator.postCheck(len(hostname)); pe != nil {
-		return nil, 0, pe
+	totalLen += partLen
+	if last == '-' {
+		return nil, 0, newPatternError("syntax", len(hostname)-1, len(hostname), "illegal trailing '-'")
+	}
+	if last == '.' {
+		return nil, 0, newPatternError("syntax", len(hostname)-1, len(hostname), "illegal trailing '.'")
+	}
+	if !nonNumeric {
+		return nil, 0, newPatternError("syntax", 0, len(hostname), "all numeric")
+	}
+	if partLen > 63 {
+		return nil, 0, newPatternError("constraint", len(hostname)-partLen, len(hostname), "label exceeds 63 characters")
+	}
+	if totalLen > 253 {
+		return nil, 0, newPatternError("constraint", 0, len(hostname), "exceeds 253 characters")
 	}
 
 	if sb.Len() > 0 {
