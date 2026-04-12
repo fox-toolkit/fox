@@ -1180,6 +1180,69 @@ func TestParsePatternParamsConstraint(t *testing.T) {
 	})
 }
 
+func TestPatternErrorPositionDump(t *testing.T) {
+	cases := []struct {
+		name    string
+		pattern string
+		options []GlobalOption
+	}{
+		{"hostname missing trailing slash", "foo.com", nil},
+		{"hostname label starts with dash", "-a.com/", nil},
+		{"hostname label starts with dot", ".a.com/", nil},
+		{"hostname dash after dot", "a.-b.com/", nil},
+		{"hostname consecutive dots", "a..com/", nil},
+		{"hostname label ends with dash", "a-.com/", nil},
+		{"hostname label exceeds 63 chars at dot", "uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu.com/", nil},
+		{"hostname uppercase character", "A.com/", nil},
+		{"hostname illegal character in label", "a!.com/", nil},
+		{"hostname trailing dash", "a.com-/", nil},
+		{"hostname trailing dot", "a.com./", nil},
+		{"hostname all numeric", "123/", nil},
+		{"hostname trailing label exceeds 63 chars", "a.b.uj01dowf1x5lk6lysurbr0lgbdd1wfyw8sm8q17mnt0i9igk774vcwr5rly5dguu/", nil},
+		{"hostname exceeds 253 characters", "a.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjx.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr.78fayzyiqkt3hh2mquv9szfroeexx8qztscu3oudoyfarjl6jmdyxk2cefvzjxr/", nil},
+		{"hostname missing parameter after + delimiter", "+a.com/", nil},
+		{"hostname consecutive wildcard", "+{a}.+{b}.com/", nil},
+		{"hostname too many parameters", "{a}.{b}.com/", []GlobalOption{WithMaxRouteParams(1)}},
+		{"hostname illegal character after parameter", "{a}b.com/", nil},
+		{"hostname optional wildcard not allowed", "a.*{any}/", nil},
+		{"hostname bare star missing parameter", "a.b*/", nil},
+		{"path missing parameter after + delimiter", "/foo/+bar", nil},
+		{"path consecutive wildcard", "/+{a}/+{b}", nil},
+		{"path too many parameters", "/foo/{a}/{b}", []GlobalOption{WithMaxRouteParams(1)}},
+		{"path optional wildcard not as suffix", "/foo/*{any}/bar", nil},
+		{"path illegal character after parameter", "/foo/{a}b", nil},
+		{"path illegal control character", "/foo\x01bar", nil},
+		{"path consecutive slashes", "/foo//bar", nil},
+		{"path consecutive slashes with hostname", "example.com/foo//bar", nil},
+		{"path dot segment single dot mid", "/foo/./bar", nil},
+		{"path dot segment single dot end", "/foo/.", nil},
+		{"path dot segment double dot mid", "/foo/../bar", nil},
+		{"path dot segment double dot end", "/foo/..", nil},
+		{"path root single dot", "/.", nil},
+		{"path root double dot", "/..", nil},
+		{"unbalanced braces", "/foo/{bar", nil},
+		{"parameter key too large", "/foo/{abcd}", []GlobalOption{WithMaxRouteParamKeyBytes(3)}},
+		{"missing parameter name", "/foo/{}", nil},
+		{"illegal character in parameter name", "/foo/{*bar}", nil},
+		{"regexp not allowed in optional wildcard", "/foo/*{any:[A-z]+}", nil},
+		{"regexp feature not enabled", "/foo/{a:[A-z]+}", nil},
+		{"regexp missing expression", "/foo/{a:}", []GlobalOption{AllowRegexpParam(true)}},
+		{"regexp compile error", "/foo/{a:a{5,2}}", []GlobalOption{AllowRegexpParam(true)}},
+		{"regexp capture group not allowed", "/foo/{a:(foo|bar)}", []GlobalOption{AllowRegexpParam(true)}},
+	}
+
+	for _, tc := range cases {
+		f := MustRouter(tc.options...)
+		_, _, err := f.parsePattern(tc.pattern)
+		var pe *PatternError
+		if errors.As(err, &pe) {
+			fmt.Printf("%-50s start=%-3d end=%-3d\n%s\n\n", tc.name, pe.Start, pe.End, pe.Error())
+		} else {
+			fmt.Printf("%-50s %v\n\n", tc.name, err)
+		}
+	}
+}
+
 func TestPatternErrorPosition(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -1196,17 +1259,35 @@ func TestPatternErrorPosition(t *testing.T) {
 			pattern:    "foo.com",
 			wantType:   "hostname",
 			wantReason: "syntax",
-			wantStart:  0,
-			wantEnd:    0,
+			wantStart:  7,
+			wantEnd:    7,
 			wantMsg:    "missing trailing '/' after hostname",
 		},
 		{
-			name:       "hostname dash after dot",
+			name:       "hostname label starts with dash",
 			pattern:    "-a.com/",
 			wantType:   "hostname",
 			wantReason: "syntax",
 			wantStart:  0,
 			wantEnd:    1,
+			wantMsg:    "label starts with '-'",
+		},
+		{
+			name:       "hostname label starts with dot",
+			pattern:    ".a.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  0,
+			wantEnd:    1,
+			wantMsg:    "label starts with '.'",
+		},
+		{
+			name:       "hostname dash after dot",
+			pattern:    "a.-b.com/",
+			wantType:   "hostname",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    3,
 			wantMsg:    "illegal character after '.'",
 		},
 		{
@@ -1214,7 +1295,7 @@ func TestPatternErrorPosition(t *testing.T) {
 			pattern:    "a..com/",
 			wantType:   "hostname",
 			wantReason: "syntax",
-			wantStart:  2,
+			wantStart:  1,
 			wantEnd:    3,
 			wantMsg:    "illegal consecutive '.'",
 		},
@@ -1314,7 +1395,7 @@ func TestPatternErrorPosition(t *testing.T) {
 			wantType:   "hostname",
 			wantReason: "syntax",
 			wantStart:  5,
-			wantEnd:    6,
+			wantEnd:    9,
 			wantMsg:    "consecutive wildcard",
 		},
 		{
@@ -1342,7 +1423,7 @@ func TestPatternErrorPosition(t *testing.T) {
 			wantType:   "hostname",
 			wantReason: "syntax",
 			wantStart:  2,
-			wantEnd:    4,
+			wantEnd:    8,
 			wantMsg:    "optional wildcard allowed only as suffix",
 		},
 		{
@@ -1369,7 +1450,7 @@ func TestPatternErrorPosition(t *testing.T) {
 			wantType:   "path",
 			wantReason: "syntax",
 			wantStart:  6,
-			wantEnd:    7,
+			wantEnd:    10,
 			wantMsg:    "consecutive wildcard",
 		},
 		{
@@ -1523,7 +1604,7 @@ func TestPatternErrorPosition(t *testing.T) {
 			pattern:    "/foo/*{any:[A-z]+}",
 			wantType:   "path",
 			wantReason: "regexp",
-			wantStart:  6,
+			wantStart:  5,
 			wantEnd:    18,
 			wantMsg:    "not allowed in optional wildcard",
 		},

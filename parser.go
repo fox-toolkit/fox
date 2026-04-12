@@ -24,6 +24,8 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 			Type:    "hostname",
 			Reason:  "syntax",
 			Hint:    "missing trailing '/' after hostname",
+			Start:   len(raw),
+			End:     len(raw),
 		}
 	}
 
@@ -97,7 +99,11 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 					return nil, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
 				}
 				if prevWild && staticSinceWild <= 1 {
-					return nil, 0, newPatternError("syntax", i-1, i, "consecutive wildcard")
+					paramEnd := len(hostname)
+					if idx := braceIndex(hostname[i+1:], 1); idx >= 0 {
+						paramEnd = i + 1 + idx + 1
+					}
+					return nil, 0, newPatternError("syntax", i-1, paramEnd, "consecutive wildcard")
 				}
 			}
 			name, re, n, pe := fox.parseBrace(hostname[i:], dotDelim, false)
@@ -130,7 +136,11 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 		case '*':
 			i++
 			if i < len(hostname) && hostname[i] == '{' {
-				return nil, 0, newPatternError("syntax", i-1, i+1, "optional wildcard allowed only as suffix")
+				paramEnd := len(hostname)
+				if idx := braceIndex(hostname[i+1:], 1); idx >= 0 {
+					paramEnd = i + 1 + idx + 1
+				}
+				return nil, 0, newPatternError("syntax", i-1, paramEnd, "optional wildcard allowed only as suffix")
 			}
 			return nil, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
 
@@ -143,13 +153,19 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 				partLen++
 			case c == '-':
 				if last == '.' {
+					if i == 0 {
+						return nil, 0, newPatternError("syntax", i, i+1, "label starts with '-'")
+					}
 					return nil, 0, newPatternError("syntax", i, i+1, "illegal character after '.'")
 				}
 				partLen++
 				nonNumeric = true
 			case c == '.':
 				if last == '.' {
-					return nil, 0, newPatternError("syntax", i, i+1, "illegal consecutive '.'")
+					if i == 0 {
+						return nil, 0, newPatternError("syntax", i, i+1, "label starts with '.'")
+					}
+					return nil, 0, newPatternError("syntax", i-1, i+1, "illegal consecutive '.'")
 				}
 				if last == '-' {
 					return nil, 0, newPatternError("syntax", i-1, i, "label ends with '-'")
@@ -223,13 +239,20 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 					return nil, false, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
 				}
 				if prevWild && staticSinceWild <= 1 {
-					return nil, false, 0, newPatternError("syntax", i-1, i, "consecutive wildcard")
+					paramEnd := len(path)
+					if idx := braceIndex(path[i+1:], 1); idx >= 0 {
+						paramEnd = i + 1 + idx + 1
+					}
+					return nil, false, 0, newPatternError("syntax", i-1, paramEnd, "consecutive wildcard")
 				}
 			}
 			name, re, n, pe := fox.parseBrace(path[i:], slashDelim, isOpt)
 			if pe != nil {
 				pe.Start += i
 				pe.End += i
+				if isOpt && pe.Reason == "regexp" {
+					pe.Start = paramStart
+				}
 				return nil, false, 0, pe
 			}
 			paramCount++
