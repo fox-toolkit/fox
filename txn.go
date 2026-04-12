@@ -19,9 +19,10 @@ type Txn struct {
 
 // Add registers a new route for the given methods, pattern and matchers. On success, it returns the newly registered [Route].
 // If an error occurs, it returns one of the following:
+//   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteConflict]: If the route conflict with others.
 //   - [ErrRouteNameExist]: If the route name is already registered.
-//   - [ErrInvalidRoute]: If the provided method or pattern is invalid.
+//   - [ErrInvalidRoute]: If the method is invalid, the handler is nil or the pattern is empty.
 //   - [ErrInvalidConfig]: If the provided route options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
@@ -71,9 +72,10 @@ func (txn *Txn) AddRoute(route *Route) error {
 
 // Update override an existing route for the given methods, pattern and matchers. On success, it returns the newly registered [Route].
 // If an error occurs, it returns one of the following:
+//   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteNotFound]: If the route does not exist.
 //   - [ErrRouteNameExist]: If the route name is already registered.
-//   - [ErrInvalidRoute]: If the provided method or pattern is invalid.
+//   - [ErrInvalidRoute]: If the method is invalid, the handler is nil or the pattern is empty.
 //   - [ErrInvalidConfig]: If the provided route options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
@@ -128,8 +130,9 @@ func (txn *Txn) UpdateRoute(route *Route) error {
 
 // Delete deletes an existing route for the given methods, pattern and matchers. On success, it returns the deleted [Route].
 // If an error occurs, it returns one of the following:
+//   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteNotFound]: If the route does not exist.
-//   - [ErrInvalidRoute]: If the provided method or pattern is invalid.
+//   - [ErrInvalidRoute]: If the method is invalid or the pattern is empty.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
 //
@@ -148,15 +151,13 @@ func (txn *Txn) Delete(methods []string, pattern string, opts ...MatcherOption) 
 		}
 	}
 
-	parsed, err := txn.fox.parseRoute(pattern)
+	pat, _, err := txn.fox.parsePattern(pattern)
 	if err != nil {
 		return nil, err
 	}
 
 	rte := &Route{
-		pattern: pattern,
-		hostEnd: parsed.endHost,
-		tokens:  parsed.token,
+		pattern: pat,
 	}
 
 	for _, opt := range opts {
@@ -250,7 +251,7 @@ func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Ro
 		return nil
 	}
 	idx := slices.IndexFunc(matched.routes, func(r *Route) bool {
-		return r.pattern == pattern && slicesutil.EqualUnsorted(r.methods, methods) && r.matchersEqual(matchers)
+		return r.pattern.str == pattern && slicesutil.EqualUnsorted(r.methods, methods) && r.matchersEqual(matchers)
 	})
 	if idx < 0 {
 		return nil
@@ -317,7 +318,7 @@ func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Con
 	idx, n, tsr := txn.rootTxn.patterns.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {
 		c.route = n.routes[idx]
-		c.pattern = c.route.pattern
+		c.pattern = c.route.pattern.str
 		*c.paramsKeys = c.route.params
 		return c.route, c, tsr
 	}
