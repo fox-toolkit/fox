@@ -6,6 +6,7 @@ package fox
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -235,8 +236,11 @@ func (r *recorder) Push(target string, opts *http.PushOptions) error {
 // an error matching [http.ErrNotSupported]. See [http.Hijacker] for more details.
 func (r *recorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hijacker, ok := r.ResponseWriter.(http.Hijacker); ok {
-		r.hijacked = true
-		return hijacker.Hijack()
+		c, rw, err := hijacker.Hijack()
+		if !errors.Is(err, http.ErrNotSupported) && !errors.Is(err, http.ErrHijacked) {
+			r.hijacked = true
+		}
+		return c, rw, err
 	}
 	return nil, nil, ErrNotSupported()
 }
