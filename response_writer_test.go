@@ -142,6 +142,7 @@ func TestRecorder_Hijack(t *testing.T) {
 			assert: func(t *testing.T, w ResponseWriter) {
 				_, _, err := w.Hijack()
 				assert.NoError(t, err)
+				assert.True(t, w.(*recorder).hijacked)
 			},
 		},
 		{
@@ -152,6 +153,45 @@ func TestRecorder_Hijack(t *testing.T) {
 			assert: func(t *testing.T, w ResponseWriter) {
 				_, _, err := w.Hijack()
 				assert.ErrorIs(t, err, http.ErrNotSupported)
+				assert.False(t, w.(*recorder).hijacked)
+			},
+		},
+		{
+			name: "underlying hijacker returns http.ErrNotSupported does not mark hijacked",
+			rec: &recorder{
+				ResponseWriter: struct {
+					http.ResponseWriter
+					http.Hijacker
+				}{
+					ResponseWriter: httptest.NewRecorder(),
+					Hijacker: hijackWriterFunc(func() (net.Conn, *bufio.ReadWriter, error) {
+						return nil, nil, http.ErrNotSupported
+					}),
+				},
+			},
+			assert: func(t *testing.T, w ResponseWriter) {
+				_, _, err := w.Hijack()
+				assert.ErrorIs(t, err, http.ErrNotSupported)
+				assert.False(t, w.(*recorder).hijacked)
+			},
+		},
+		{
+			name: "underlying hijacker returns http.ErrHijacked does not mark hijacked",
+			rec: &recorder{
+				ResponseWriter: struct {
+					http.ResponseWriter
+					http.Hijacker
+				}{
+					ResponseWriter: httptest.NewRecorder(),
+					Hijacker: hijackWriterFunc(func() (net.Conn, *bufio.ReadWriter, error) {
+						return nil, nil, http.ErrHijacked
+					}),
+				},
+			},
+			assert: func(t *testing.T, w ResponseWriter) {
+				_, _, err := w.Hijack()
+				assert.ErrorIs(t, err, http.ErrHijacked)
+				assert.False(t, w.(*recorder).hijacked)
 			},
 		},
 	}
