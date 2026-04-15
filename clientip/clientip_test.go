@@ -320,7 +320,7 @@ func TestAddressesAndRangesToIPNets(t *testing.T) {
 	}
 }
 
-func TestMustParseIPAddr(t *testing.T) {
+func Test_mustParseIPAddr(t *testing.T) {
 	// We test the non-panic path elsewhere, but we need to specifically check the panic case
 	assert.Panics(t, func() {
 		mustParseIPAddr("nope")
@@ -728,7 +728,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 	}
 }
 
-func TestRemoteAddr(t *testing.T) {
+func TestNewRemoteAddr(t *testing.T) {
 	var _ fox.ClientIPResolver = RemoteAddr{}
 
 	type args struct {
@@ -895,7 +895,7 @@ func TestRemoteAddr(t *testing.T) {
 	}
 }
 
-func TestSingleIPHeader(t *testing.T) {
+func TestNewSingleIPHeader(t *testing.T) {
 	var _ fox.ClientIPResolver = SingleIPHeader{}
 
 	type args struct {
@@ -1113,7 +1113,7 @@ func TestSingleIPHeader(t *testing.T) {
 	}
 }
 
-func TestLeftmostNonPrivate(t *testing.T) {
+func TestNewLeftmostNonPrivate(t *testing.T) {
 	var _ fox.ClientIPResolver = LeftmostNonPrivate{}
 
 	type args struct {
@@ -1355,7 +1355,7 @@ func TestLeftmostNonPrivate(t *testing.T) {
 	}
 }
 
-func TestLeftmostNonPrivateLimit(t *testing.T) {
+func TestNewLeftmostNonPrivateLimit(t *testing.T) {
 	t.Run("limit exactly match the target ip", func(t *testing.T) {
 		s := must(NewLeftmostNonPrivate(XForwardedForKey, 3))
 		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
@@ -1377,7 +1377,7 @@ func TestLeftmostNonPrivateLimit(t *testing.T) {
 	})
 }
 
-func TestRightmostNonPrivate(t *testing.T) {
+func TestNewRightmostNonPrivate(t *testing.T) {
 	var _ fox.ClientIPResolver = RightmostNonPrivate{}
 
 	type args struct {
@@ -1620,7 +1620,7 @@ func TestRightmostNonPrivate(t *testing.T) {
 	}
 }
 
-func TestRightmostTrustedCount(t *testing.T) {
+func TestNewRightmostTrustedCount(t *testing.T) {
 	var _ fox.ClientIPResolver = RightmostTrustedCount{}
 
 	type args struct {
@@ -1766,7 +1766,7 @@ func TestRightmostTrustedCount(t *testing.T) {
 	}
 }
 
-func TestRightmostTrustedRange(t *testing.T) {
+func TestNewRightmostTrustedRange(t *testing.T) {
 	var _ fox.ClientIPResolver = RightmostTrustedRange{}
 
 	type args struct {
@@ -1971,7 +1971,7 @@ func TestRightmostTrustedRange(t *testing.T) {
 	}
 }
 
-func TestOrSlice(t *testing.T) {
+func Test_orSlice(t *testing.T) {
 	cases := []struct {
 		name string
 		s1   []string
