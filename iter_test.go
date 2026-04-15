@@ -373,3 +373,13 @@ func ExampleIter_NamePrefix() {
 		fmt.Println(slices.Collect(route.Methods()), route.Name())
 	}
 }
+
+func TestIter_Methods(t *testing.T) {
+	f, _ := NewRouter()
+	for _, rte := range githubAPI {
+		require.NoError(t, onlyError(f.Add([]string{rte.method}, rte.path, emptyHandler)))
+	}
+
+	methods := slices.Sorted(f.Iter().Methods())
+	assert.Equal(t, []string{"DELETE", "GET", "POST", "PUT"}, methods)
+}

@@ -3319,16 +3319,6 @@ func Test_iTree_deleteWildcard(t *testing.T) {
 	assert.True(t, f.Has(MethodGet, "/foo/+{args}"))
 }
 
-func TestIter_Methods(t *testing.T) {
-	f, _ := NewRouter()
-	for _, rte := range githubAPI {
-		require.NoError(t, onlyError(f.Add([]string{rte.method}, rte.path, emptyHandler)))
-	}
-
-	methods := slices.Sorted(f.Iter().Methods())
-	assert.Equal(t, []string{"DELETE", "GET", "POST", "PUT"}, methods)
-}
-
 func TestRouter_HandleNoRoute(t *testing.T) {
 	called := 0
 	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
