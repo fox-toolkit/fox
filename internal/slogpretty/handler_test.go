@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLogHandler_Handle(t *testing.T) {
+func TestHandler_Handle(t *testing.T) {
 	bufWo := bytes.NewBuffer(nil)
 	bufWe := bytes.NewBuffer(nil)
 
