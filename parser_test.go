@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParsePattern(t *testing.T) {
+func Test_parsePattern(t *testing.T) {
 	f := MustRouter(AllowRegexpParam(true))
 
 	staticToken := func(v string, hsplit bool) token {
@@ -1107,7 +1107,7 @@ func TestParsePattern(t *testing.T) {
 	}
 }
 
-func TestParsePatternParamsConstraint(t *testing.T) {
+func Test_parsePattern_ParamsConstraint(t *testing.T) {
 	t.Run("param limit", func(t *testing.T) {
 		f, _ := NewRouter(WithMaxRouteParams(3))
 		_, _, err := f.parsePattern("/{1}/{2}/{3}")
@@ -1180,7 +1180,7 @@ func TestParsePatternParamsConstraint(t *testing.T) {
 	})
 }
 
-func TestPatternErrorPosition(t *testing.T) {
+func TestPatternError_Position(t *testing.T) {
 	cases := []struct {
 		name       string
 		pattern    string
@@ -1603,7 +1603,7 @@ func TestPatternErrorPosition(t *testing.T) {
 	}
 }
 
-func TestPatternErrorUnwrap(t *testing.T) {
+func TestPatternError_Unwrap(t *testing.T) {
 	t.Run("regexp compile error wraps underlying error", func(t *testing.T) {
 		f := MustRouter(AllowRegexpParam(true))
 		_, _, err := f.parsePattern("/foo/{a:a{5,2}}")
