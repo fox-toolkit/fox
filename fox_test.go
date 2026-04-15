@@ -845,7 +845,7 @@ var wildcardHostnames = []route{
 	{"DELETE", "user.keys.{id}"},
 }
 
-func TestStaticRoute(t *testing.T) {
+func TestRouter_ServeHTTP_Static(t *testing.T) {
 	f := MustRouter()
 
 	for _, route := range staticRoutes {
@@ -863,7 +863,7 @@ func TestStaticRoute(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestStaticRouteSubRouter(t *testing.T) {
+func TestRouter_ServeHTTP_StaticSubRouter(t *testing.T) {
 	f := MustRouter()
 	sub := MustRouter()
 
@@ -886,7 +886,7 @@ func TestStaticRouteSubRouter(t *testing.T) {
 	assert.Equal(t, iterutil.Len(sub.Iter().All()), sub.Len())
 }
 
-func TestStaticRouteSubRouterWithAny(t *testing.T) {
+func TestRouter_ServeHTTP_StaticSubRouterWithAny(t *testing.T) {
 	f := MustRouter()
 	sub := MustRouter()
 
@@ -909,7 +909,7 @@ func TestStaticRouteSubRouterWithAny(t *testing.T) {
 	assert.Equal(t, iterutil.Len(sub.Iter().All()), sub.Len())
 }
 
-func TestStaticHostnameRoute(t *testing.T) {
+func TestRouter_ServeHTTP_StaticHostname(t *testing.T) {
 	f, _ := NewRouter()
 
 	for _, route := range staticHostnames {
@@ -943,7 +943,7 @@ func TestStaticHostnameRoute(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestStaticHostnameRouteSubRouter(t *testing.T) {
+func TestRouter_ServeHTTP_StaticHostnameSubRouter(t *testing.T) {
 	f := MustRouter()
 
 	for _, route := range staticHostnames {
@@ -979,7 +979,7 @@ func TestStaticHostnameRouteSubRouter(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestStaticRouteTxn(t *testing.T) {
+func TestRouter_ServeHTTP_StaticTxn(t *testing.T) {
 	f, _ := NewRouter()
 
 	require.NoError(t, f.Updates(func(txn *Txn) error {
@@ -1002,7 +1002,7 @@ func TestStaticRouteTxn(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestStaticRouteWithStaticDomain(t *testing.T) {
+func TestRouter_ServeHTTP_StaticWithStaticDomain(t *testing.T) {
 	f, _ := NewRouter()
 
 	for _, route := range staticRoutes {
@@ -1021,7 +1021,7 @@ func TestStaticRouteWithStaticDomain(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestStaticRouteWithStaticDomainTxn(t *testing.T) {
+func TestRouter_ServeHTTP_StaticWithStaticDomainTxn(t *testing.T) {
 	f, _ := NewRouter()
 
 	require.NoError(t, f.Updates(func(txn *Txn) error {
@@ -1045,7 +1045,7 @@ func TestStaticRouteWithStaticDomainTxn(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestStaticRouteMalloc(t *testing.T) {
+func TestRouter_ServeHTTP_StaticMalloc(t *testing.T) {
 	r, _ := NewRouter()
 
 	for _, route := range staticRoutes {
@@ -1060,7 +1060,7 @@ func TestStaticRouteMalloc(t *testing.T) {
 	}
 }
 
-func TestStaticRouteWithStaticDomainMalloc(t *testing.T) {
+func TestRouter_ServeHTTP_StaticWithStaticDomainMalloc(t *testing.T) {
 	r, _ := NewRouter()
 
 	for _, route := range staticRoutes {
@@ -1076,7 +1076,7 @@ func TestStaticRouteWithStaticDomainMalloc(t *testing.T) {
 	}
 }
 
-func TestParamsRoute(t *testing.T) {
+func TestRouter_ServeHTTP_Params(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
@@ -1122,7 +1122,7 @@ func TestParamsRoute(t *testing.T) {
 	}
 }
 
-func TestParamsHostnameRoute(t *testing.T) {
+func TestRouter_ServeHTTP_ParamsHostname(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
@@ -1204,7 +1204,7 @@ func TestParamsHostnameRoute(t *testing.T) {
 	})
 }
 
-func TestParamsRouteTxn(t *testing.T) {
+func TestRouter_ServeHTTP_ParamsTxn(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
@@ -1241,7 +1241,7 @@ func TestParamsRouteTxn(t *testing.T) {
 	}
 }
 
-func TestParamsRouteWithDomain(t *testing.T) {
+func TestRouter_ServeHTTP_ParamsWithDomain(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
@@ -1274,7 +1274,7 @@ func TestParamsRouteWithDomain(t *testing.T) {
 	}
 }
 
-func TestParamsRouteWithDomainTxn(t *testing.T) {
+func TestRouter_ServeHTTP_ParamsWithDomainTxn(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
@@ -1313,7 +1313,7 @@ func TestParamsRouteWithDomainTxn(t *testing.T) {
 	}
 }
 
-func TestParamsRouteMalloc(t *testing.T) {
+func TestRouter_ServeHTTP_ParamsMalloc(t *testing.T) {
 	r, _ := NewRouter()
 	for _, route := range githubAPI {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, route.path, emptyHandler)))
@@ -1333,7 +1333,7 @@ func TestParamsRouteMalloc(t *testing.T) {
 	}
 }
 
-func TestHandleRoute(t *testing.T) {
+func TestRouter_ServeHTTP_Handle(t *testing.T) {
 	f, _ := NewRouter()
 
 	t.Run("handle and update route with some option", func(t *testing.T) {
@@ -1364,7 +1364,7 @@ func TestHandleRoute(t *testing.T) {
 	})
 }
 
-func TestHandleSubRouter(t *testing.T) {
+func TestRouter_ServeHTTP_HandleSubRouter(t *testing.T) {
 	f := MustRouter()
 
 	t.Run("route with slash", func(t *testing.T) {
@@ -1481,7 +1481,7 @@ func TestHandleSubRouter(t *testing.T) {
 	})
 }
 
-func TestParamsRouteWithDomainMalloc(t *testing.T) {
+func TestRouter_ServeHTTP_ParamsWithDomainMalloc(t *testing.T) {
 	r, _ := NewRouter()
 	for _, route := range githubAPI {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, "foo.{bar}.com"+route.path, emptyHandler)))
@@ -1930,7 +1930,7 @@ func TestInsertUpdateAndDeleteWithHostnameTxn(t *testing.T) {
 	}
 }
 
-func TestInsertConflict(t *testing.T) {
+func TestRouter_Add_Conflict(t *testing.T) {
 	cases := []struct {
 		name      string
 		routes    []string
@@ -2056,7 +2056,7 @@ func TestInsertConflict(t *testing.T) {
 	}
 }
 
-func TestUpdateConflict(t *testing.T) {
+func TestRouter_Update_Conflict(t *testing.T) {
 	cases := []struct {
 		name      string
 		routes    []string
@@ -2117,7 +2117,7 @@ func TestUpdateConflict(t *testing.T) {
 	}
 }
 
-func TestInvalidRoute(t *testing.T) {
+func TestRouter_Add_InvalidPattern(t *testing.T) {
 	f := MustRouter()
 	var pe *PatternError
 
@@ -2133,7 +2133,7 @@ func TestInvalidRoute(t *testing.T) {
 	assert.ErrorAs(t, onlyError(f.Update(MethodGet, "/foo\x00", emptyHandler)), &pe)
 }
 
-func TestUpdateRoute(t *testing.T) {
+func TestRouter_Update(t *testing.T) {
 	cases := []struct {
 		name   string
 		routes []string
@@ -2197,7 +2197,7 @@ func TestUpdateRoute(t *testing.T) {
 	}
 }
 
-func TestRouteMatchersConstraint(t *testing.T) {
+func TestRouter_Add_MatchersConstraint(t *testing.T) {
 	t.Run("insert: enforce max route matchers", func(t *testing.T) {
 		f, _ := NewRouter(WithMaxRouteMatchers(3))
 		assert.NoError(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler,
@@ -2246,7 +2246,7 @@ func TestRouteMatchersConstraint(t *testing.T) {
 	})
 }
 
-func TestRouterWithIgnoreTrailingSlash(t *testing.T) {
+func TestRouter_ServeHTTP_IgnoreTrailingSlash(t *testing.T) {
 	cases := []struct {
 		name     string
 		paths    []string
@@ -2422,7 +2422,7 @@ func TestRouterWithIgnoreTrailingSlash(t *testing.T) {
 	}
 }
 
-func TestRedirectTrailingSlash(t *testing.T) {
+func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 
 	cases := []struct {
 		name         string
@@ -2618,7 +2618,7 @@ func TestRedirectTrailingSlash(t *testing.T) {
 	}
 }
 
-func TestHandleRedirectFixedPath(t *testing.T) {
+func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 	cases := []struct {
 		name         string
 		path         string
@@ -2775,7 +2775,7 @@ func TestHandleRedirectFixedPath(t *testing.T) {
 	}
 }
 
-func TestHandleRelaxedFixedPath(t *testing.T) {
+func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
 	cases := []struct {
 		name      string
 		path      string
@@ -2895,7 +2895,7 @@ func TestHandleRelaxedFixedPath(t *testing.T) {
 	}
 }
 
-func TestEncodedRedirectTrailingSlash(t *testing.T) {
+func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 	cases := []struct {
 		name         string
 		path         string
@@ -2948,7 +2948,7 @@ func TestEncodedRedirectTrailingSlash(t *testing.T) {
 	}
 }
 
-func TestRouterWithTsrParams(t *testing.T) {
+func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 	cases := []struct {
 		name       string
 		routes     []string
@@ -3160,7 +3160,7 @@ func TestRouterWithTsrParams(t *testing.T) {
 	}
 }
 
-func TestTree_Delete(t *testing.T) {
+func Test_iTree_delete(t *testing.T) {
 	f, _ := NewRouter()
 	routes := make([]route, len(githubAPI))
 	copy(routes, githubAPI)
@@ -3187,7 +3187,7 @@ func TestTree_Delete(t *testing.T) {
 	assert.Equal(t, 0, len(tree.patterns.wildcards))
 }
 
-func TestTree_DeleteTxn(t *testing.T) {
+func Test_iTree_deleteTxn(t *testing.T) {
 	f, _ := NewRouter()
 	routes := make([]route, len(githubAPI))
 	copy(routes, githubAPI)
@@ -3219,7 +3219,7 @@ func TestTree_DeleteTxn(t *testing.T) {
 	assert.Equal(t, 0, len(tree.patterns.wildcards))
 }
 
-func TestTree_DeleteRoot(t *testing.T) {
+func Test_iTree_deleteRoot(t *testing.T) {
 	f, _ := NewRouter()
 	require.NoError(t, onlyError(f.Add(MethodOptions, "/foo/bar", emptyHandler)))
 	deletedRoute, err := f.Delete(MethodOptions, "/foo/bar")
@@ -3306,7 +3306,7 @@ func TestRouter_UpdatesPanic(t *testing.T) {
 	assert.Empty(t, tree.methods)
 }
 
-func TestTree_DeleteWildcard(t *testing.T) {
+func Test_iTree_deleteWildcard(t *testing.T) {
 	f, _ := NewRouter()
 	f.MustAdd(MethodGet, "/foo/+{args}", emptyHandler)
 	deletedRoute, err := f.Delete(MethodGet, "/foo")
@@ -3329,7 +3329,7 @@ func TestIter_Methods(t *testing.T) {
 	assert.Equal(t, []string{"DELETE", "GET", "POST", "PUT"}, methods)
 }
 
-func TestRouterHandleNoRoute(t *testing.T) {
+func TestRouter_HandleNoRoute(t *testing.T) {
 	called := 0
 	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) {
@@ -3352,7 +3352,7 @@ func TestRouterHandleNoRoute(t *testing.T) {
 
 }
 
-func TestUpdateWithMiddleware(t *testing.T) {
+func TestRouter_Update_Middleware(t *testing.T) {
 	called := false
 	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) {
@@ -3396,7 +3396,7 @@ func TestUpdateWithMiddleware(t *testing.T) {
 	assert.False(t, called)
 }
 
-func TestRouteMiddleware(t *testing.T) {
+func TestRoute_Middleware(t *testing.T) {
 	var c0, c1, c2 bool
 	m0 := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) {
@@ -3577,7 +3577,7 @@ func TestRouter_Reverse(t *testing.T) {
 	})
 }
 
-func TestTree_Has(t *testing.T) {
+func TestRouter_Has(t *testing.T) {
 	routes := []string{
 		"/foo/bar",
 		"/welcome/{name}",
@@ -3849,7 +3849,7 @@ func TestRouter_HasWithMatchers(t *testing.T) {
 	}
 }
 
-func TestFoxReverse(t *testing.T) {
+func TestRouter_Match_Reverse(t *testing.T) {
 	routes := []string{
 		"/foo/bar",
 		"/welcome/{name}",
@@ -3981,7 +3981,7 @@ func TestRouter_ReverseWithIgnoreTrailingSlashEnable(t *testing.T) {
 	}
 }
 
-func TestEncodedPath(t *testing.T) {
+func TestRouter_ServeHTTP_EncodedPath(t *testing.T) {
 	encodedPath := "run/cmd/S123L%2FA"
 	req := httptest.NewRequest(http.MethodGet, "/"+encodedPath, nil)
 	w := httptest.NewRecorder()
@@ -3995,7 +3995,7 @@ func TestEncodedPath(t *testing.T) {
 	assert.Equal(t, encodedPath, w.Body.String())
 }
 
-func TestFuzzInsertNoPanics(t *testing.T) {
+func TestRouter_Add_FuzzNoPanics(t *testing.T) {
 	unicodeRanges := fuzz.UnicodeRanges{
 		{First: 0x20, Last: 0x6FF},
 	}
@@ -4019,7 +4019,7 @@ func TestFuzzInsertNoPanics(t *testing.T) {
 
 }
 
-func TestFuzzInsertLookupUpdateAndDelete(t *testing.T) {
+func TestRouter_Fuzz(t *testing.T) {
 	// no '*' and '{}' and invalid escape char
 	unicodeRanges := fuzz.UnicodeRanges{
 		{First: 0x20, Last: 0x29},
@@ -4079,7 +4079,7 @@ func TestFuzzInsertLookupUpdateAndDelete(t *testing.T) {
 	assert.Equal(t, 0, countNames)
 }
 
-func TestRaceHostnamePathSwitch(t *testing.T) {
+func TestRouter_Race_HostnamePathSwitch(t *testing.T) {
 	var wg sync.WaitGroup
 	start, wait := atomicSync()
 
@@ -4218,7 +4218,7 @@ func TestRaceHostnamePathSwitch(t *testing.T) {
 
 }
 
-func TestDataRace(t *testing.T) {
+func TestRouter_Race_Data(t *testing.T) {
 	var wg sync.WaitGroup
 	start, wait := atomicSync()
 
@@ -4294,7 +4294,7 @@ func TestDataRace(t *testing.T) {
 	wg.Wait()
 }
 
-func TestConcurrentRequestHandling(t *testing.T) {
+func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 	r, _ := NewRouter()
 
 	// /repos/{owner}/{repo}/keys
