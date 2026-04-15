@@ -364,7 +364,7 @@ func TestRecorder_EnableFullDuplex(t *testing.T) {
 	}
 }
 
-func TestRecorderSuperfluousWriteHeader(t *testing.T) {
+func TestRecorder_WriteHeader_Superfluous(t *testing.T) {
 	rec := new(recorder)
 	w := httptest.NewRecorder()
 	rec.reset(w)
@@ -398,7 +398,7 @@ func TestRecorderSuperfluousWriteHeader(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestRecorderWriteAfterHijack(t *testing.T) {
+func TestRecorder_Write_AfterHijack(t *testing.T) {
 	f, _ := NewRouter()
 	f.MustAdd(MethodGet, "/foo", func(c *Context) {
 		conn, _, err := c.Writer().Hijack()
@@ -424,7 +424,7 @@ func TestRecorderWriteAfterHijack(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestInformationalHeader(t *testing.T) {
+func TestRecorder_WriteHeader_Informational(t *testing.T) {
 	f, _ := NewRouter()
 	f.MustAdd(MethodGet, "/foo", func(c *Context) {
 		c.SetHeader("Link", "</style.css>; rel=preload; as=style")

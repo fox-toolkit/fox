@@ -259,7 +259,7 @@ func TestTxn_WriteOrReadAfterFinalized(t *testing.T) {
 	})
 }
 
-func TestInsertConflictWithName(t *testing.T) {
+func TestTxn_Add_ConflictWithName(t *testing.T) {
 	f, _ := NewRouter(AllowRegexpParam(true))
 	f.MustAdd(MethodGet, "/users", emptyHandler,
 		WithQueryMatcher("version", "v1"),
@@ -354,7 +354,7 @@ func TestInsertConflictWithName(t *testing.T) {
 	})
 }
 
-func TestUpdateConflictWithName(t *testing.T) {
+func TestTxn_Update_ConflictWithName(t *testing.T) {
 	f, _ := NewRouter()
 	f.MustAdd(MethodGet, "/users", emptyHandler)
 	f.MustAdd(MethodGet, "/users", emptyHandler,
@@ -409,7 +409,7 @@ func TestUpdateConflictWithName(t *testing.T) {
 	})
 }
 
-func TestUpdateWithName(t *testing.T) {
+func TestTxn_Update_WithName(t *testing.T) {
 	f, _ := NewRouter()
 	f.MustAdd(MethodGet, "/users", emptyHandler)
 	f.MustAdd(MethodGet, "/users", emptyHandler,
