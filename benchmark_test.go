@@ -256,7 +256,7 @@ func BenchmarkCatchAllParallel(b *testing.B) {
 	})
 }
 
-func BenchmarkCloneWith(b *testing.B) {
+func BenchmarkContext_CloneWith(b *testing.B) {
 	f, _ := NewRouter()
 	f.MustAdd(MethodGet, "/hello/{name}", func(c *Context) {
 		cp := c.CloneWith(c.Writer(), c.Request())
