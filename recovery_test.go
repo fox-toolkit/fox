@@ -43,7 +43,7 @@ func TestAbortHandler(t *testing.T) {
 	f.ServeHTTP(w, req)
 }
 
-func TestRecoveryMiddleware(t *testing.T) {
+func TestRecoveryWithFunc(t *testing.T) {
 	woBuf := bytes.NewBuffer(nil)
 	weBuf := bytes.NewBuffer(nil)
 
@@ -75,7 +75,7 @@ func TestRecoveryMiddleware(t *testing.T) {
 	assert.NotEqual(t, weBuf.Len(), 0)
 }
 
-func TestRecoveryMiddlewareOtherScope(t *testing.T) {
+func TestRecoveryWithFunc_OtherScope(t *testing.T) {
 	woBuf := bytes.NewBuffer(nil)
 	weBuf := bytes.NewBuffer(nil)
 
@@ -171,7 +171,7 @@ func TestRecoveryMiddlewareOtherScope(t *testing.T) {
 	})
 }
 
-func TestRecoveryMiddlewareWithBrokenPipe(t *testing.T) {
+func TestRecoveryWithFunc_BrokenPipe(t *testing.T) {
 	woBuf := bytes.NewBuffer(nil)
 	weBuf := bytes.NewBuffer(nil)
 
@@ -208,7 +208,7 @@ func TestRecoveryMiddlewareWithBrokenPipe(t *testing.T) {
 	}
 }
 
-func BenchmarkRecoveryMiddleware(b *testing.B) {
+func BenchmarkRecoveryWithFunc(b *testing.B) {
 
 	f, _ := NewRouter(WithMiddleware(RecoveryWithFunc(slog.DiscardHandler, DefaultHandleRecovery)))
 	f.MustAdd(MethodGet, "/{1}/{2}/{3}", func(c *Context) {
