@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDefaultOptions(t *testing.T) {
+func TestNewRouter_Defaults(t *testing.T) {
 	f, _ := NewRouter(DefaultOptions())
 	assert.True(t, f.handleOPTIONS)
 	assert.True(t, f.handleMethodNotAllowed)
@@ -23,7 +23,7 @@ func TestDefaultOptions(t *testing.T) {
 	assert.Equal(t, f.handleSlash, RedirectSlash)
 }
 
-func TestRouterWithClientIP(t *testing.T) {
+func TestWithClientIPResolver(t *testing.T) {
 	c1 := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
 		return c.RemoteIP(), nil
 	})
@@ -74,7 +74,7 @@ func TestWithNotFoundHandler(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidConfig)
 }
 
-func TestRouterWithMethodNotAllowedHandler(t *testing.T) {
+func TestWithMethodNotAllowedHandler(t *testing.T) {
 	f, err := NewRouter(WithNoMethodHandler(func(c *Context) {
 		c.SetHeader("FOO", "BAR")
 		c.Writer().WriteHeader(http.StatusMethodNotAllowed)
@@ -93,7 +93,7 @@ func TestRouterWithMethodNotAllowedHandler(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidConfig)
 }
 
-func TestRouterWithOptionsHandler(t *testing.T) {
+func TestWithOptionsHandler(t *testing.T) {
 	f, err := NewRouter(WithOptionsHandler(func(c *Context) {
 		assert.Equal(t, "", c.Pattern())
 		assert.Empty(t, slices.Collect(c.Params()))
@@ -125,7 +125,7 @@ func TestRouterWithOptionsHandler(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidConfig)
 }
 
-func TestRouterWithAllowedMethodAndIgnoreTsEnable(t *testing.T) {
+func TestRouter_ServeHTTP_AllowedMethodWithIgnoreTsEnable(t *testing.T) {
 	f, _ := NewRouter(WithNoMethod(true), WithHandleTrailingSlash(RelaxedSlash))
 
 	// Support for ignore Trailing slash
@@ -177,7 +177,7 @@ func TestRouterWithAllowedMethodAndIgnoreTsEnable(t *testing.T) {
 	}
 }
 
-func TestRouterWithAutomaticOptionsAndIgnoreTsOptionEnable(t *testing.T) {
+func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsEnable(t *testing.T) {
 	cases := []struct {
 		name     string
 		target   string
@@ -290,7 +290,7 @@ func TestRouterWithAutomaticOptionsAndIgnoreTsOptionEnable(t *testing.T) {
 	}
 }
 
-func TestDeveloppementOptions(t *testing.T) {
+func TestDevelopmentOptions(t *testing.T) {
 	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) {
 			next(c)
@@ -323,7 +323,7 @@ func TestWithScopedMiddleware(t *testing.T) {
 	assert.True(t, called)
 }
 
-func TestInvalidMiddleware(t *testing.T) {
+func TestWithMiddleware_Invalid(t *testing.T) {
 	_, err := NewRouter(WithMiddleware(Logger(slog.DiscardHandler), nil))
 	assert.ErrorIs(t, err, ErrInvalidConfig)
 	_, err = NewRouter(WithMiddlewareFor(NoRouteHandler, nil, Logger(slog.DiscardHandler)))
@@ -333,14 +333,14 @@ func TestInvalidMiddleware(t *testing.T) {
 	require.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMiddleware(nil))), ErrInvalidConfig)
 }
 
-func TestMiddlewareLength(t *testing.T) {
+func TestWithMiddleware_MaxLength(t *testing.T) {
 	f, _ := NewRouter(WithPrettyLogs())
 	r := f.MustAdd(MethodGet, "/", emptyHandler, WithMiddleware(Recovery(slog.DiscardHandler), Logger(slog.DiscardHandler)))
 	assert.Len(t, f.mws, 2)
 	assert.Len(t, r.mws, 2)
 }
 
-func TestRouterWithAllowedMethod(t *testing.T) {
+func TestRouter_ServeHTTP_AllowedMethod(t *testing.T) {
 	f := MustRouter(WithNoMethod(true))
 
 	type route struct {
@@ -460,7 +460,7 @@ func TestRouterWithAllowedMethod(t *testing.T) {
 	}
 }
 
-func TestRouterWithAllowedMethodAndAutoOptions(t *testing.T) {
+func TestRouter_ServeHTTP_AllowedMethodWithAutoOptions(t *testing.T) {
 	f, _ := NewRouter(WithNoMethod(true), WithAutoOptions(true))
 
 	// Support for ignore Trailing slash
@@ -512,7 +512,7 @@ func TestRouterWithAllowedMethodAndAutoOptions(t *testing.T) {
 	}
 }
 
-func TestRouterWithAllowedMethodAndIgnoreTsDisable(t *testing.T) {
+func TestRouter_ServeHTTP_AllowedMethodWithIgnoreTsDisable(t *testing.T) {
 	f, _ := NewRouter(WithNoMethod(true))
 
 	// Support for ignore Trailing slash
@@ -553,7 +553,7 @@ func TestRouterWithAllowedMethodAndIgnoreTsDisable(t *testing.T) {
 	}
 }
 
-func TestRouterWithAutomaticOptions(t *testing.T) {
+func TestRouter_ServeHTTP_AutomaticOptions(t *testing.T) {
 
 	cases := []struct {
 		name     string
@@ -643,7 +643,7 @@ func TestRouterWithAutomaticOptions(t *testing.T) {
 	}
 }
 
-func TestRouterWithAutomaticCORSPreflightOptions(t *testing.T) {
+func TestRouter_ServeHTTP_AutomaticCORSPreflightOptions(t *testing.T) {
 
 	cases := []struct {
 		name     string
@@ -714,7 +714,7 @@ func TestRouterWithAutomaticCORSPreflightOptions(t *testing.T) {
 	}
 }
 
-func TestRouterWithAutomaticOptionsAndIgnoreTsOptionDisable(t *testing.T) {
+func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsDisable(t *testing.T) {
 	cases := []struct {
 		name     string
 		target   string
@@ -757,7 +757,7 @@ func TestRouterWithAutomaticOptionsAndIgnoreTsOptionDisable(t *testing.T) {
 	}
 }
 
-func TestInvalidAnnotation(t *testing.T) {
+func TestWithAnnotation_Invalid(t *testing.T) {
 	var nonComparableKey = []int{1, 2, 3}
 	f, err := NewRouter()
 	require.NoError(t, err)
