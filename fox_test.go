@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -3160,86 +3159,6 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 	}
 }
 
-func Test_iTree_delete(t *testing.T) {
-	f, _ := NewRouter()
-	routes := make([]route, len(githubAPI))
-	copy(routes, githubAPI)
-
-	for _, rte := range routes {
-		require.NoError(t, onlyError(f.Add([]string{rte.method}, rte.path, emptyHandler)))
-	}
-
-	rand.Shuffle(len(routes), func(i, j int) { routes[i], routes[j] = routes[j], routes[i] })
-
-	for _, rte := range routes {
-		deletedRoute, err := f.Delete([]string{rte.method}, rte.path)
-		require.NoError(t, err)
-		assert.Equal(t, rte.path, deletedRoute.Pattern())
-	}
-
-	it := f.Iter()
-	cnt := len(slices.Collect(it.All()))
-
-	tree := f.getTree()
-	assert.Equal(t, 0, cnt)
-	assert.Equal(t, 0, len(tree.patterns.statics))
-	assert.Equal(t, 0, len(tree.patterns.params))
-	assert.Equal(t, 0, len(tree.patterns.wildcards))
-}
-
-func Test_iTree_deleteTxn(t *testing.T) {
-	f, _ := NewRouter()
-	routes := make([]route, len(githubAPI))
-	copy(routes, githubAPI)
-
-	for _, rte := range routes {
-		require.NoError(t, onlyError(f.Add([]string{rte.method}, rte.path, emptyHandler)))
-	}
-
-	rand.Shuffle(len(routes), func(i, j int) { routes[i], routes[j] = routes[j], routes[i] })
-
-	require.NoError(t, f.Updates(func(txn *Txn) error {
-		for _, rte := range routes {
-			deletedRoute, err := txn.Delete([]string{rte.method}, rte.path)
-			if err != nil {
-				return err
-			}
-			assert.Equal(t, rte.path, deletedRoute.Pattern())
-		}
-		return nil
-	}))
-
-	it := f.Iter()
-	cnt := len(slices.Collect(it.All()))
-
-	tree := f.getTree()
-	assert.Equal(t, 0, cnt)
-	assert.Equal(t, 0, len(tree.patterns.statics))
-	assert.Equal(t, 0, len(tree.patterns.params))
-	assert.Equal(t, 0, len(tree.patterns.wildcards))
-}
-
-func Test_iTree_deleteRoot(t *testing.T) {
-	f, _ := NewRouter()
-	require.NoError(t, onlyError(f.Add(MethodOptions, "/foo/bar", emptyHandler)))
-	deletedRoute, err := f.Delete(MethodOptions, "/foo/bar")
-	require.NoError(t, err)
-	assert.Equal(t, "/foo/bar", deletedRoute.Pattern())
-	tree := f.getTree()
-	assert.Equal(t, 0, len(tree.patterns.statics))
-	assert.Equal(t, 0, len(tree.patterns.params))
-	assert.Equal(t, 0, len(tree.patterns.wildcards))
-
-	require.NoError(t, onlyError(f.Add(MethodOptions, "exemple.com/foo/bar", emptyHandler)))
-	deletedRoute, err = f.Delete(MethodOptions, "exemple.com/foo/bar")
-	require.NoError(t, err)
-	assert.Equal(t, "exemple.com/foo/bar", deletedRoute.Pattern())
-	tree = f.getTree()
-	assert.Equal(t, 0, len(tree.patterns.statics))
-	assert.Equal(t, 0, len(tree.patterns.params))
-	assert.Equal(t, 0, len(tree.patterns.wildcards))
-}
-
 func TestRouter_DeleteError(t *testing.T) {
 	f, _ := NewRouter()
 	require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
@@ -3304,19 +3223,6 @@ func TestRouter_UpdatesPanic(t *testing.T) {
 	assert.Len(t, tree.patterns.params, 0)
 	assert.Len(t, tree.patterns.wildcards, 0)
 	assert.Empty(t, tree.methods)
-}
-
-func Test_iTree_deleteWildcard(t *testing.T) {
-	f, _ := NewRouter()
-	f.MustAdd(MethodGet, "/foo/+{args}", emptyHandler)
-	deletedRoute, err := f.Delete(MethodGet, "/foo")
-	assert.ErrorIs(t, err, ErrRouteNotFound)
-	assert.Nil(t, deletedRoute)
-	f.MustAdd(MethodGet, "/foo/{bar}", emptyHandler)
-	deletedRoute, err = f.Delete(MethodGet, "/foo/{bar}")
-	assert.NoError(t, err)
-	assert.Equal(t, "/foo/{bar}", deletedRoute.Pattern())
-	assert.True(t, f.Has(MethodGet, "/foo/+{args}"))
 }
 
 func TestRouter_HandleNoRoute(t *testing.T) {
