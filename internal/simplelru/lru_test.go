@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestLRU(t *testing.T) {
+func TestLRU_Basics(t *testing.T) {
 	evictCounter := 0
 	onEvicted := func(k int, v int) {
 		if k != v {
@@ -223,7 +223,7 @@ func (c *LRU[K, V]) wantKeys(t *testing.T, want []K) {
 	}
 }
 
-func TestCache_EvictionSameKey(t *testing.T) {
+func TestLRU_EvictionSameKey(t *testing.T) {
 	var evictedKeys []int
 
 	cache, _ := NewLRU(
