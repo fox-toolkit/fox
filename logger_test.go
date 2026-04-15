@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoggerWithHandler(t *testing.T) {
+func TestLogger(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	f, _ := NewRouter(
 		WithHandleTrailingSlash(RedirectSlash),
