@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDomainLookup(t *testing.T) {
+func Test_iTree_lookup_Domain(t *testing.T) {
 	cases := []struct {
 		name       string
 		routes     []string
@@ -1237,7 +1237,7 @@ func TestDomainLookup(t *testing.T) {
 	}
 }
 
-func TestMatchersLookup(t *testing.T) {
+func Test_iTree_lookup_Matchers(t *testing.T) {
 
 	type route struct {
 		pattern  string
@@ -1509,7 +1509,7 @@ func TestMatchersLookup(t *testing.T) {
 
 }
 
-func TestMatchersLookupWithPriority(t *testing.T) {
+func Test_iTree_lookup_MatchersPriority(t *testing.T) {
 	type route struct {
 		pattern  string
 		matchers []Matcher

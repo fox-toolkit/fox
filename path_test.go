@@ -68,7 +68,7 @@ var cleanTests = []cleanPathTest{
 	{"abc/../../././../def", "/def"},
 }
 
-func TestPathClean(t *testing.T) {
+func TestCleanPath(t *testing.T) {
 	for _, test := range cleanTests {
 		if s := CleanPath(test.path); s != test.result {
 			t.Errorf("CleanPath(%q) = %q, want %q", test.path, s, test.result)
@@ -79,7 +79,7 @@ func TestPathClean(t *testing.T) {
 	}
 }
 
-func TestPathCleanMallocs(t *testing.T) {
+func TestCleanPath_Mallocs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping malloc count in short mode")
 	}
@@ -93,7 +93,7 @@ func TestPathCleanMallocs(t *testing.T) {
 	}
 }
 
-func BenchmarkPathClean(b *testing.B) {
+func BenchmarkCleanPath(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
@@ -125,7 +125,7 @@ func genLongPaths() (testPaths []cleanPathTest) {
 	return testPaths
 }
 
-func TestPathCleanLong(t *testing.T) {
+func TestCleanPath_Long(t *testing.T) {
 	cleanTests := genLongPaths()
 
 	for _, test := range cleanTests {
@@ -138,13 +138,13 @@ func TestPathCleanLong(t *testing.T) {
 	}
 }
 
-func TestFixTrailingSlash(t *testing.T) {
+func Test_fixTrailingSlash(t *testing.T) {
 	assert.Equal(t, "/foo/", fixTrailingSlash("/foo"))
 	assert.Equal(t, "/foo", fixTrailingSlash("/foo/"))
 	assert.Equal(t, "/", fixTrailingSlash(""))
 }
 
-func BenchmarkPathCleanLong(b *testing.B) {
+func BenchmarkCleanPath_Long(b *testing.B) {
 	cleanTests := genLongPaths()
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -156,7 +156,7 @@ func BenchmarkPathCleanLong(b *testing.B) {
 	}
 }
 
-func TestEscapeLeadingSlashes(t *testing.T) {
+func Test_escapeLeadingSlashes(t *testing.T) {
 	cases := []struct {
 		name string
 		uri  string
