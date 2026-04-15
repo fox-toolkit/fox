@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseBraceSegment(t *testing.T) {
+func Test_parseBraceSegment(t *testing.T) {
 	cases := []struct {
 		name    string
 		pattern string
@@ -228,7 +228,7 @@ func TestParseBraceSegment(t *testing.T) {
 	}
 }
 
-func TestParseBraceSegmentFuzzNoPanic(t *testing.T) {
+func Test_parseBraceSegment_FuzzNoPanic(t *testing.T) {
 	unicodeRanges := fuzz.UnicodeRanges{
 		{First: 0x00, Last: 0x7F},   // ASCII
 		{First: 0x80, Last: 0x07FF}, // Extended
@@ -245,7 +245,7 @@ func TestParseBraceSegmentFuzzNoPanic(t *testing.T) {
 	}
 }
 
-func TestEmptyCatchAll(t *testing.T) {
+func Test_iTree_lookup_EmptyCatchAll(t *testing.T) {
 
 	cases := []struct {
 		name   string
@@ -410,7 +410,7 @@ func TestEmptyCatchAll(t *testing.T) {
 	}
 }
 
-func TestRouteWithParams(t *testing.T) {
+func Test_iTree_lookup_WithParams(t *testing.T) {
 	f, _ := NewRouter()
 	routes := [...]string{
 		"/",
@@ -444,7 +444,7 @@ func TestRouteWithParams(t *testing.T) {
 	}
 }
 
-func TestRouteParamEmptySegment(t *testing.T) {
+func Test_iTree_lookup_ParamEmptySegment(t *testing.T) {
 	f, _ := NewRouter(AllowRegexpParam(true))
 	cases := []struct {
 		name  string
@@ -500,7 +500,7 @@ func TestRouteParamEmptySegment(t *testing.T) {
 	}
 }
 
-func TestOverlappingRoute(t *testing.T) {
+func Test_iTree_lookup_Overlapping(t *testing.T) {
 	cases := []struct {
 		name       string
 		path       string
@@ -1538,7 +1538,7 @@ func TestOverlappingRoute(t *testing.T) {
 	}
 }
 
-func TestInfixWildcard(t *testing.T) {
+func Test_iTree_lookup_InfixWildcard(t *testing.T) {
 	cases := []struct {
 		name       string
 		routes     []string
@@ -2677,7 +2677,7 @@ func TestInfixWildcard(t *testing.T) {
 
 }
 
-func TestInfixWildcardTsr(t *testing.T) {
+func Test_iTree_lookup_InfixWildcardTsr(t *testing.T) {
 	cases := []struct {
 		name       string
 		routes     []string
@@ -3047,7 +3047,7 @@ func TestInfixWildcardTsr(t *testing.T) {
 	}
 }
 
-func TestTree_LookupTsr(t *testing.T) {
+func Test_iTree_lookup_Tsr(t *testing.T) {
 	cases := []struct {
 		name     string
 		paths    []string
@@ -3139,7 +3139,7 @@ func TestTree_LookupTsr(t *testing.T) {
 	}
 }
 
-func TestNode_String(t *testing.T) {
+func Test_node_String(t *testing.T) {
 	f, _ := NewRouter()
 	require.NoError(t, onlyError(f.Add(MethodGet, "/foo/{bar}/+{baz}", emptyHandler)))
 	require.NoError(t, onlyError(f.Add(
