@@ -299,7 +299,7 @@ func TestContext_GetHeader(t *testing.T) {
 	assert.Equal(t, MIMEApplicationJSON, c.Header(HeaderAccept))
 }
 
-func TestContext_Fox(t *testing.T) {
+func TestContext_Router(t *testing.T) {
 	t.Parallel()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
