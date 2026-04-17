@@ -318,7 +318,7 @@ func WithClientIPResolver(resolver ClientIPResolver) interface {
 // any other components to modify behavior based on the attached metadata. Unlike context-based metadata, which is tied to
 // the request lifetime, annotations are bound to the route's lifetime and remain static across all requests for that route.
 // The provided key must be comparable and should not be of type string or any other built-in type to avoid collisions between
-// packages that use route annotation. See also [WithAnnotationFunc]
+// packages that use route annotation.
 func WithAnnotation(key, value any) RouteOption {
 	return optionFunc(func(s sealedOption) error {
 		if !reflect.TypeOf(key).Comparable() {
