@@ -31,6 +31,22 @@ jobs:
       - name: Run data races tests
         run: go test -v -race -run "TestRouter_Race_Data|TestRouter_Race_HostnamePathSwitch" -count=10 ./...
 
+      - name: Fuzz smoke
+        run: |
+          for t in Fuzz_parseBraceSegment FuzzRouter_Add FuzzRouter_AddDelete; do
+            echo "::group::${t}"
+            go test -run '^$' -fuzz="^${t}$" -fuzztime=20s .
+            echo "::endgroup::"
+          done
+
+      - name: Upload fuzz crashers on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: testdata/fuzz/
+          if-no-files-found: ignore
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
