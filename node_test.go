@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -227,21 +226,34 @@ func Test_parseBraceSegment(t *testing.T) {
 	}
 }
 
-func Test_parseBraceSegment_FuzzNoPanic(t *testing.T) {
-	unicodeRanges := fuzz.UnicodeRanges{
-		{First: 0x00, Last: 0x7F},   // ASCII
-		{First: 0x80, Last: 0x07FF}, // Extended
+func Fuzz_parseBraceSegment(f *testing.F) {
+	seeds := []string{
+		// Named params
+		"{name}", "{a}", "{id:[0-9]+}", "{id:[0-9]{1,3}}", "{name}/foo",
+		// Non-optional wildcards (+{})
+		"+{path}", "+{path:regex}", "+{file:[a-z]+\\.txt}", "+{path}/thumbnail",
+		// Optional wildcards (*{}), suffix-only per spec but parser accepts anywhere
+		"*{path}", "*{filepath}", "*{any:[a-z]+}", "*{path}/thumbnail",
+		// Empty / minimal
+		"", "{}", "+{}", "*{}",
+		// Unbalanced / malformed
+		"{", "}", "+{", "*{",
+		"{name", "+{path", "*{path", "{name:regex",
+		"{id:[0-9]{1,3}", "}name{", "{{name}", "{name}}",
+		// Static / path-like
+		"static", "/", "/users/list", "foo{bar}baz",
+		// Edge cases around colon and sigils
+		"{:}", "{:regex}", "+{:regex}", "*{:regex}",
+		":foo{bar}", "* {path}", "*", "*path", "+", "+path",
+		// Non-ASCII bytes
+		"{\x80}", "+{\xff}", "*{\x80}", "\x00{name}",
 	}
-	f := fuzz.New().NilChance(0).NumElements(10000, 20000).Funcs(unicodeRanges.CustomStringFuzzFunc())
-
-	patterns := make(map[string]struct{})
-	f.Fuzz(&patterns)
-
-	for pattern := range patterns {
-		assert.NotPanics(t, func() {
-			parseBraceSegment(pattern)
-		})
+	for _, s := range seeds {
+		f.Add(s)
 	}
+	f.Fuzz(func(t *testing.T, pattern string) {
+		parseBraceSegment(pattern)
+	})
 }
 
 func Test_node_String(t *testing.T) {
