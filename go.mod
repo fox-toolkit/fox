@@ -3,7 +3,6 @@ module github.com/fox-toolkit/fox
 go 1.26.0
 
 require (
-	github.com/google/gofuzz v1.2.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.53.0
 	golang.org/x/sys v0.43.0

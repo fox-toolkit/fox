@@ -22,7 +22,6 @@ import (
 
 	"github.com/fox-toolkit/fox/internal/iterutil"
 	"github.com/fox-toolkit/fox/internal/netutil"
-	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -3826,88 +3825,155 @@ func TestRouter_ServeHTTP_EncodedPath(t *testing.T) {
 	assert.Equal(t, encodedPath, w.Body.String())
 }
 
-func TestRouter_Add_FuzzNoPanics(t *testing.T) {
-	unicodeRanges := fuzz.UnicodeRanges{
-		{First: 0x20, Last: 0x6FF},
+func FuzzRouter_Add(f *testing.F) {
+	seeds := []string{
+		// Empty / slashes
+		"", "/", "//", "///",
+		// Static
+		"/users", "/api/users/list", "/a/b/c/d/e",
+		// Named params
+		"/users/{id}", "/users/{id:[0-9]+}",
+		"/users/uuid:{id}", "/users/uuid:{id}/config",
+		"/{id}/posts/{pid}",
+		// Non-optional wildcards (+{}), prefix/infix/suffix
+		"/files/+{path}", "/files/+{path:[a-z]+}",
+		"/bucket/+{path}/meta", "/assets/+{path}/thumbnail",
+		"/src/file=+{path}",
+		"/src/+{filepath:[A-Za-z/]+\\.json}",
+		// Optional wildcards (*{}) - suffix only
+		"/*{filepath}", "/files/*{path}",
+		"/api*{mount}", "/src/file=*{path}",
+		"/users/*{trail}",
+		// Hostname patterns
+		"example.com/", "example.com/users",
+		"api.example.com/users/{id}",
+		"{sub}.example.com/", "{sub}.example.com/users",
+		"+{sub}.example.com/", "+{sub}.example.com/users/{id}",
+		"_srv.example.com/",
+		// Case-insensitive hostname + underscore label
+		"API.Example.COM/", "_foo.example.com/",
+		// Malformed / edge cases
+		"/{", "/}", "/{}", "/+{}", "/*{}",
+		"/{:}", "/+{:}", "/*{:}",
+		"/{id:[unclosed", "/{id}{jd}", "/foo{bar}baz",
+		".example.com/", "example.com./",
+		// Suspicious bytes
+		"/\x00", "/\xe9", "/\t", "/\n",
+		// Missing-slash / wrong-sigil patterns
+		"*{path}", "+{path", "*{path:regex}",
+		// Consecutive catch-all (invalid per spec)
+		"/+{a}/+{b}", "/*{a}*{b}", "/+{a}+{b}",
+		// Optional not as suffix (invalid per spec)
+		"/*{path}/foo",
 	}
-	f := fuzz.New().NilChance(0).NumElements(1000000, 2000000).Funcs(unicodeRanges.CustomStringFuzzFunc())
-	r, _ := NewRouter()
-
-	routes := make(map[string]struct{})
-	f.Fuzz(&routes)
-
-	_ = r.Updates(func(txn *Txn) error {
-		for rte := range routes {
-			if rte == "" {
-				continue
-			}
-			require.NotPanicsf(t, func() {
-				_, _ = txn.Add(MethodGet, rte, emptyHandler)
-			}, fmt.Sprintf("rte: %s", rte))
-		}
-		return nil
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, rte string) {
+		r := MustRouter()
+		_ = r.Updates(func(txn *Txn) error {
+			_, _ = txn.Add(MethodGet, rte, emptyHandler)
+			return nil
+		})
 	})
-
 }
 
-func TestRouter_Fuzz(t *testing.T) {
-	// no '*' and '{}' and invalid escape char
-	unicodeRanges := fuzz.UnicodeRanges{
-		{First: 0x20, Last: 0x29},
-		{First: 0x2B, Last: 0x7A},
-		{First: 0x7C, Last: 0x7C},
-		{First: 0x7E, Last: 0x04FF},
+func FuzzRouter_AddDelete(f *testing.F) {
+	seeds := []string{
+		// Trivial
+		"",
+		"/",
+		"/foo",
+		"/users/{id}",
+		// Shared prefixes (tree splitting)
+		"/users/{id}\n/users/{id}/posts\n/users/{id}/posts/{pid}",
+		"/a\n/a/b\n/a/b/c\n/a/b/c/d",
+		"/api/v1/users\n/api/v2/users",
+		// Non-optional wildcards (+{}) - suffix and infix
+		"/files/+{path}\n/files/list",
+		"/assets/+{path}/thumbnail\n/assets/+{path}/preview",
+		"/src/file=+{path}\n/src/file=static",
+		// Optional wildcards (*{}) - suffix only
+		"/*{any}",
+		"/files/*{path}\n/files/static",
+		"/src/file=*{path}",
+		// Mix param + wildcards
+		"/users/{id}\n/users/{id}/*{trail}",
+		"/users/{id}\n/users/{id}/+{trail}",
+		// Registration order + specificity
+		"/{a}\n/{b}\n/{c}",
+		"/{id:[0-9]+}\n/{id:[a-z]+}\n/{name}",
+		// Duplicates and siblings
+		"/foo\n/foo\n/bar",
+		"/a\n/b\n/c\n/d\n/e",
+		// Static hostnames
+		"example.com/",
+		"example.com/users\nexample.com/admin",
+		"api.example.com/users\nweb.example.com/login",
+		"a.example.com/\nb.example.com/\nc.example.com/",
+		"my-api.example.com/\ntest-env.example.com/v1",
+		// Param labels (prefix, middle, multi)
+		"{sub}.example.com/\n{sub}.example.com/users",
+		"api.{region}.example.com/users",
+		"{a}.{b}.example.com/\n{a}.{b}.example.com/users",
+		// Wildcard labels (prefix and middle)
+		"+{sub}.example.com/\n+{sub}.example.com/posts/{id}",
+		"api.+{tenant}.example.com/users",
+		// SRV-like underscore labels
+		"_srv.example.com/\n_foo.example.com/bar",
+		// Mix hostname + path (mode switching on delete)
+		"example.com/users\n/fallback\n/api/users",
 	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		r := MustRouter()
 
-	f := fuzz.New().NilChance(0).NumElements(100000, 200000).Funcs(unicodeRanges.CustomStringFuzzFunc())
-	r, _ := NewRouter()
-
-	routes := make(map[string]struct{})
-	f.Fuzz(&routes)
-
-	inserted := 0
-	_ = r.Updates(func(txn *Txn) error {
-		for rte := range routes {
-			rr, err := txn.Add(MethodGet, "/"+rte, emptyHandler, WithName("/"+rte))
-			if err != nil {
-				assert.Nilf(t, rr, "route /%s", rte)
-				continue
+		inserted := 0
+		_ = r.Updates(func(txn *Txn) error {
+			for pattern := range strings.SplitSeq(input, "\n") {
+				rr, err := txn.Add(MethodGet, pattern, emptyHandler, WithName(pattern))
+				if err != nil {
+					assert.Nilf(t, rr, "route %s", pattern)
+					continue
+				}
+				assert.NotNilf(t, rr, "route %s", pattern)
+				inserted++
 			}
-			assert.NotNilf(t, rr, "route /%s", rte)
-			inserted++
-		}
-		return nil
-	})
+			return nil
+		})
 
-	it := r.Iter()
-	countPath := len(slices.Collect(it.All()))
-	assert.Equal(t, inserted, countPath)
-	countNames := len(slices.Collect(it.Names()))
-	assert.Equal(t, inserted, countNames)
+		it := r.Iter()
+		countPath := len(slices.Collect(it.All()))
+		assert.Equal(t, inserted, countPath)
+		countNames := len(slices.Collect(it.Names()))
+		assert.Equal(t, inserted, countNames)
 
-	for route := range r.Iter().All() {
-		found := r.Route(MethodGet, route.Pattern())
-		require.NotNilf(t, found, "route /%s", route.Pattern())
-	}
-	for route := range r.Iter().Names() {
-		found := r.Name(route.Name())
-		require.NotNilf(t, found, "route /%s", route.Name())
-	}
-
-	_ = r.Updates(func(txn *Txn) error {
 		for route := range r.Iter().All() {
-			rte, err := txn.Delete(MethodGet, route.Pattern())
-			assert.NoErrorf(t, err, "route /%s", route.Pattern())
-			assert.NotNil(t, rte, "route /%s", route.Pattern())
+			found := r.Route(MethodGet, route.Pattern())
+			require.NotNilf(t, found, "route %s", route.Pattern())
 		}
-		return nil
-	})
+		for route := range r.Iter().Names() {
+			found := r.Name(route.Name())
+			require.NotNilf(t, found, "route %s", route.Name())
+		}
 
-	it = r.Iter()
-	countPath = len(slices.Collect(it.All()))
-	assert.Equal(t, 0, countPath)
-	countNames = len(slices.Collect(it.Names()))
-	assert.Equal(t, 0, countNames)
+		_ = r.Updates(func(txn *Txn) error {
+			for route := range r.Iter().All() {
+				rte, err := txn.Delete(MethodGet, route.Pattern())
+				assert.NoErrorf(t, err, "route %s", route.Pattern())
+				assert.NotNil(t, rte, "route %s", route.Pattern())
+			}
+			return nil
+		})
+
+		it = r.Iter()
+		countPath = len(slices.Collect(it.All()))
+		assert.Equal(t, 0, countPath)
+		countNames = len(slices.Collect(it.Names()))
+		assert.Equal(t, 0, countNames)
+	})
 }
 
 func TestRouter_Race_HostnamePathSwitch(t *testing.T) {
