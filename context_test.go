@@ -114,6 +114,59 @@ func TestContext_Path(t *testing.T) {
 	assert.Equal(t, "/foo", w.Body.String())
 }
 
+func TestContext_EscapedPath(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{
+			name:   "ascii canonical",
+			target: "https://example.com/foo/bar",
+			want:   "/foo/bar",
+		},
+		{
+			name:   "encoded space normalizes encoding",
+			target: "https://example.com/foo%20bar",
+			want:   "/foo%20bar",
+		},
+		{
+			name:   "encoded sub-delim preserved",
+			target: "https://example.com/foo%21bar",
+			want:   "/foo%21bar",
+		},
+		{
+			name:   "encoded non-ascii preserved",
+			target: "https://example.com/foo%C3%A9bar",
+			want:   "/foo%C3%A9bar",
+		},
+		{
+			name:   "lowercase hex normalized to uppercase",
+			target: "https://example.com/foo%2fbar",
+			want:   "/foo%2Fbar",
+		},
+		{
+			name:   "encoded slash preserved as raw path",
+			target: "https://example.com/foo/bar%2Fbaz",
+			want:   "/foo/bar%2Fbaz",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := NewRouter()
+			f.MustAdd(MethodGet, "/*{any}", func(c *Context) {
+				_, _ = io.WriteString(c.Writer(), c.EscapedPath())
+			})
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			f.ServeHTTP(w, r)
+			assert.Equal(t, tc.want, w.Body.String())
+		})
+	}
+}
+
 func TestContext_Host(t *testing.T) {
 	t.Parallel()
 	f, _ := NewRouter()

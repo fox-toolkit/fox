@@ -290,7 +290,7 @@ func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
 	defer tree.pool.Put(c)
 	c.resetWithRequest(r)
 
-	path := routingPath(r)
+	path := c.EscapedPath()
 
 	idx, n, tsr := txn.rootTxn.patterns.lookup(method, r.Host, path, c, true)
 	if n != nil {
@@ -313,7 +313,7 @@ func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Con
 	c := tree.pool.Get().(*Context)
 	c.resetWithWriter(w, r)
 
-	path := routingPath(r)
+	path := c.EscapedPath()
 
 	idx, n, tsr := txn.rootTxn.patterns.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {

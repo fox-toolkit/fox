@@ -34,6 +34,9 @@ func TestLogger(t *testing.T) {
 	require.NoError(t, onlyError(f.Add(MethodGet, "/failure", func(c *Context) {
 		c.Writer().WriteHeader(http.StatusInternalServerError)
 	})))
+	require.NoError(t, onlyError(f.Add(MethodGet, "/echo/{name}", func(c *Context) {
+		c.Writer().WriteHeader(http.StatusOK)
+	})))
 
 	cases := []struct {
 		name string
@@ -59,6 +62,16 @@ func TestLogger(t *testing.T) {
 			name: "should log debug level",
 			req:  httptest.NewRequest(http.MethodGet, "/success/", nil),
 			want: "time=time level=DEBUG msg=192.0.2.1 status=301 method=GET host=example.com path=/success/ size=43 latency=latency location=/success\n",
+		},
+		{
+			name: "should log canonical encoded path with uppercase hex",
+			req:  httptest.NewRequest(http.MethodGet, "/echo/jean%20dupont", nil),
+			want: "time=time level=INFO msg=192.0.2.1 status=200 method=GET host=example.com path=/echo/jean%20dupont size=0 latency=latency\n",
+		},
+		{
+			name: "should normalize lowercase hex in logged path",
+			req:  httptest.NewRequest(http.MethodGet, "/echo/foo%2fbar", nil),
+			want: "time=time level=INFO msg=192.0.2.1 status=200 method=GET host=example.com path=/echo/foo%2Fbar size=0 latency=latency\n",
 		},
 	}
 

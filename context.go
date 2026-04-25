@@ -45,7 +45,13 @@ type RequestContext interface {
 	// Method returns the request method.
 	Method() string
 	// Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
+	// For the canonical encoded form used by the router, prefer [RequestContext.EscapedPath].
 	Path() string
+	// EscapedPath returns the canonical encoded path that the router uses for matching.
+	// It is equivalent to [url.URL.EscapedPath] with hex sequences normalized to uppercase
+	// (e.g. %2f becomes %2F). Use this when the form must match exactly what the router
+	// routed on, such as when constructing redirect targets, cache keys, or routing logs.
+	EscapedPath() string
 	// Host returns the request host.
 	Host() string
 	// QueryParams parses the [http.Request] raw query and returns the corresponding values. The result is cached after
@@ -207,11 +213,20 @@ func (c *Context) Method() string {
 }
 
 // Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
+// For the canonical encoded form used by the router, prefer [Context.EscapedPath].
 func (c *Context) Path() string {
 	if len(c.req.URL.RawPath) > 0 {
 		return c.req.URL.RawPath
 	}
 	return c.req.URL.Path
+}
+
+// EscapedPath returns the canonical encoded path that the router uses for matching.
+// It is equivalent to [url.URL.EscapedPath] with hex sequences normalized to uppercase
+// (e.g. %2f becomes %2F). Use this when the form must match exactly what the router
+// routed on, such as when constructing redirect targets, cache keys, or routing logs.
+func (c *Context) EscapedPath() string {
+	return routingPath(c.req)
 }
 
 // Host returns the request host.
@@ -352,7 +367,7 @@ func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
 }
 
 func copyWithResize[S ~[]T, T any](dst, src *S) {
-	if len(*src) > len(*dst) { // TODO could be cap(*dst)
+	if len(*src) > cap(*dst) {
 		// Grow dst cap to a least len(src)
 		*dst = slices.Grow(*dst, len(*src)-len(*dst))
 	}
