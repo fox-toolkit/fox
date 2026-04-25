@@ -300,7 +300,7 @@ store routes efficiently. When a request arrives, Fox evaluates routes in the fo
 4. **Matcher evaluation** (for routes sharing the same pattern and overlapping methods)
     - Routes with matchers are evaluated before routes without
     - Among routes with matchers, higher priority is evaluated first (configurable via `fox.WithMatcherPriority`, or defaults to the number of matchers)
-    - Routes with equal priority may be evaluated in any order
+    - Routes with equal matchers priority may be evaluated in any order
 
 If a match candidate fails to complete the full route, including matchers, Fox returns to the last decision point and tries the next available
 alternative following the same priority order.
