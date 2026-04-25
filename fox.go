@@ -366,7 +366,7 @@ func (fox *Router) Match(method string, r *http.Request) (route *Route, tsr bool
 	defer tree.pool.Put(c)
 	c.resetWithRequest(r)
 
-	path := routingPath(r)
+	path := c.EscapedPath()
 
 	idx, n, tsr := tree.lookup(method, r.Host, path, c, true)
 	if n != nil {
@@ -385,7 +385,7 @@ func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *
 	c := tree.pool.Get().(*Context)
 	c.resetWithWriter(w, r)
 
-	path := routingPath(r)
+	path := c.EscapedPath()
 
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {
@@ -593,7 +593,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := tree.pool.Get().(*Context)
 	c.reset(w, r)
 
-	path := routingPath(r)
+	path := c.EscapedPath()
 
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if !tsr && n != nil {
@@ -1000,7 +1000,7 @@ func Sub(router *Router) HandlerFunc {
 		// reslice from the original path to include it, avoiding an allocation from "/" + suffix.
 		suffix := cmp.Or((*c.params)[len(*c.params)-1], "/")
 		if !strings.HasPrefix(suffix, "/") {
-			path := routingPath(c.req)
+			path := c.EscapedPath()
 			slashPos := len(path) - len(suffix) - 1
 			if path[slashPos] == slashDelim {
 				suffix = path[slashPos:]
@@ -1051,7 +1051,7 @@ func internalTrailingSlashHandler(c *Context) {
 		code = http.StatusPermanentRedirect
 	}
 
-	path := escapeLeadingSlashes(fixTrailingSlash(c.Path()))
+	path := escapeLeadingSlashes(fixTrailingSlash(c.EscapedPath()))
 	if q := req.URL.RawQuery; q != "" {
 		path += "?" + q
 	}
@@ -1068,7 +1068,7 @@ func internalFixedPathHandler(c *Context) {
 		code = http.StatusPermanentRedirect
 	}
 
-	cleanedPath := escapeLeadingSlashes(CleanPath(c.Path()))
+	cleanedPath := escapeLeadingSlashes(CleanPath(c.EscapedPath()))
 	if q := req.URL.RawQuery; q != "" {
 		cleanedPath += "?" + q
 	}

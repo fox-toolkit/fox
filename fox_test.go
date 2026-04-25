@@ -2706,6 +2706,33 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/foo/bar?1=2",
 		},
+		{
+			name:         "consecutive slash with encoded space in segment",
+			path:         "/foo/{bar}",
+			slashMode:    StrictSlash,
+			req:          "/foo//baz%20qux",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%20qux",
+		},
+		{
+			name:         "consecutive slash with lowercase hex in segment",
+			path:         "/foo/{bar}",
+			slashMode:    StrictSlash,
+			req:          "/foo//baz%2fqux",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%2Fqux",
+		},
+		{
+			name:         "consecutive slash with encoded sub-delim in segment",
+			path:         "/foo/{bar}",
+			slashMode:    StrictSlash,
+			req:          "/foo//baz%21qux",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%21qux",
+		},
 	}
 
 	for _, tc := range cases {
@@ -2928,6 +2955,41 @@ func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 			req:          "/\\evil.com",
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/%5Cevil.com/",
+		},
+		{
+			name:         "encoded space normalized in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/baz%20qux",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%20qux/",
+		},
+		{
+			name:         "encoded sub-delim preserved in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/baz%21qux",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%21qux/",
+		},
+		{
+			name:         "encoded non-ascii preserved in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/baz%C3%A9qux",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%C3%A9qux/",
+		},
+		{
+			name:         "lowercase hex normalized to uppercase in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/baz%2fqux",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%2Fqux/",
+		},
+		{
+			name:         "encoded crlf preserved encoded in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/baz%0D%0Aqux",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz%0D%0Aqux/",
 		},
 	}
 

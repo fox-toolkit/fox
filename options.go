@@ -112,7 +112,7 @@ func WithOptionsHandler(handler HandlerFunc) GlobalOption {
 //   - RelaxedSlash: Routes match regardless of trailing slash. Both /foo/bar and /foo/bar/ match the same route.
 //   - RedirectSlash: When a route is not found, but exists with/without a trailing slash, issues a redirect to the correct path.
 //
-// Redirects use URL.RawPath if set, otherwise URL.Path.
+// Redirects use the canonical encoded path that the router routed on (see [Context.EscapedPath]).
 //
 // This option can be applied on a per-route basis or globally:
 //   - If applied globally, it affects all routes by default.
@@ -149,7 +149,7 @@ func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
 //   - RelaxedPath: After normal lookup fails, tries matching with a cleaned path. If found, serves the handler directly.
 //   - RedirectPath: After normal lookup fails, tries matching with a cleaned path. If found, redirects to the clean path.
 //
-// Redirects use URL.RawPath if set, otherwise URL.Path.
+// Redirects use the canonical encoded path that the router routed on (see [Context.EscapedPath]).
 //
 // This option applies globally to all routes and cannot be configured per-route. See [CleanPath] for details on how
 // paths are cleaned.
