@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/fox-toolkit/fox/internal/netutil"
 )
@@ -242,4 +243,37 @@ func (m ClientIpMatcher) Equal(matcher Matcher) bool {
 
 func (m ClientIpMatcher) String() string {
 	return "ip:" + m.ipNet.String()
+}
+
+func MatchScheme(scheme string) (SchemeMatcher, error) {
+	s := strings.ToLower(scheme)
+	if s != "http" && s != "https" {
+		return SchemeMatcher{}, errors.New(`scheme must be "http" or "https"`)
+	}
+	return SchemeMatcher{scheme: s}, nil
+}
+
+type SchemeMatcher struct {
+	scheme string
+}
+
+func (m SchemeMatcher) Scheme() string {
+	return m.scheme
+}
+
+func (m SchemeMatcher) Match(c RequestContext) bool {
+	isHTTPS := c.Request().TLS != nil
+	return isHTTPS == (m.scheme == "https")
+}
+
+func (m SchemeMatcher) Equal(matcher Matcher) bool {
+	om, ok := matcher.(SchemeMatcher)
+	if !ok {
+		return false
+	}
+	return m.scheme == om.scheme
+}
+
+func (m SchemeMatcher) String() string {
+	return "s:" + m.scheme
 }
