@@ -592,6 +592,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tree := fox.getTree()
 	c := tree.pool.Get().(*Context)
 	c.reset(w, r)
+	defer tree.pool.Put(c)
 
 	path := c.EscapedPath()
 
@@ -601,7 +602,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.pattern = c.route.pattern.str
 		*c.paramsKeys = c.route.params
 		c.route.hall(c)
-		tree.pool.Put(c)
 		return
 	}
 
@@ -613,7 +613,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				c.pattern = c.route.pattern.str
 				*c.paramsKeys = c.route.params
 				route.hall(c)
-				tree.pool.Put(c)
 				return
 			}
 
@@ -623,7 +622,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				c.pattern = ""
 				c.scope = RedirectSlashHandler
 				fox.tsrRedirect(c)
-				tree.pool.Put(c)
 				return
 			}
 		}
@@ -636,7 +634,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				c.pattern = c.route.pattern.str
 				*c.paramsKeys = c.route.params
 				c.route.hall(c)
-				tree.pool.Put(c)
 				return
 			}
 		case RedirectPath:
@@ -646,7 +643,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				c.pattern = ""
 				c.scope = RedirectPathHandler
 				fox.pathRedirect(c)
-				tree.pool.Put(c)
 				return
 			}
 		default:
@@ -690,7 +686,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set(HeaderAllow, sb.String())
 		}
 		w.WriteHeader(http.StatusOK)
-		tree.pool.Put(c)
 		return
 	}
 
@@ -707,7 +702,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if foundOrigin && foundAcrm {
 			c.scope = OptionsHandler
 			fox.autoOPTIONS(c)
-			tree.pool.Put(c)
 			return
 		}
 
@@ -735,7 +729,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set(HeaderAllow, sb.String())
 			c.scope = OptionsHandler
 			fox.autoOPTIONS(c)
-			tree.pool.Put(c)
 			return
 		}
 	} else if fox.handleMethodNotAllowed {
@@ -778,14 +771,12 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set(HeaderAllow, sb.String())
 			c.scope = NoMethodHandler
 			fox.noMethod(c)
-			tree.pool.Put(c)
 			return
 		}
 	}
 
 	c.scope = NoRouteHandler
 	fox.noRoute(c)
-	tree.pool.Put(c)
 }
 
 func (fox *Router) serveSubRouter(c *Context, path string) {
@@ -867,7 +858,6 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 		if foundOrigin && foundAcrm {
 			c.scope = OptionsHandler
 			fox.autoOPTIONS(c)
-			tree.pool.Put(c)
 			return
 		}
 
@@ -895,7 +885,6 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 			w.Header().Set(HeaderAllow, sb.String())
 			c.scope = OptionsHandler
 			fox.autoOPTIONS(c)
-			tree.pool.Put(c)
 			return
 		}
 	} else if fox.handleMethodNotAllowed {
@@ -938,7 +927,6 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 			w.Header().Set(HeaderAllow, sb.String())
 			c.scope = NoMethodHandler
 			fox.noMethod(c)
-			tree.pool.Put(c)
 			return
 		}
 	}
