@@ -48,7 +48,16 @@ func (m QueryMatcher) Value() string {
 }
 
 func (m QueryMatcher) Match(c RequestContext) bool {
-	return c.QueryParam(m.key) == m.value
+	values := c.QueryParams()[m.key]
+	if len(values) == 0 {
+		return false
+	}
+	for _, v := range values {
+		if v == m.value {
+			return true
+		}
+	}
+	return false
 }
 
 func (m QueryMatcher) Equal(matcher Matcher) bool {
@@ -87,8 +96,7 @@ func (m QueryRegexpMatcher) Key() string {
 }
 
 func (m QueryRegexpMatcher) Regex() *regexp.Regexp {
-	re2 := *m.regex
-	return &re2
+	return new(*m.regex)
 }
 
 func (m QueryRegexpMatcher) String() string {
@@ -96,7 +104,16 @@ func (m QueryRegexpMatcher) String() string {
 }
 
 func (m QueryRegexpMatcher) Match(c RequestContext) bool {
-	return m.regex.MatchString(c.QueryParam(m.key))
+	values := c.QueryParams()[m.key]
+	if len(values) == 0 {
+		return false
+	}
+	for _, v := range values {
+		if m.regex.MatchString(v) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m QueryRegexpMatcher) Equal(matcher Matcher) bool {
@@ -135,7 +152,12 @@ func (m HeaderMatcher) Match(c RequestContext) bool {
 	if len(values) == 0 {
 		return false
 	}
-	return values[0] == m.value
+	for _, v := range values {
+		if v == m.value {
+			return true
+		}
+	}
+	return false
 }
 
 func (m HeaderMatcher) Equal(matcher Matcher) bool {
@@ -174,8 +196,7 @@ func (m HeaderRegexpMatcher) Key() string {
 }
 
 func (m HeaderRegexpMatcher) Regex() *regexp.Regexp {
-	re2 := *m.regex
-	return &re2
+	return new(*m.regex)
 }
 
 func (m HeaderRegexpMatcher) Match(c RequestContext) bool {
@@ -183,7 +204,12 @@ func (m HeaderRegexpMatcher) Match(c RequestContext) bool {
 	if len(values) == 0 {
 		return false
 	}
-	return m.regex.MatchString(values[0])
+	for _, v := range values {
+		if m.regex.MatchString(v) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m HeaderRegexpMatcher) Equal(matcher Matcher) bool {
