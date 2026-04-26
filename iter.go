@@ -15,13 +15,6 @@ type stack struct {
 	edges []*node
 }
 
-// RouteMatch represents a route matched by a reverse lookup operation.
-type RouteMatch struct {
-	*Route
-	// Tsr is true when the match required trailing slash adjustment.
-	Tsr bool
-}
-
 // Iter provide a set of range iterators for traversing registered methods and routes. Iter capture a point-in-time
 // snapshot of the routing tree. Therefore, all iterators returned by Iter will not observe subsequent write on the
 // router or on the transaction from which the Iter is created.
