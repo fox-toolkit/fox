@@ -287,10 +287,14 @@ func (t *tXn) insertTokens(p, n *node, tokens []token, route *Route) (*node, err
 		switch t.mode {
 		case modeInsert:
 			if n.isLeaf() {
-				if idx := slices.IndexFunc(n.routes, func(r *Route) bool {
-					return r.matchersEqual(route.matchers) && slicesutil.Overlap(r.methods, route.methods)
-				}); idx >= 0 {
-					return nil, &RouteConflictError{New: route, Conflicts: []*Route{n.routes[idx]}}
+				var conflicts []*Route
+				for _, r := range n.routes {
+					if r.matchersEqual(route.matchers) && slicesutil.Overlap(r.methods, route.methods) {
+						conflicts = append(conflicts, r)
+					}
+				}
+				if len(conflicts) > 0 {
+					return nil, &RouteConflictError{New: route, Conflicts: conflicts}
 				}
 			}
 
