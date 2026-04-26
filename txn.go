@@ -401,7 +401,7 @@ func (txn *Txn) Abort() {
 
 // Snapshot returns a point in time snapshot of the current state of the transaction.
 // Returns a new read-only transaction or nil if the transaction is already aborted
-// or commited.
+// or committed.
 func (txn *Txn) Snapshot() *Txn {
 	if txn.rootTxn == nil {
 		return nil

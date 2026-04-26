@@ -668,7 +668,7 @@ func Test_parsePattern(t *testing.T) {
 			name: "path ending with slash double dot",
 			path: "/..",
 		},
-		// Allowed dot and slash combinaison
+		// Allowed dot and slash combinations
 		{
 			name: "last path segment starting with slash dot and text",
 			path: "/foo/.bar",

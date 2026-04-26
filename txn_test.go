@@ -141,7 +141,7 @@ func TestTxn_Isolation(t *testing.T) {
 
 		txn.Commit()
 
-		// Reflect after commited
+		// Reflect after committed
 		tree = f.getTree()
 		assert.Empty(t, tree.methods)
 		assert.Equal(t, 0, iterutil.Len(f.Iter().All()))

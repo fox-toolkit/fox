@@ -98,7 +98,7 @@ func (t *tXn) commit() *iTree {
 }
 
 // clone capture a point-in-time clone of the transaction. The cloned transaction will contain
-// any uncommited writes in the original transaction but further mutations to either will be independent and result
+// any uncommitted writes in the original transaction but further mutations to either will be independent and result
 // in different tree on commit.
 func (t *tXn) clone() *tXn {
 	t.writable = nil
