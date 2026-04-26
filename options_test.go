@@ -1048,7 +1048,7 @@ func TestWithMatcher(t *testing.T) {
 		f, err := NewRouter()
 		require.NoError(t, err)
 		err = onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatcher(nil)))
-		assert.ErrorIs(t, err, ErrInvalidMatcher)
+		assert.ErrorIs(t, err, ErrInvalidConfig)
 	})
 
 	t.Run("multiple matchers with one nil", func(t *testing.T) {
@@ -1056,6 +1056,6 @@ func TestWithMatcher(t *testing.T) {
 		require.NoError(t, err)
 		m, _ := MatchQuery("foo", "bar")
 		err = onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatcher(m, nil)))
-		assert.ErrorIs(t, err, ErrInvalidMatcher)
+		assert.ErrorIs(t, err, ErrInvalidConfig)
 	})
 }

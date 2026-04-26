@@ -480,7 +480,7 @@ func WithMatcher(matchers ...Matcher) interface {
 	return optionFunc(func(s sealedOption) error {
 		for i := range matchers {
 			if matchers[i] == nil {
-				return fmt.Errorf("%w: matcher cannot be nil", ErrInvalidMatcher)
+				return fmt.Errorf("%w: matcher cannot be nil", ErrInvalidConfig)
 			}
 			s.route.matchers = append(s.route.matchers, matchers[i])
 		}
