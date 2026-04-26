@@ -166,7 +166,7 @@ func (r *recorder) WriteString(s string) (n int, err error) {
 	if r.hijacked {
 		if len(s) > 0 {
 			caller := relevantCaller()
-			log.Printf("http: response.Write on hijacked connection from %s (%s:%d)", caller.Function, path.Base(caller.File), caller.Line)
+			log.Printf("http: response.WriteString on hijacked connection from %s (%s:%d)", caller.Function, path.Base(caller.File), caller.Line)
 		}
 		return 0, http.ErrHijacked
 	}
@@ -184,14 +184,17 @@ func (r *recorder) WriteString(s string) (n int, err error) {
 // ReadFrom reads data from src until EOF or error. The return value n is the number of bytes read.
 // Any error except EOF encountered during the read is also returned.
 func (r *recorder) ReadFrom(src io.Reader) (n int64, err error) {
+	if r.hijacked {
+		return 0, http.ErrHijacked
+	}
+
 	if rf, ok := r.ResponseWriter.(io.ReaderFrom); ok {
-		n, err = rf.ReadFrom(src)
-		if err == nil {
-			if r.size == notWritten {
-				r.size = 0
-			}
-			r.size += int(n)
+		if r.size == notWritten {
+			r.size = 0
+			r.ResponseWriter.WriteHeader(r.status)
 		}
+		n, err = rf.ReadFrom(src)
+		r.size += int(n)
 		return n, err
 	}
 
