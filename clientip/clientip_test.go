@@ -50,13 +50,13 @@ func TestRemoteAddr_ClientIP(t *testing.T) {
 		{
 			name:     "should return an an invalid ip address error",
 			remoteIP: "@",
-			wantErr:  ErrInvalidIpAddress,
+			wantErr:  ErrInvalidIPAddress,
 		},
 		{
 			// This is for coverage. It should not be possible for RemoteAddr.
 			name:     "should return an an unspecified ip address error",
 			remoteIP: "0.0.0.0",
-			wantErr:  ErrUnspecifiedIpAddress,
+			wantErr:  ErrUnspecifiedIPAddress,
 		},
 	}
 
@@ -218,7 +218,7 @@ func TestChain_ClientIP(t *testing.T) {
 	_, err = s.ClientIP(c)
 	assert.ErrorIs(t, err, ErrSingleIPHeader)
 	assert.ErrorIs(t, err, ErrRemoteAddress)
-	assert.ErrorIs(t, err, ErrInvalidIpAddress)
+	assert.ErrorIs(t, err, ErrInvalidIPAddress)
 	assert.ErrorContains(t, err, "header not found")
 }
 

@@ -198,21 +198,21 @@ func (m HeaderRegexpMatcher) String() string {
 	return "hx:" + m.canonicalKey + "=" + m.regex.String()
 }
 
-func MatchClientIP(ip string) (ClientIpMatcher, error) {
+func MatchClientIP(ip string) (ClientIPMatcher, error) {
 	ipNet, err := netutil.ParseCIDR(ip)
 	if err != nil {
-		return ClientIpMatcher{}, err
+		return ClientIPMatcher{}, err
 	}
-	return ClientIpMatcher{
+	return ClientIPMatcher{
 		ipNet: ipNet,
 	}, nil
 }
 
-type ClientIpMatcher struct {
+type ClientIPMatcher struct {
 	ipNet *net.IPNet
 }
 
-func (m ClientIpMatcher) IPNet() *net.IPNet {
+func (m ClientIPMatcher) IPNet() *net.IPNet {
 	ip := make(net.IP, len(m.ipNet.IP))
 	copy(ip, m.ipNet.IP)
 
@@ -225,7 +225,7 @@ func (m ClientIpMatcher) IPNet() *net.IPNet {
 	}
 }
 
-func (m ClientIpMatcher) Match(c RequestContext) bool {
+func (m ClientIPMatcher) Match(c RequestContext) bool {
 	addr, err := c.ClientIP()
 	if err != nil {
 		return false
@@ -233,15 +233,15 @@ func (m ClientIpMatcher) Match(c RequestContext) bool {
 	return m.ipNet.Contains(addr.IP)
 }
 
-func (m ClientIpMatcher) Equal(matcher Matcher) bool {
-	om, ok := matcher.(ClientIpMatcher)
+func (m ClientIPMatcher) Equal(matcher Matcher) bool {
+	om, ok := matcher.(ClientIPMatcher)
 	if !ok {
 		return false
 	}
 	return m.ipNet.IP.Equal(om.ipNet.IP) && bytes.Equal(m.ipNet.Mask, om.ipNet.Mask)
 }
 
-func (m ClientIpMatcher) String() string {
+func (m ClientIPMatcher) String() string {
 	return "ip:" + m.ipNet.String()
 }
 

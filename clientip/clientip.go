@@ -23,8 +23,8 @@ const (
 )
 
 var (
-	ErrInvalidIpAddress      = errors.New("invalid ip address")
-	ErrUnspecifiedIpAddress  = errors.New("unspecified ip address")
+	ErrInvalidIPAddress      = errors.New("invalid ip address")
+	ErrUnspecifiedIPAddress  = errors.New("unspecified ip address")
 	ErrRemoteAddress         = errors.New("remote address resolver")
 	ErrSingleIPHeader        = errors.New("single ip header resolver")
 	ErrLeftmostNonPrivate    = errors.New("leftmost non private resolver")
@@ -346,8 +346,8 @@ func (s RightmostTrustedRange) ClientIP(c fox.RequestContext) (*net.IPAddr, erro
 // are never valid "real" client IPs.
 //
 // The function returns the following errors:
-// - [ErrInvalidIpAddress]: if the IP address cannot be parsed.
-// - [ErrUnspecifiedIpAddress]: if the IP address is unspecified (e.g., "::" or "0.0.0.0").
+// - [ErrInvalidIPAddress]: if the IP address cannot be parsed.
+// - [ErrUnspecifiedIPAddress]: if the IP address is unspecified (e.g., "::" or "0.0.0.0").
 func ParseIPAddr(ip string) (*net.IPAddr, error) {
 	host, _, err := net.SplitHostPort(ip)
 	if err == nil {
@@ -369,11 +369,11 @@ func ParseIPAddr(ip string) (*net.IPAddr, error) {
 	}
 
 	if ipAddr.IP == nil {
-		return nil, ErrInvalidIpAddress
+		return nil, ErrInvalidIPAddress
 	}
 
 	if ipAddr.IP.IsUnspecified() {
-		return nil, ErrUnspecifiedIpAddress
+		return nil, ErrUnspecifiedIPAddress
 	}
 
 	return ipAddr, nil
