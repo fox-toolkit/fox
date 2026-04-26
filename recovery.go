@@ -21,7 +21,6 @@ import (
 	"github.com/fox-toolkit/fox/internal/iterutil"
 )
 
-// Keys for "built-in" logger attribute for the recovery middleware.
 // Keys for "built-in" logger attributes used by the recovery middleware.
 const (
 	// LoggerRouteKey is the key used by the built-in recovery middleware for the matched route

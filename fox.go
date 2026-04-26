@@ -130,7 +130,7 @@ func initRouter() *Router {
 	return r
 }
 
-// RouterInfo hold information on the configured global options.
+// RouterInfo holds information on the configured global options.
 type RouterInfo struct {
 	MaxRouteParams        int
 	MaxRouteParamKeyBytes int
@@ -497,7 +497,7 @@ func (fox *Router) Iter() Iter {
 // Updates executes a function within the context of a read-write managed transaction. If no error is returned from the
 // function then the transaction is committed. If an error is returned then the entire transaction is aborted.
 // Updates returns any error returned by fn. This function is safe for concurrent use by multiple goroutine and while
-// the router is serving request. However [Txn] itself is NOT tread-safe.
+// the router is serving request. However [Txn] itself is NOT thread-safe.
 // See also [Router.Txn] for unmanaged transaction and [Router.View] for managed read-only transaction.
 func (fox *Router) Updates(fn func(txn *Txn) error) error {
 	txn := fox.Txn(true)
@@ -517,7 +517,7 @@ func (fox *Router) Updates(fn func(txn *Txn) error) error {
 
 // View executes a function within the context of a read-only managed transaction. View returns any error returned
 // by fn. This function is safe for concurrent use by multiple goroutine and while mutation on routes are ongoing.
-// However [Txn] itself is NOT tread-safe.
+// However [Txn] itself is NOT thread-safe.
 // See also [Router.Txn] for unmanaged transaction and [Router.Updates] for managed read-write transaction.
 func (fox *Router) View(fn func(txn *Txn) error) error {
 	txn := fox.Txn(false)
@@ -550,7 +550,7 @@ func (fox *Router) RouterInfo() RouterInfo {
 
 // Txn create a new read-write or read-only transaction. Each [Txn] must be finalized with [Txn.Commit] or [Txn.Abort].
 // It's safe to create transaction from multiple goroutine and while the router is serving request.
-// However, the returned [Txn] itself is NOT tread-safe.
+// However, the returned [Txn] itself is NOT thread-safe.
 // See also [Router.Updates] and [Router.View] for managed read-write and read-only transaction.
 func (fox *Router) Txn(write bool) *Txn {
 	if write {
