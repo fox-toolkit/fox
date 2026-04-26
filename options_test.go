@@ -985,6 +985,55 @@ func TestWithClientIPMatcher(t *testing.T) {
 	}
 }
 
+func TestWithSchemeMatcher(t *testing.T) {
+	cases := []struct {
+		name    string
+		scheme  string
+		wantErr bool
+	}{
+		{
+			name:    "valid http",
+			scheme:  "http",
+			wantErr: false,
+		},
+		{
+			name:    "valid https",
+			scheme:  "https",
+			wantErr: false,
+		},
+		{
+			name:    "uppercase HTTPS",
+			scheme:  "HTTPS",
+			wantErr: false,
+		},
+		{
+			name:    "invalid scheme",
+			scheme:  "ws",
+			wantErr: true,
+		},
+		{
+			name:    "empty scheme",
+			scheme:  "",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := NewRouter()
+			require.NoError(t, err)
+			err = onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithSchemeMatcher(tc.scheme)))
+			if tc.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidMatcher)
+				return
+			}
+			require.NoError(t, err)
+			m, _ := MatchScheme(tc.scheme)
+			assert.True(t, f.Has(MethodGet, "/foo", m))
+		})
+	}
+}
+
 func TestWithMatcher(t *testing.T) {
 	t.Run("valid custom matcher", func(t *testing.T) {
 		f, err := NewRouter()

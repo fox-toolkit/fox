@@ -1,6 +1,7 @@
 package fox
 
 import (
+	"crypto/tls"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -646,6 +647,170 @@ func TestMatchHeaderRegexp(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantKey, m.Key())
 			assert.NotNil(t, m.Regex())
+		})
+	}
+}
+
+func TestSchemeMatcher_Match(t *testing.T) {
+	cases := []struct {
+		name      string
+		scheme    string
+		urlScheme string
+		tls       bool
+		want      bool
+	}{
+		{
+			name:   "match https with TLS",
+			scheme: "https",
+			tls:    true,
+			want:   true,
+		},
+		{
+			name:   "match http without TLS",
+			scheme: "http",
+			tls:    false,
+			want:   true,
+		},
+		{
+			name:   "no match https without TLS",
+			scheme: "https",
+			tls:    false,
+			want:   false,
+		},
+		{
+			name:   "no match http with TLS",
+			scheme: "http",
+			tls:    true,
+			want:   false,
+		},
+		{
+			name:      "no spoof via r.URL.Scheme without TLS",
+			scheme:    "https",
+			urlScheme: "https",
+			tls:       false,
+			want:      false,
+		},
+		{
+			name:      "no spoof via r.URL.Scheme with TLS",
+			scheme:    "http",
+			urlScheme: "http",
+			tls:       true,
+			want:      false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := SchemeMatcher{scheme: tc.scheme}
+			req := httptest.NewRequest(http.MethodGet, "/path", nil)
+			if tc.urlScheme != "" {
+				req.URL.Scheme = tc.urlScheme
+			} else {
+				req.URL.Scheme = ""
+			}
+			if tc.tls {
+				req.TLS = &tls.ConnectionState{}
+			} else {
+				req.TLS = nil
+			}
+			w := httptest.NewRecorder()
+			c := NewTestContextOnly(w, req)
+			assert.Equal(t, tc.want, m.Match(c))
+		})
+	}
+}
+
+func TestSchemeMatcher_Equal(t *testing.T) {
+	cases := []struct {
+		name string
+		m1   SchemeMatcher
+		m2   Matcher
+		want bool
+	}{
+		{
+			name: "equal matchers",
+			m1:   SchemeMatcher{scheme: "https"},
+			m2:   SchemeMatcher{scheme: "https"},
+			want: true,
+		},
+		{
+			name: "different scheme",
+			m1:   SchemeMatcher{scheme: "https"},
+			m2:   SchemeMatcher{scheme: "http"},
+			want: false,
+		},
+		{
+			name: "different type",
+			m1:   SchemeMatcher{scheme: "https"},
+			m2:   QueryMatcher{key: "scheme", value: "https"},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.m1.Equal(tc.m2))
+		})
+	}
+}
+
+func TestSchemeMatcher_String(t *testing.T) {
+	m := SchemeMatcher{scheme: "https"}
+	assert.Equal(t, "s:https", m.String())
+}
+
+func TestMatchScheme(t *testing.T) {
+	cases := []struct {
+		name       string
+		scheme     string
+		wantErr    bool
+		wantScheme string
+	}{
+		{
+			name:       "valid http",
+			scheme:     "http",
+			wantErr:    false,
+			wantScheme: "http",
+		},
+		{
+			name:       "valid https",
+			scheme:     "https",
+			wantErr:    false,
+			wantScheme: "https",
+		},
+		{
+			name:       "uppercase HTTPS gets canonicalized",
+			scheme:     "HTTPS",
+			wantErr:    false,
+			wantScheme: "https",
+		},
+		{
+			name:       "mixed case Https gets canonicalized",
+			scheme:     "Https",
+			wantErr:    false,
+			wantScheme: "https",
+		},
+		{
+			name:    "invalid scheme ws",
+			scheme:  "ws",
+			wantErr: true,
+		},
+		{
+			name:    "empty scheme",
+			scheme:  "",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := MatchScheme(tc.scheme)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantScheme, m.Scheme())
 		})
 	}
 }

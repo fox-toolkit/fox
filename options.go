@@ -447,6 +447,29 @@ func WithClientIPMatcher(ip string) interface {
 	})
 }
 
+// WithSchemeMatcher attaches a URL scheme matcher to a route. The matcher ensures that requests are
+// only routed to the handler if the connection scheme matches the given value. Only "http" and "https"
+// are accepted. The scheme is ONLY derived from the TLS state of the connection between the client and
+// the server. Behind a TLS-terminating reverse proxy, this matcher therefore reflects the proxy-to-server
+// hop, not the original client connection; to route on the original client scheme (e.g. via
+// X-Forwarded-Proto), implement a custom [Matcher] that reads the header within a trust boundary you
+// control. Note that r.URL.Scheme is intentionally ignored: it can be set by an attacker via HTTP/1.1
+// absolute-form requests. Multiple matchers can be attached to the same route. All matchers
+// must match for the route to be eligible.
+func WithSchemeMatcher(scheme string) interface {
+	RouteOption
+	MatcherOption
+} {
+	return optionFunc(func(s sealedOption) error {
+		matcher, err := MatchScheme(scheme)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidMatcher, err)
+		}
+		s.route.matchers = append(s.route.matchers, matcher)
+		return nil
+	})
+}
+
 // WithMatcher attaches a custom matcher to a route. Matchers allow for advanced request routing based
 // on conditions beyond the request host, path and method. Multiple matchers can be attached to the same route.
 // All matchers must match for the route to be eligible.
