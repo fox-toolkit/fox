@@ -80,6 +80,8 @@ With a [correctly configured](https://go.dev/doc/install#testing) Go toolchain:
 ```shell
 go get -u github.com/fox-toolkit/fox
 ```
+This library requires [Go 1.26.0](https://tip.golang.org/doc/go1.26) or above. Per [the Go release policy](https://go.dev/doc/devel/release#policy),
+it only supports the two most recent major releases of Go, i.e. 1.26 and 1.25.
 
 #### Basic example
 ````go
@@ -896,7 +898,7 @@ BenchmarkMartini_GithubAll          1728           1375748 ns/op          236943
 - [x] [Support infix wildcard](https://github.com/fox-toolkit/fox/pull/46), [Support hostname routing](https://github.com/fox-toolkit/fox/pull/48), [Support ACID transaction](https://github.com/fox-toolkit/fox/pull/49) @v0.18.0
 - [x] [Support regexp params](https://github.com/fox-toolkit/fox/pull/68) @v0.25.0
 - [x] [Support route matchers](https://github.com/fox-toolkit/fox/pull/69), [Support SubRouter](https://github.com/fox-toolkit/fox/pull/70), [Method-less tree](https://github.com/fox-toolkit/fox/pull/71) @v0.26.0
-- [ ] Programmatic error handling
+- [x] Programmatic error handling
 - [ ] Improving performance and stabilizing API
 
 ## Contributions
