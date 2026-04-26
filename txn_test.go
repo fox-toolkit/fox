@@ -280,27 +280,27 @@ func TestTxn_Add_ConflictWithName(t *testing.T) {
 	t.Run("conflict with matchers", func(t *testing.T) {
 		txn := f.Txn(true)
 		defer txn.Abort()
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/users/{id}", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/users/{id}", emptyHandler,
 			WithQueryMatcher("version", "v2"),
 			WithHeaderMatcher("Authorization", "secret"),
-		)), ErrRouteConflict)
+		)), new(*RouteConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 	})
 	t.Run("conflict with name", func(t *testing.T) {
 		txn := f.Txn(true)
 		defer txn.Abort()
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/users/{id}", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/users/{id}", emptyHandler,
 			WithQueryMatcher("version", "v1"),
 			WithHeaderMatcher("Authorization", "secret"),
 			WithName("users"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/users/{id}", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/users/{id}", emptyHandler,
 			WithQueryMatcher("version", "v1"),
 			WithHeaderMatcher("Authorization", "secret"),
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
 		txn.Commit()
@@ -314,34 +314,34 @@ func TestTxn_Add_ConflictWithName(t *testing.T) {
 	t.Run("conflict with name on split node", func(t *testing.T) {
 		txn := f.Txn(true)
 		defer txn.Abort()
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/use", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/use", emptyHandler,
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/usa", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/usa", emptyHandler,
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/usa/foo", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/usa/foo", emptyHandler,
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/users/{name}/email", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/users/{name}/email", emptyHandler,
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "/users/{name:aaa}", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "/users/{name:aaa}", emptyHandler,
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorIs(t, onlyError(txn.Add(MethodGet, "exemple/use", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "exemple/use", emptyHandler,
 			WithName("users"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
 		txn.Commit()
@@ -391,20 +391,20 @@ func TestTxn_Update_ConflictWithName(t *testing.T) {
 	t.Run("conflict on insert name", func(t *testing.T) {
 		txn := f.Txn(true)
 		defer txn.Abort()
-		require.ErrorIs(t, onlyError(txn.Update(MethodGet, "/users", emptyHandler,
+		require.ErrorAs(t, onlyError(txn.Update(MethodGet, "/users", emptyHandler,
 			WithName("users"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 	})
 
 	t.Run("conflict on update name", func(t *testing.T) {
 		txn := f.Txn(true)
 		defer txn.Abort()
-		require.ErrorIs(t, onlyError(txn.Update(MethodGet, "/users", emptyHandler,
+		require.ErrorAs(t, onlyError(txn.Update(MethodGet, "/users", emptyHandler,
 			WithQueryMatcher("version", "v1"),
 			WithHeaderMatcher("Authorization", "secret"),
 			WithName("users_name"),
-		)), ErrRouteNameExist)
+		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 	})
 }

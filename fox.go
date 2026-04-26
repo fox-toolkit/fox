@@ -195,8 +195,8 @@ func (fox *Router) MustAdd(methods []string, pattern string, handler HandlerFunc
 // Add registers a new route for the given methods, pattern and matchers. On success, it returns the newly registered [Route].
 // If an error occurs, it returns one of the following:
 //   - [*PatternError]: If the pattern syntax is invalid.
-//   - [ErrRouteConflict]: If the route conflict with others.
-//   - [ErrRouteNameExist]: If the route name is already registered.
+//   - [*RouteConflictError]: If the route conflict with others.
+//   - [*RouteNameConflictError]: If the route name is already registered.
 //   - [ErrInvalidRoute]: If the method is invalid, the handler is nil or the pattern is empty.
 //   - [ErrInvalidConfig]: If the provided route options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
@@ -215,8 +215,8 @@ func (fox *Router) Add(methods []string, pattern string, handler HandlerFunc, op
 }
 
 // AddRoute registers a new [Route]. If an error occurs, it returns one of the following:
-//   - [ErrRouteConflict]: If the route conflict with others.
-//   - [ErrRouteNameExist]: If the route name is already registered.
+//   - [*RouteConflictError]: If the route conflict with others.
+//   - [*RouteNameConflictError]: If the route name is already registered.
 //   - [ErrInvalidRoute]: If the route is missing.
 //
 // It's safe to add a new route while the router is serving requests. This function is safe for concurrent use by
@@ -235,7 +235,7 @@ func (fox *Router) AddRoute(route *Route) error {
 // If an error occurs, it returns one of the following:
 //   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteNotFound]: If the route does not exist.
-//   - [ErrRouteNameExist]: If the route name is already registered.
+//   - [*RouteNameConflictError]: If the route name is already registered.
 //   - [ErrInvalidRoute]: If the method is invalid, the handler is nil or the pattern is empty.
 //   - [ErrInvalidConfig]: If the provided route options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
@@ -258,7 +258,7 @@ func (fox *Router) Update(methods []string, pattern string, handler HandlerFunc,
 // UpdateRoute override an existing [Route] for the given new [Route].
 // If an error occurs, it returns one of the following:
 //   - [ErrRouteNotFound]: If the route does not exist.
-//   - [ErrRouteNameExist]: If the route name is already registered.
+//   - [*RouteNameConflictError]: If the route name is already registered.
 //   - [ErrInvalidRoute]: If the route is missing.
 //
 // It's safe to update a handler while the router is serving requests. This function is safe for concurrent use by

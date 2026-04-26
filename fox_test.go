@@ -2043,7 +2043,6 @@ func TestRouter_Add_Conflict(t *testing.T) {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
 			got := onlyError(f.Add(MethodGet, tc.insert, emptyHandler))
-			assert.ErrorIs(t, got, ErrRouteConflict)
 			var conflict *RouteConflictError
 			require.ErrorAs(t, got, &conflict)
 			patterns := iterutil.Map(slices.Values(conflict.Conflicts), func(a *Route) string {
