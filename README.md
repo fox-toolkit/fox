@@ -53,6 +53,7 @@ the canonical path, or enforcing strict matching based on your needs.
   * [Method-less routes](#method-less-routes)
   * [Sub-Routers](#sub-routers)
   * [Hostname validation & restrictions](#hostname-validation--restrictions)
+  * [Path encoding](#path-encoding)
   * [Priority rules](#priority-rules)
     * [Hostname routing](#hostname-routing)
   * [Warning about context](#warning-about-context)
@@ -222,7 +223,7 @@ f.MustAdd(fox.MethodGet, "/api/users", V1Handler) // Fallback route
 ````
 
 Built-in matchers include `fox.WithQueryMatcher`, `fox.WithQueryRegexpMatcher`, `fox.WithHeaderMatcher`, `fox.WithHeaderRegexpMatcher`,
-and `fox.WithClientIPMatcher`. Multiple matchers on a route use AND logic. Routes without matchers serve as fallbacks.
+`WithSchemeMatcher` and `fox.WithClientIPMatcher`. Multiple matchers on a route use AND logic. Routes without matchers serve as fallbacks.
 For custom matching logic, implement the `fox.Matcher` interface and use `fox.WithMatcher`. See [Priority rules](#priority-rules) for matcher
 evaluation order.
 
@@ -276,6 +277,13 @@ Hostnames are validated to conform to the [LDH (letters, digits, hyphens) rule](
 since they act as placeholders rather than actual domain labels. As such, they do not count toward the hard limit of 63 characters per label,
 nor the 253-character limit for the full hostname. Internationalized domain names (IDNs) should be specified using an ASCII
 (Punycode) representation.
+
+#### Path encoding
+
+Fox matches requests against the canonical encoded path, equivalent to `url.URL.EscapedPath()` with percent-encoded hex
+sequences normalized to uppercase (e.g. `%2f` becomes `%2F`). Encoded and decoded forms are not interchangeable so a request
+for `/foo%2Fbar` will not match a pattern registered as `/foo/bar`. Patterns containing literal characters that require
+encoding must be registered in their encoded form (e.g. `/foo%20bar`, not `/foo bar`).
 
 #### Priority rules
 
