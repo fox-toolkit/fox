@@ -4333,11 +4333,11 @@ func atomicSync() (start func(), wait func()) {
 	return
 }
 
-// This example demonstrates how to create a simple router using the default options,
-// which include the Recovery and Logger middleware.
-func ExampleNew() {
-	// Create a new router with default options, which include the Recovery and Logger middleware
-	r, _ := NewRouter(DefaultOptions())
+// This example demonstrates how to create a simple router with the default options
+// combined with pretty logging, which registers the Recovery and Logger middleware.
+func ExampleNewRouter() {
+	// Create a new router with default options and pretty logging (Recovery + Logger middleware).
+	r, _ := NewRouter(DefaultOptions(), WithPrettyLogs())
 
 	// Define a route with the path "/hello/{name}", and set a simple handler that greets the
 	// user by their name.
@@ -4412,7 +4412,7 @@ func ExampleRouter_Updates() {
 		// It means that writing on the current transaction while iterating is allowed, but the mutation will not be
 		// observed in the result returned by PatternPrefix (or any other iterator).
 		for route := range it.PatternPrefix("tmp.exemple.com/") {
-			if _, err := f.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
+			if _, err := txn.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
 				return err
 			}
 		}
@@ -4443,7 +4443,7 @@ func ExampleRouter_Txn() {
 	// It means that writing on the current transaction while iterating is allowed, but the mutation will not be
 	// observed in the result returned by PatternPrefix (or any other iterator).
 	for route := range it.PatternPrefix("tmp.exemple.com/") {
-		if _, err := f.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
+		if _, err := txn.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
 			log.Printf("error deleting route: %s", err)
 			return
 		}
