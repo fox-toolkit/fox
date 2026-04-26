@@ -47,6 +47,34 @@ func TestQueryMatcher_Match(t *testing.T) {
 			url:   "/path",
 			want:  false,
 		},
+		{
+			name:  "match second value of multi-value",
+			key:   "foo",
+			value: "b",
+			url:   "/path?foo=a&foo=b",
+			want:  true,
+		},
+		{
+			name:  "no match across multi-value",
+			key:   "foo",
+			value: "c",
+			url:   "/path?foo=a&foo=b",
+			want:  false,
+		},
+		{
+			name:  "no match empty value with missing key",
+			key:   "foo",
+			value: "",
+			url:   "/path",
+			want:  false,
+		},
+		{
+			name:  "match empty value with present empty value",
+			key:   "foo",
+			value: "",
+			url:   "/path?foo=",
+			want:  true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -129,6 +157,27 @@ func TestQueryRegexpMatcher_Match(t *testing.T) {
 			url:     "/path?other=123",
 			want:    false,
 		},
+		{
+			name:    "match second value of multi-value",
+			key:     "id",
+			pattern: `^\d+$`,
+			url:     "/path?id=abc&id=123",
+			want:    true,
+		},
+		{
+			name:    "no match across multi-value",
+			key:     "id",
+			pattern: `^\d+$`,
+			url:     "/path?id=abc&id=def",
+			want:    false,
+		},
+		{
+			name:    "no match permissive regex with missing key",
+			key:     "id",
+			pattern: `^.*$`,
+			url:     "/path",
+			want:    false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -187,28 +236,28 @@ func TestHeaderMatcher_Match(t *testing.T) {
 		name      string
 		headerKey string
 		value     string
-		headers   map[string]string
+		headers   map[string][]string
 		want      bool
 	}{
 		{
 			name:      "match header",
 			headerKey: "Content-Type",
 			value:     "application/json",
-			headers:   map[string]string{"Content-Type": "application/json"},
+			headers:   map[string][]string{"Content-Type": {"application/json"}},
 			want:      true,
 		},
 		{
 			name:      "no match different value",
 			headerKey: "Content-Type",
 			value:     "application/json",
-			headers:   map[string]string{"Content-Type": "text/plain"},
+			headers:   map[string][]string{"Content-Type": {"text/plain"}},
 			want:      false,
 		},
 		{
 			name:      "no match missing header",
 			headerKey: "Content-Type",
 			value:     "application/json",
-			headers:   map[string]string{"Accept": "application/json"},
+			headers:   map[string][]string{"Accept": {"application/json"}},
 			want:      false,
 		},
 		{
@@ -218,14 +267,30 @@ func TestHeaderMatcher_Match(t *testing.T) {
 			headers:   nil,
 			want:      false,
 		},
+		{
+			name:      "match second value of multi-value",
+			headerKey: "Content-Type",
+			value:     "application/json",
+			headers:   map[string][]string{"Content-Type": {"text/plain", "application/json"}},
+			want:      true,
+		},
+		{
+			name:      "no match across multi-value",
+			headerKey: "Content-Type",
+			value:     "application/json",
+			headers:   map[string][]string{"Content-Type": {"text/plain", "text/html"}},
+			want:      false,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := HeaderMatcher{canonicalKey: http.CanonicalHeaderKey(tc.headerKey), value: tc.value}
 			req := httptest.NewRequest(http.MethodGet, "/path", nil)
-			for k, v := range tc.headers {
-				req.Header.Set(k, v)
+			for k, vs := range tc.headers {
+				for _, v := range vs {
+					req.Header.Add(k, v)
+				}
 			}
 			w := httptest.NewRecorder()
 			c := NewTestContextOnly(w, req)
@@ -279,28 +344,42 @@ func TestHeaderRegexpMatcher_Match(t *testing.T) {
 		name      string
 		headerKey string
 		pattern   string
-		headers   map[string]string
+		headers   map[string][]string
 		want      bool
 	}{
 		{
 			name:      "match regex",
 			headerKey: "Content-Type",
 			pattern:   `^application/.*`,
-			headers:   map[string]string{"Content-Type": "application/json"},
+			headers:   map[string][]string{"Content-Type": {"application/json"}},
 			want:      true,
 		},
 		{
 			name:      "no match regex",
 			headerKey: "Content-Type",
 			pattern:   `^application/.*`,
-			headers:   map[string]string{"Content-Type": "text/plain"},
+			headers:   map[string][]string{"Content-Type": {"text/plain"}},
 			want:      false,
 		},
 		{
 			name:      "missing header",
 			headerKey: "Content-Type",
 			pattern:   `^application/.*`,
-			headers:   map[string]string{"Accept": "application/json"},
+			headers:   map[string][]string{"Accept": {"application/json"}},
+			want:      false,
+		},
+		{
+			name:      "match second value of multi-value",
+			headerKey: "Content-Type",
+			pattern:   `^application/.*`,
+			headers:   map[string][]string{"Content-Type": {"text/plain", "application/json"}},
+			want:      true,
+		},
+		{
+			name:      "no match across multi-value",
+			headerKey: "Content-Type",
+			pattern:   `^application/.*`,
+			headers:   map[string][]string{"Content-Type": {"text/plain", "text/html"}},
 			want:      false,
 		},
 	}
@@ -309,8 +388,10 @@ func TestHeaderRegexpMatcher_Match(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := HeaderRegexpMatcher{canonicalKey: http.CanonicalHeaderKey(tc.headerKey), regex: regexp.MustCompile(tc.pattern)}
 			req := httptest.NewRequest(http.MethodGet, "/path", nil)
-			for k, v := range tc.headers {
-				req.Header.Set(k, v)
+			for k, vs := range tc.headers {
+				for _, v := range vs {
+					req.Header.Add(k, v)
+				}
 			}
 			w := httptest.NewRecorder()
 			c := NewTestContextOnly(w, req)
