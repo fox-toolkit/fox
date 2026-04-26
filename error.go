@@ -12,8 +12,6 @@ import (
 
 var (
 	ErrRouteNotFound           = errors.New("route not found")
-	ErrRouteConflict           = errors.New("route conflict")
-	ErrRouteNameExist          = errors.New("route name already registered")
 	ErrInvalidRoute            = errors.New("invalid route")
 	ErrDiscardedResponseWriter = errors.New("discarded response writer")
 	ErrNoClientIPResolver      = errors.New("no client ip resolver")
@@ -58,11 +56,6 @@ func (e *RouteConflictError) Error() string {
 	return sb.String()
 }
 
-// Unwrap returns the sentinel value [ErrRouteConflict].
-func (e *RouteConflictError) Unwrap() error {
-	return ErrRouteConflict
-}
-
 // RouteNameConflictError represents a conflict that occurred during route name registration.
 // It contains the route being registered, and the existing route that caused the conflict.
 type RouteNameConflictError struct {
@@ -79,11 +72,6 @@ func (e *RouteNameConflictError) Error() string {
 	sb.WriteString("\nconflicts with\n")
 	routef(sb, e.Conflict, 4, true)
 	return sb.String()
-}
-
-// Unwrap returns the sentinel value [ErrRouteNameExist].
-func (e *RouteNameConflictError) Unwrap() error {
-	return ErrRouteNameExist
 }
 
 func newRouteNotFoundError(route *Route) error {

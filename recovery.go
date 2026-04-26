@@ -127,8 +127,7 @@ func recovery(logger *slog.Logger, c *Context, handle RecoveryFunc) {
 func connIsBroken(err any) bool {
 	//goland:noinspection GoTypeAssertionOnErrors
 	if ne, ok := err.(*net.OpError); ok {
-		var se *os.SyscallError
-		if errors.As(ne, &se) {
+		if se, ok2 := errors.AsType[*os.SyscallError](ne); ok2 {
 			seStr := strings.ToLower(se.Error())
 			return strings.Contains(seStr, "broken pipe") || strings.Contains(seStr, "connection reset by peer")
 		}
