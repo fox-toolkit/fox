@@ -1004,12 +1004,12 @@ func TestRouter_ServeHTTP_StaticWithStaticDomain(t *testing.T) {
 	f, _ := NewRouter()
 
 	for _, route := range staticRoutes {
-		require.NoError(t, onlyError(f.Add([]string{route.method}, "exemple.com"+route.path, pathHandler)))
+		require.NoError(t, onlyError(f.Add([]string{route.method}, "example.com"+route.path, pathHandler)))
 	}
 
 	for _, route := range staticRoutes {
 		req := httptest.NewRequest(route.method, route.path, nil)
-		req.Host = "exemple.com"
+		req.Host = "example.com"
 		w := httptest.NewRecorder()
 		f.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code)
@@ -1024,7 +1024,7 @@ func TestRouter_ServeHTTP_StaticWithStaticDomainTxn(t *testing.T) {
 
 	require.NoError(t, f.Updates(func(txn *Txn) error {
 		for _, route := range staticRoutes {
-			if err := onlyError(txn.Add([]string{route.method}, "exemple.com"+route.path, pathHandler)); err != nil {
+			if err := onlyError(txn.Add([]string{route.method}, "example.com"+route.path, pathHandler)); err != nil {
 				return err
 			}
 		}
@@ -1033,7 +1033,7 @@ func TestRouter_ServeHTTP_StaticWithStaticDomainTxn(t *testing.T) {
 
 	for _, route := range staticRoutes {
 		req := httptest.NewRequest(route.method, route.path, nil)
-		req.Host = "exemple.com"
+		req.Host = "example.com"
 		w := httptest.NewRecorder()
 		f.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code)
@@ -1062,12 +1062,12 @@ func TestRouter_ServeHTTP_StaticWithStaticDomainMalloc(t *testing.T) {
 	r, _ := NewRouter()
 
 	for _, route := range staticRoutes {
-		require.NoError(t, onlyError(r.Add([]string{route.method}, "exemple.com"+route.path, emptyHandler)))
+		require.NoError(t, onlyError(r.Add([]string{route.method}, "example.com"+route.path, emptyHandler)))
 	}
 
 	for _, route := range staticRoutes {
 		req := httptest.NewRequest(route.method, route.path, nil)
-		req.Host = "exemple.com"
+		req.Host = "example.com"
 		w := httptest.NewRecorder()
 		allocs := testing.AllocsPerRun(100, func() { r.ServeHTTP(w, req) })
 		assert.Equal(t, float64(0), allocs)
@@ -3445,10 +3445,10 @@ func TestRouter_Reverse(t *testing.T) {
 
 	t.Run("reverse with hostname", func(t *testing.T) {
 		f, _ := NewRouter()
-		route, err := f.Add(MethodGet, "{sub}.exemple.com/foo", emptyHandler)
+		route, err := f.Add(MethodGet, "{sub}.example.com/foo", emptyHandler)
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-		req.Host = "foo.exemple.com"
+		req.Host = "foo.example.com"
 		got, tsr := f.Match(req.Method, req)
 		assert.False(t, tsr)
 		require.NotNil(t, route)
@@ -3457,10 +3457,10 @@ func TestRouter_Reverse(t *testing.T) {
 
 	t.Run("reverse with hostname (case-insensitive)", func(t *testing.T) {
 		f, _ := NewRouter()
-		route, err := f.Add(MethodGet, "{sub}.exemple.com/foo", emptyHandler)
+		route, err := f.Add(MethodGet, "{sub}.example.com/foo", emptyHandler)
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-		req.Host = "FOO.EXEMPLE.COM"
+		req.Host = "FOO.EXAMPLE.COM"
 		got, tsr := f.Match(req.Method, req)
 		assert.False(t, tsr)
 		require.NotNil(t, route)
@@ -4377,12 +4377,12 @@ func ExampleWithMiddleware() {
 
 func ExampleRouter_Match() {
 	f, _ := NewRouter()
-	f.MustAdd([]string{http.MethodGet, http.MethodHead}, "exemple.com/hello/{name}", emptyHandler)
+	f.MustAdd([]string{http.MethodGet, http.MethodHead}, "example.com/hello/{name}", emptyHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/hello/fox", nil)
 
 	route, tsr := f.Match(req.Method, req)
-	fmt.Println(route.Pattern(), tsr) // exemple.com/hello/{name} false
+	fmt.Println(route.Pattern(), tsr) // example.com/hello/{name} false
 }
 
 func ExampleRouter_Has() {
@@ -4400,7 +4400,7 @@ func ExampleRouter_Updates() {
 	// from the function then the transaction is committed. If an error is returned then the entire transaction is
 	// aborted.
 	if err := f.Updates(func(txn *Txn) error {
-		if _, err := txn.Add([]string{http.MethodGet, http.MethodHead}, "exemple.com/hello/{name}", func(c *Context) {
+		if _, err := txn.Add([]string{http.MethodGet, http.MethodHead}, "example.com/hello/{name}", func(c *Context) {
 			_ = c.String(http.StatusOK, fmt.Sprintf("Hello %s\n", c.Param("name")))
 		}); err != nil {
 			return err
@@ -4411,7 +4411,7 @@ func ExampleRouter_Updates() {
 		// When Iter() is called on a write transaction, it creates a point-in-time snapshot of the transaction state.
 		// It means that writing on the current transaction while iterating is allowed, but the mutation will not be
 		// observed in the result returned by PatternPrefix (or any other iterator).
-		for route := range it.PatternPrefix("tmp.exemple.com/") {
+		for route := range it.PatternPrefix("tmp.example.com/") {
 			if _, err := txn.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
 				return err
 			}
@@ -4430,7 +4430,7 @@ func ExampleRouter_Txn() {
 	txn := f.Txn(true)
 	defer txn.Abort()
 
-	if _, err := txn.Add([]string{http.MethodGet, http.MethodHead}, "exemple.com/hello/{name}", func(c *Context) {
+	if _, err := txn.Add([]string{http.MethodGet, http.MethodHead}, "example.com/hello/{name}", func(c *Context) {
 		_ = c.String(http.StatusOK, fmt.Sprintf("Hello %s\n", c.Param("name")))
 	}); err != nil {
 		log.Printf("error inserting route: %s", err)
@@ -4442,7 +4442,7 @@ func ExampleRouter_Txn() {
 	// When Iter() is called on a write transaction, it creates a point-in-time snapshot of the transaction state.
 	// It means that writing on the current transaction while iterating is allowed, but the mutation will not be
 	// observed in the result returned by PatternPrefix (or any other iterator).
-	for route := range it.PatternPrefix("tmp.exemple.com/") {
+	for route := range it.PatternPrefix("tmp.example.com/") {
 		if _, err := txn.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
 			log.Printf("error deleting route: %s", err)
 			return

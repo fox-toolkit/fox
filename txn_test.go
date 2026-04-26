@@ -271,7 +271,7 @@ func TestTxn_Add_ConflictWithName(t *testing.T) {
 		WithHeaderMatcher("Authorization", "secret"),
 		WithName("users_name"),
 	)
-	f.MustAdd(MethodGet, "exemple.com/users/{name}", emptyHandler,
+	f.MustAdd(MethodGet, "example.com/users/{name}", emptyHandler,
 		WithQueryMatcher("version", "v2"),
 		WithHeaderMatcher("Authorization", "secret"),
 		WithName("hostname_users_name"),
@@ -339,14 +339,14 @@ func TestTxn_Add_ConflictWithName(t *testing.T) {
 		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
-		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "exemple/use", emptyHandler,
+		assert.ErrorAs(t, onlyError(txn.Add(MethodGet, "example/use", emptyHandler,
 			WithName("users"),
 		)), new(*RouteNameConflictError))
 		assert.Nil(t, txn.rootTxn.writable)
 
 		txn.Commit()
 		assert.False(t, f.Has(MethodGet, "/use"))
-		assert.False(t, f.Has(MethodGet, "exemple/use"))
+		assert.False(t, f.Has(MethodGet, "example/use"))
 		assert.False(t, f.Has(MethodGet, "/users/{name:aaa}"))
 		assert.False(t, f.Has(MethodGet, "/users/{name}/email"))
 		assert.False(t, f.Has(MethodGet, "/usa/foo"))

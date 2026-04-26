@@ -24,13 +24,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "static hostname with complex overlapping route with static priority",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1}/jo",
-				"exemple.com/foo/+{any}/baz/{$1}/jo",
-				"exemple.com/foo/{ps}/baz/{$1}/jo",
+				"example.com/foo/bar/baz/{$1}/jo",
+				"example.com/foo/+{any}/baz/{$1}/jo",
+				"example.com/foo/{ps}/baz/{$1}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bar/baz/1/jo",
-			wantPath: "exemple.com/foo/bar/baz/{$1}/jo",
+			wantPath: "example.com/foo/bar/baz/{$1}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -74,13 +74,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "static hostname with complex overlapping route with static priority and regexp",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1:[0-9]}/jo",
-				"exemple.com/foo/+{any:.*}/baz/{$1:.*}/jo",
-				"exemple.com/foo/{ps:.*}/baz/{$1:.*}/jo",
+				"example.com/foo/bar/baz/{$1:[0-9]}/jo",
+				"example.com/foo/+{any:.*}/baz/{$1:.*}/jo",
+				"example.com/foo/{ps:.*}/baz/{$1:.*}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bar/baz/1/jo",
-			wantPath: "exemple.com/foo/bar/baz/{$1:[0-9]}/jo",
+			wantPath: "example.com/foo/bar/baz/{$1:[0-9]}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -92,13 +92,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "static hostname with complex overlapping route with param priority",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1}/jo",
-				"exemple.com/foo/+{any}/baz/{$1}/jo",
-				"exemple.com/foo/{ps}/baz/{$1}/jo",
+				"example.com/foo/bar/baz/{$1}/jo",
+				"example.com/foo/+{any}/baz/{$1}/jo",
+				"example.com/foo/{ps}/baz/{$1}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bam/baz/1/jo",
-			wantPath: "exemple.com/foo/{ps}/baz/{$1}/jo",
+			wantPath: "example.com/foo/{ps}/baz/{$1}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -114,13 +114,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "static hostname with complex overlapping route with param priority and regexp",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1:[0-9]}/jo",
-				"exemple.com/foo/+{any:.*}/baz/{$1:.*}/jo",
-				"exemple.com/foo/{ps:.*}/baz/{$1:.*}/jo",
+				"example.com/foo/bar/baz/{$1:[0-9]}/jo",
+				"example.com/foo/+{any:.*}/baz/{$1:.*}/jo",
+				"example.com/foo/{ps:.*}/baz/{$1:.*}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bam/baz/1/jo",
-			wantPath: "exemple.com/foo/{ps:.*}/baz/{$1:.*}/jo",
+			wantPath: "example.com/foo/{ps:.*}/baz/{$1:.*}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -136,13 +136,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "wildcard hostname with complex overlapping route with static priority",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1}/jo",
+				"example.com/foo/bar/baz/{$1}/jo",
 				"{any}.com/foo/+{any}/baz/{$1}/jo",
-				"exemple.{tld}/foo/{ps}/baz/{$1}/jo",
+				"example.{tld}/foo/{ps}/baz/{$1}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bar/baz/1/jo",
-			wantPath: "exemple.com/foo/bar/baz/{$1}/jo",
+			wantPath: "example.com/foo/bar/baz/{$1}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -154,13 +154,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "wildcard hostname with complex overlapping route with static priority an regexp",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1}/jo",
+				"example.com/foo/bar/baz/{$1}/jo",
 				"{any:.*}.com/foo/+{any}/baz/{$1}/jo",
-				"exemple.{tld}/foo/{ps}/baz/{$1}/jo",
+				"example.{tld}/foo/{ps}/baz/{$1}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bar/baz/1/jo",
-			wantPath: "exemple.com/foo/bar/baz/{$1}/jo",
+			wantPath: "example.com/foo/bar/baz/{$1}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -172,13 +172,13 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 		{
 			name: "wildcard hostname with complex overlapping route with static priority (case-insensitive)",
 			routes: []string{
-				"exemple.com/foo/bar/baz/{$1}/jo",
+				"example.com/foo/bar/baz/{$1}/jo",
 				"{any}.com/foo/+{any}/baz/{$1}/jo",
-				"exemple.{tld}/foo/{ps}/baz/{$1}/jo",
+				"example.{tld}/foo/{ps}/baz/{$1}/jo",
 			},
-			host:     "EXEMPLE.COM",
+			host:     "EXAMPLE.COM",
 			path:     "/foo/bar/baz/1/jo",
-			wantPath: "exemple.com/foo/bar/baz/{$1}/jo",
+			wantPath: "example.com/foo/bar/baz/{$1}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -191,12 +191,12 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 			name: "wildcard hostname with complex overlapping route with param priority",
 			routes: []string{
 				"{sub}.com/foo/bar/baz/{$1}/jo",
-				"exemple.{tld}/foo/+{any}/baz/{$1}/jo",
-				"exemple.com/foo/{ps}/baz/{$1}/jo",
+				"example.{tld}/foo/+{any}/baz/{$1}/jo",
+				"example.com/foo/{ps}/baz/{$1}/jo",
 			},
-			host:     "exemple.com",
+			host:     "example.com",
 			path:     "/foo/bam/baz/1/jo",
-			wantPath: "exemple.com/foo/{ps}/baz/{$1}/jo",
+			wantPath: "example.com/foo/{ps}/baz/{$1}/jo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
@@ -1257,23 +1257,23 @@ func Test_iTree_lookup_Matchers(t *testing.T) {
 		{
 			name: "tsr on hostname route after failing all query match",
 			routes: []route{
-				{pattern: "exemple.com/foo/bar/"},
+				{pattern: "example.com/foo/bar/"},
 				{pattern: "/foo/bar", matchers: []Matcher{QueryMatcher{"a", "b"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar",
-			wantPattern: "exemple.com/foo/bar/",
+			wantPattern: "example.com/foo/bar/",
 			wantTsr:     true,
 		},
 		{
 			name: "tsr on hostname+matcher route after failing all query match",
 			routes: []route{
-				{pattern: "exemple.com/foo/bar/", matchers: []Matcher{QueryMatcher{"c", "d"}}},
+				{pattern: "example.com/foo/bar/", matchers: []Matcher{QueryMatcher{"c", "d"}}},
 				{pattern: "/foo/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"c", "d"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?c=d",
-			wantPattern: "exemple.com/foo/bar/",
+			wantPattern: "example.com/foo/bar/",
 			wantTsr:     true,
 		},
 		{
@@ -1342,48 +1342,48 @@ func Test_iTree_lookup_Matchers(t *testing.T) {
 		{
 			name: "tsr on hostname route after failing one query match",
 			routes: []route{
-				{pattern: "exemple.com/foo/bar/"},
+				{pattern: "example.com/foo/bar/"},
 				{pattern: "/foo/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"c", "d"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?a=b",
-			wantPattern: "exemple.com/foo/bar/",
+			wantPattern: "example.com/foo/bar/",
 			wantTsr:     true,
 		},
 		{
 			name: "no match with hostname but path with matchers",
 			routes: []route{
-				{pattern: "exemple.com/foo/bar/baz"},
+				{pattern: "example.com/foo/bar/baz"},
 				{pattern: "/foo/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"c", "d"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?a=b&c=d",
 			wantPattern: "/foo/bar",
 		},
 		{
 			name: "no match with hostname but path with param backtrack",
 			routes: []route{
-				{pattern: "exemple.com/{name}/bar/baz"},
+				{pattern: "example.com/{name}/bar/baz"},
 				{pattern: "/foo/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"c", "d"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?a=b&c=d",
 			wantPattern: "/foo/bar",
 		},
 		{
 			name: "match with multiple same query matchers",
 			routes: []route{
-				{pattern: "exemple.com/{name}/bar/baz"},
+				{pattern: "example.com/{name}/bar/baz"},
 				{pattern: "/foo/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"a", "b"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?a=b",
 			wantPattern: "/foo/bar",
 		},
 		{
 			name: "match many query matchers",
 			routes: []route{
-				{pattern: "exemple.com/{name}/bar/baz"},
+				{pattern: "example.com/{name}/bar/baz"},
 				{pattern: "/foo/bar", matchers: []Matcher{
 					QueryMatcher{"a", "b"},
 					QueryMatcher{"c", "d"},
@@ -1393,21 +1393,21 @@ func Test_iTree_lookup_Matchers(t *testing.T) {
 					QueryMatcher{"k", "l"},
 				}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?e=f&k=l&a=b&c=d&g=h&i=j",
 			wantPattern: "/foo/bar",
 		},
 		{
 			name: "fallback to tsr after failing matching multiple same level routes",
 			routes: []route{
-				{pattern: "exemple.com/{name}/bar/"},
+				{pattern: "example.com/{name}/bar/"},
 				{pattern: "/{id}/bar", matchers: []Matcher{QueryMatcher{"a", "b"}}},
 				{pattern: "/{id}/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"c", "d"}}},
 				{pattern: "/{id}/bar", matchers: []Matcher{QueryMatcher{"a", "b"}, QueryMatcher{"c", "d"}, QueryMatcher{"e", "f"}}},
 			},
-			host:        "exemple.com",
+			host:        "example.com",
 			path:        "/foo/bar?a=a&c=d&e=f",
-			wantPattern: "exemple.com/{name}/bar/",
+			wantPattern: "example.com/{name}/bar/",
 			wantTsr:     true,
 			wantParams: []Param{
 				{
@@ -4619,10 +4619,10 @@ func Test_iTree_deleteRoot(t *testing.T) {
 	assert.Equal(t, 0, len(tree.patterns.params))
 	assert.Equal(t, 0, len(tree.patterns.wildcards))
 
-	require.NoError(t, onlyError(f.Add(MethodOptions, "exemple.com/foo/bar", emptyHandler)))
-	deletedRoute, err = f.Delete(MethodOptions, "exemple.com/foo/bar")
+	require.NoError(t, onlyError(f.Add(MethodOptions, "example.com/foo/bar", emptyHandler)))
+	deletedRoute, err = f.Delete(MethodOptions, "example.com/foo/bar")
 	require.NoError(t, err)
-	assert.Equal(t, "exemple.com/foo/bar", deletedRoute.Pattern())
+	assert.Equal(t, "example.com/foo/bar", deletedRoute.Pattern())
 	tree = f.getTree()
 	assert.Equal(t, 0, len(tree.patterns.statics))
 	assert.Equal(t, 0, len(tree.patterns.params))

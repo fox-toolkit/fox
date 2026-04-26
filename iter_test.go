@@ -43,21 +43,21 @@ func TestIter_Routes(t *testing.T) {
 func TestIter_RoutesWithHostname(t *testing.T) {
 	f, _ := NewRouter()
 	for _, rte := range routesCases {
-		require.NoError(t, onlyError(f.Add(MethodGet, "exemple.com"+rte, emptyHandler)))
-		require.NoError(t, onlyError(f.Add(MethodPost, "exemple.com"+rte, emptyHandler)))
-		require.NoError(t, onlyError(f.Add(MethodHead, "exemple.com"+rte, emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodGet, "example.com"+rte, emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodPost, "example.com"+rte, emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodHead, "example.com"+rte, emptyHandler)))
 	}
 
 	results := make(map[string][]string)
 	it := f.Iter()
-	for route := range it.Routes("exemple.com/foo/bar/{baz}/{name}") {
+	for route := range it.Routes("example.com/foo/bar/{baz}/{name}") {
 		assert.NotNil(t, route)
 		method := iterutil.First(route.Methods())
 		assert.NotEmpty(t, method)
 		results[method] = append(results[method], route.Pattern())
 	}
 
-	want := []string{"exemple.com/foo/bar/{baz}/{name}"}
+	want := []string{"example.com/foo/bar/{baz}/{name}"}
 	assert.Len(t, results, 3)
 	for key := range results {
 		assert.ElementsMatch(t, want, results[key])
@@ -90,9 +90,9 @@ func TestIter_All(t *testing.T) {
 func TestIter_AllWithHostname(t *testing.T) {
 	f, _ := NewRouter()
 	for _, rte := range routesCases {
-		require.NoError(t, onlyError(f.Add(MethodGet, "exemple.com"+rte, emptyHandler)))
-		require.NoError(t, onlyError(f.Add(MethodPost, "exemple.com"+rte, emptyHandler)))
-		require.NoError(t, onlyError(f.Add(MethodHead, "exemple.com"+rte, emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodGet, "example.com"+rte, emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodPost, "example.com"+rte, emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodHead, "example.com"+rte, emptyHandler)))
 	}
 
 	results := make(map[string][]string)
@@ -106,7 +106,7 @@ func TestIter_AllWithHostname(t *testing.T) {
 	}
 
 	routesCasesHostname := slices.Collect(iterutil.Map(slices.Values(routesCases), func(path string) string {
-		return "exemple.com" + path
+		return "example.com" + path
 	}))
 
 	for key := range results {
