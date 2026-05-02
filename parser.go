@@ -77,6 +77,7 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 		staticSinceWild int
 		partLen         int
 		totalLen        int
+		labelStart      int
 		last            = dotDelim
 		nonNumeric      bool
 	)
@@ -171,10 +172,11 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 					return nil, 0, newPatternError("syntax", i-1, i, "label ends with '-'")
 				}
 				if partLen > 63 {
-					return nil, 0, newPatternError("constraint", i-partLen, i, "label exceeds 63 characters")
+					return nil, 0, newPatternError("constraint", labelStart, i, "label exceeds 63 characters")
 				}
 				totalLen += partLen + 1 // +1 counts the current dot.
 				partLen = 0
+				labelStart = i + 1
 			case 'A' <= c && c <= 'Z':
 				return nil, 0, newPatternError("syntax", i, i+1, "uppercase character in label")
 			default:
@@ -198,7 +200,7 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 		return nil, 0, newPatternError("syntax", 0, len(hostname), "all numeric")
 	}
 	if partLen > 63 {
-		return nil, 0, newPatternError("constraint", len(hostname)-partLen, len(hostname), "label exceeds 63 characters")
+		return nil, 0, newPatternError("constraint", labelStart, len(hostname), "label exceeds 63 characters")
 	}
 	if totalLen > 253 {
 		return nil, 0, newPatternError("constraint", 0, len(hostname), "exceeds 253 characters")
@@ -351,8 +353,11 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 	}
 
 	for j := 0; j < len(name); j++ {
-		switch name[j] {
-		// TODO: just put . and /, add also }
+		c := name[j]
+		if c < 0x20 || c == 0x7f {
+			return "", nil, 0, newPatternError("parameter", 1+j, 1+j+1, "illegal control character in name")
+		}
+		switch c {
 		case delim, '/', '*', '+', '{':
 			return "", nil, 0, newPatternError("parameter", 1+j, 1+j+1, "illegal character in name")
 		}
