@@ -266,15 +266,17 @@ func (t *tXn) insert(route *Route, mode insertMode) error {
 		t.patterns = newRoot
 		t.maxDepth = max(t.maxDepth, t.computePathDepth(newRoot, route.pattern.tokens))
 		t.maxParams = max(t.maxParams, len(route.params))
-		t.size++
-		if len(route.methods) > 0 && t.mode == modeInsert {
-			if !t.forked {
-				t.methods = maps.Clone(t.methods)
-				t.forked = true
-			}
+		if t.mode == modeInsert {
+			t.size++
+			if len(route.methods) > 0 {
+				if !t.forked {
+					t.methods = maps.Clone(t.methods)
+					t.forked = true
+				}
 
-			for _, method := range route.methods {
-				t.methods[method]++
+				for _, method := range route.methods {
+					t.methods[method]++
+				}
 			}
 		}
 	}
