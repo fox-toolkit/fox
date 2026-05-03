@@ -283,7 +283,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			}
 
 		default:
-			if c < ' ' || c == 0x7f {
+			if isASCIIControl(c) {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
 			if c == '/' && i > 0 && path[i-1] == '/' {
@@ -354,7 +354,7 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 
 	for j := 0; j < len(name); j++ {
 		c := name[j]
-		if c < 0x20 || c == 0x7f {
+		if isASCIIControl(c) {
 			return "", nil, 0, newPatternError("parameter", 1+j, 1+j+1, "illegal control character in name")
 		}
 		switch c {
@@ -406,6 +406,12 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 	}
 
 	return re, nil
+}
+
+// isASCIIControl reports whether c is an ASCII control character: a C0 byte
+// (0x00 to 0x1F) or DEL (0x7F).
+func isASCIIControl(c byte) bool {
+	return c < 0x20 || c == 0x7f
 }
 
 // braceIndex returns the index of the closing brace that balances an opening
