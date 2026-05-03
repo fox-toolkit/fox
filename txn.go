@@ -285,6 +285,10 @@ func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
 		panic(ErrSettledTxn)
 	}
 
+	if method == "" {
+		return nil, false
+	}
+
 	tree := txn.rootTxn.tree
 	c := tree.pool.Get().(*Context)
 	defer tree.pool.Put(c)
@@ -307,6 +311,10 @@ func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
 func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Context, tsr bool) {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
+	}
+
+	if r.Method == "" {
+		return nil, nil, false
 	}
 
 	tree := txn.rootTxn.tree
