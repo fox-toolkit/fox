@@ -2,7 +2,6 @@ package fox
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"regexp/syntax"
 	"slices"
@@ -1584,6 +1583,51 @@ func TestPatternError_Position(t *testing.T) {
 			wantEnd:    17,
 			wantMsg:    "capture group",
 		},
+		{
+			name:       "hostname label exceeds 63 chars before dot with param",
+			pattern:    strings.Repeat("a", 64) + "{b}.com/",
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  0,
+			wantEnd:    67,
+			wantMsg:    "label exceeds 63 characters",
+		},
+		{
+			name:       "hostname trailing label exceeds 63 chars with param",
+			pattern:    strings.Repeat("a", 64) + "{b}/",
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  0,
+			wantEnd:    67,
+			wantMsg:    "label exceeds 63 characters",
+		},
+		{
+			name:       "hostname middle label exceeds 63 chars with param",
+			pattern:    "a.b." + strings.Repeat("a", 64) + "{b}.com/",
+			wantType:   "hostname",
+			wantReason: "constraint",
+			wantStart:  4,
+			wantEnd:    71,
+			wantMsg:    "label exceeds 63 characters",
+		},
+		{
+			name:       "path control character in parameter name",
+			pattern:    "/foo/{a\x00b}",
+			wantType:   "path",
+			wantReason: "parameter",
+			wantStart:  7,
+			wantEnd:    8,
+			wantMsg:    "illegal control character in name",
+		},
+		{
+			name:       "hostname control character in parameter name",
+			pattern:    "{a\x7fb}.com/",
+			wantType:   "hostname",
+			wantReason: "parameter",
+			wantStart:  2,
+			wantEnd:    3,
+			wantMsg:    "illegal control character in name",
+		},
 	}
 
 	for _, tc := range cases {
@@ -1598,7 +1642,6 @@ func TestPatternError_Position(t *testing.T) {
 			assert.Equal(t, tc.wantStart, pe.Start)
 			assert.Equal(t, tc.wantEnd, pe.End)
 			assert.Contains(t, pe.Error(), tc.wantMsg)
-			fmt.Println(err)
 		})
 	}
 }
