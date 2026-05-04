@@ -361,6 +361,9 @@ func (fox *Router) Name(name string) *Route {
 // (trailing slash action recommended). This function is safe for concurrent use by multiple goroutine and while
 // mutation on routes are ongoing. See also [Router.Lookup] as an alternative.
 func (fox *Router) Match(method string, r *http.Request) (route *Route, tsr bool) {
+	if method == "" {
+		return nil, false
+	}
 	tree := fox.getTree()
 	c := tree.pool.Get().(*Context)
 	defer tree.pool.Put(c)
@@ -381,6 +384,9 @@ func (fox *Router) Match(method string, r *http.Request) (route *Route, tsr bool
 // [Route] and a [Context]. The [Context] should always be closed if non-nil. This function is safe for
 // concurrent use by multiple goroutine and while mutation on routes are ongoing. See also [Router.Match] as an alternative.
 func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Context, tsr bool) {
+	if r.Method == "" {
+		return nil, nil, false
+	}
 	tree := fox.getTree()
 	c := tree.pool.Get().(*Context)
 	c.resetWithWriter(w, r)
@@ -457,6 +463,10 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 		copy(rte.methods, methods)
 		slices.Sort(rte.methods)
 		rte.methods = slices.Compact(rte.methods)
+	}
+
+	if len(rte.methods) == 1 && len(rte.matchers) == 0 {
+		rte.methodFast = rte.methods[0]
 	}
 
 	return rte, nil

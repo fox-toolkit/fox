@@ -19,6 +19,7 @@ type Route struct {
 	mws         []middleware
 	params      []string
 	matchers    []Matcher
+	methodFast  string
 	pattern     pattern
 	priority    uint
 	handleSlash TrailingSlashOption
@@ -135,12 +136,27 @@ func (r *Route) String() string {
 // match reports whether the request satisfies this route's method constraint (if any)
 // and all attached matchers.
 func (r *Route) match(method string, c RequestContext) bool {
-	// Fast path for common cases: no methods or single method
+	// Fast path: routes with exactly one method and no matchers cache that
+	// method in methodFast.
+	if r.methodFast == method {
+		return true
+	}
+	return r.matchSlow(method, c)
+}
+
+// matchSlow handles the cases match's fast path does not cover: zero or many
+// methods, and routes with matchers. It is kept out-of-line so match remains
+// inlinable.
+//
+//go:noinline
+func (r *Route) matchSlow(method string, c RequestContext) bool {
 	methods := r.methods
 	switch len(methods) {
 	case 0:
-		// No method constraint
+		// No method constraint.
 	case 1:
+		// Avoid the slices.Contains overhead for the single-method case (which
+		// match's fast path leaves to us when matchers are present).
 		if methods[0] != method {
 			return false
 		}
@@ -149,7 +165,6 @@ func (r *Route) match(method string, c RequestContext) bool {
 			return false
 		}
 	}
-
 	for _, m := range r.matchers {
 		if !m.Match(c) {
 			return false

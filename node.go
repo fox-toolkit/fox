@@ -106,7 +106,10 @@ Walk:
 			if idx < num && matched.statics[idx].label == label {
 				child := matched.statics[idx]
 				keyLen := len(child.key)
-				if keyLen <= len(search) && stringsutil.EqualStringsASCIIIgnoreCase(search[:keyLen], child.key) {
+				// keyLen == 1 short-circuits the case-insensitive compare: hostname keys are
+				// stored lowercase (uppercase is rejected at parse time) and the label match
+				// already proved lowercase(search[0]) == child.key[0].
+				if keyLen == 1 || (keyLen <= len(search) && stringsutil.EqualStringsASCIIIgnoreCase(search[:keyLen], child.key)) {
 					if len(matched.params) > 0 || len(matched.wildcards) > 0 {
 						*c.skipStack = append(*c.skipStack, skipNode{
 							node:         matched,
@@ -332,8 +335,10 @@ Walk:
 				child := matched.statics[idx]
 				keyLen := len(child.key)
 				// While this is less performant than byte-by-byte comparaison for reasonable search size,
-				// direct == comparaison on string scale way better on long route.
-				if keyLen <= len(search) && search[:keyLen] == child.key {
+				// direct == comparaison on string scale way better on long route. The keyLen == 1 case
+				// short-circuits the memequal call: we already verified search[0] == child.key[0] via the
+				// label match above.
+				if keyLen == 1 || (keyLen <= len(search) && search[:keyLen] == child.key) {
 					if len(matched.params) > 0 || len(matched.wildcards) > 0 {
 						*c.skipStack = append(*c.skipStack, skipNode{
 							node:         matched,
