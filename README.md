@@ -777,18 +777,18 @@ It is just a collection of random static paths inspired by the structure of the 
 
 **GOMAXPROCS: 1**
 ```
-BenchmarkHttpRouter_StaticAll     624214              3800 ns/op               0 B/op          0 allocs/op
-BenchmarkHttpTreeMux_StaticAll    475593              5077 ns/op               0 B/op          0 allocs/op
-BenchmarkGin_StaticAll            437480              5461 ns/op               0 B/op          0 allocs/op
-BenchmarkEcho_StaticAll           298819              7452 ns/op               0 B/op          0 allocs/op
-BenchmarkFox_StaticAll            292527              8102 ns/op               0 B/op          0 allocs/op
-BenchmarkStdMux_StaticAll         186615             12339 ns/op               0 B/op          0 allocs/op
-BenchmarkChi_StaticAll             63331             37896 ns/op           57776 B/op        314 allocs/op
-BenchmarkBeego_StaticAll           42171             57150 ns/op           55264 B/op        471 allocs/op
-BenchmarkGorillaMux_StaticAll       8614            293244 ns/op          133137 B/op       1099 allocs/op
-BenchmarkPat_StaticAll              5626            414071 ns/op          602832 B/op      12559 allocs/op
-BenchmarkMartini_StaticAll          4375            562980 ns/op          129210 B/op       2031 allocs/op
-BenchmarkTraffic_StaticAll          3708            646128 ns/op          749842 B/op      14444 allocs/op
+BenchmarkHttpRouter_StaticAll     600622              3855 ns/op               0 B/op          0 allocs/op
+BenchmarkHttpTreeMux_StaticAll    460645              5186 ns/op               0 B/op          0 allocs/op
+BenchmarkGin_StaticAll            437052              5522 ns/op               0 B/op          0 allocs/op
+BenchmarkFox_StaticAll            322261              7463 ns/op               0 B/op          0 allocs/op
+BenchmarkEcho_StaticAll           290506              7883 ns/op               0 B/op          0 allocs/op
+BenchmarkStdMux_StaticAll         185131             12493 ns/op               0 B/op          0 allocs/op
+BenchmarkChi_StaticAll             63568             37919 ns/op           57776 B/op        314 allocs/op
+BenchmarkBeego_StaticAll           41713             57695 ns/op           55264 B/op        471 allocs/op
+BenchmarkGorillaMux_StaticAll       8433            293721 ns/op          133137 B/op       1099 allocs/op
+BenchmarkPat_StaticAll              5715            411287 ns/op          602832 B/op      12559 allocs/op
+BenchmarkMartini_StaticAll          4327            562994 ns/op          129210 B/op       2031 allocs/op
+BenchmarkTraffic_StaticAll          3784            643735 ns/op          749842 B/op      14444 allocs/op
 ```
 In this benchmark, Fox performs as well as `Gin` and `Echo` which are both Radix Tree based routers. An interesting fact is
 that [HttpTreeMux](https://github.com/dimfeld/httptreemux) also support [adding route while serving request concurrently](https://github.com/dimfeld/httptreemux#concurrency).
@@ -800,7 +800,6 @@ test compare `HttpTreeMux` with and without the `*SafeAddRouteFlag` (concurrent 
 BenchmarkFox_StaticAllParallel-16                3309738               739.3 ns/op             0 B/op          0 allocs/op
 BenchmarkHttpTreeMux_StaticAllParallel-16         100099             23991 ns/op               0 B/op          0 allocs/op
 ```
-As you can see, this benchmark highlight the cost of using higher synchronisation primitive like `RWMutex` to be able to register new route while handling requests.
 
 ### Micro Benchmarks
 The following benchmarks measure the cost of some very basic operations.
@@ -810,45 +809,45 @@ matching this pattern is made and the router has to call the respective register
 
 **GOMAXPROCS: 1**
 ```
-BenchmarkEcho_Param             100000000               21.37 ns/op            0 B/op          0 allocs/op
-BenchmarkGin_Param              100000000               23.43 ns/op            0 B/op          0 allocs/op
-BenchmarkFox_Param              89916406                26.83 ns/op            0 B/op          0 allocs/op
-BenchmarkHttpRouter_Param       79691304                30.77 ns/op           32 B/op          1 allocs/op
-BenchmarkHttpTreeMux_Param      15789637               152.6 ns/op           352 B/op          3 allocs/op
-BenchmarkBeego_Param             7728720               314.2 ns/op           352 B/op          3 allocs/op
-BenchmarkPat_Param               7304704               316.0 ns/op           472 B/op          8 allocs/op
-BenchmarkChi_Param               7349187               327.5 ns/op           704 B/op          4 allocs/op
-BenchmarkGorillaMux_Param        4107637               583.5 ns/op          1152 B/op          8 allocs/op
-BenchmarkTraffic_Param           2434245               944.6 ns/op          1808 B/op         19 allocs/op
-BenchmarkMartini_Param           2001694              1215 ns/op            1096 B/op         12 allocs/op
+BenchmarkEcho_Param             100000000               22.49 ns/op            0 B/op          0 allocs/op
+BenchmarkGin_Param              99813538                23.75 ns/op            0 B/op          0 allocs/op
+BenchmarkFox_Param              89412807                27.07 ns/op            0 B/op          0 allocs/op
+BenchmarkHttpRouter_Param       77283691                30.87 ns/op           32 B/op          1 allocs/op
+BenchmarkHttpTreeMux_Param      15785535               148.3 ns/op           352 B/op          3 allocs/op
+BenchmarkPat_Param               7759366               309.3 ns/op           472 B/op          8 allocs/op
+BenchmarkChi_Param               7498572               319.4 ns/op           704 B/op          4 allocs/op
+BenchmarkBeego_Param             7642452               320.6 ns/op           352 B/op          3 allocs/op
+BenchmarkGorillaMux_Param        4160580               579.6 ns/op          1152 B/op          8 allocs/op
+BenchmarkTraffic_Param           2533519               951.1 ns/op          1808 B/op         19 allocs/op
+BenchmarkMartini_Param           1968855              1218 ns/op            1096 B/op         12 allocs/op
 ```
 Same as before, but now with multiple parameters, all in the same single route. The intention is to see how the routers scale with the number of parameters.
 
 **GOMAXPROCS: 1**
 ```
-BenchmarkGin_Param5             60474345                41.07 ns/op            0 B/op          0 allocs/op
-BenchmarkEcho_Param5            54142920                43.99 ns/op            0 B/op          0 allocs/op
-BenchmarkFox_Param5             38424334                62.01 ns/op            0 B/op          0 allocs/op
-BenchmarkHttpRouter_Param5      29863018                80.66 ns/op          160 B/op          1 allocs/op
-BenchmarkHttpTreeMux_Param5      7086744               338.2 ns/op           576 B/op          6 allocs/op
-BenchmarkBeego_Param5            5765439               412.4 ns/op           352 B/op          3 allocs/op
-BenchmarkChi_Param5              5436216               444.1 ns/op           704 B/op          4 allocs/op
-BenchmarkPat_Param5              3452257               707.6 ns/op           776 B/op         23 allocs/op
-BenchmarkGorillaMux_Param5       2546830               934.7 ns/op          1216 B/op          8 allocs/op
-BenchmarkMartini_Param5          1664374              1436 ns/op            1256 B/op         13 allocs/op
-BenchmarkTraffic_Param5          1617499              1445 ns/op            2176 B/op         26 allocs/op
+BenchmarkGin_Param5             59644988                40.35 ns/op            0 B/op          0 allocs/op
+BenchmarkEcho_Param5            48861675                47.70 ns/op            0 B/op          0 allocs/op
+BenchmarkFox_Param5             40538828                58.79 ns/op            0 B/op          0 allocs/op
+BenchmarkHttpRouter_Param5      29083740                81.10 ns/op          160 B/op          1 allocs/op
+BenchmarkHttpTreeMux_Param5      7146506               338.1 ns/op           576 B/op          6 allocs/op
+BenchmarkBeego_Param5            5716908               421.8 ns/op           352 B/op          3 allocs/op
+BenchmarkChi_Param5              5187115               455.1 ns/op           704 B/op          4 allocs/op
+BenchmarkPat_Param5              3462309               705.5 ns/op           776 B/op         23 allocs/op
+BenchmarkGorillaMux_Param5       2532480               947.2 ns/op          1216 B/op          8 allocs/op
+BenchmarkTraffic_Param5          1658610              1426 ns/op            2176 B/op         26 allocs/op
+BenchmarkMartini_Param5          1672132              1436 ns/op            1256 B/op         13 allocs/op
 
-BenchmarkEcho_Param20           20749047               116.1 ns/op             0 B/op          0 allocs/op
-BenchmarkGin_Param20            20870449               117.1 ns/op             0 B/op          0 allocs/op
-BenchmarkFox_Param20            10336230               234.9 ns/op             0 B/op          0 allocs/op
-BenchmarkHttpRouter_Param20      8866296               269.5 ns/op           704 B/op          1 allocs/op
-BenchmarkBeego_Param20           2399250               995.7 ns/op           352 B/op          3 allocs/op
-BenchmarkChi_Param20             1392295              1735 ns/op            2504 B/op          9 allocs/op
-BenchmarkHttpTreeMux_Param20     1300804              1843 ns/op            3144 B/op         13 allocs/op
-BenchmarkGorillaMux_Param20      1000000              2065 ns/op            3272 B/op         13 allocs/op
-BenchmarkMartini_Param20          868604              2716 ns/op            3568 B/op         18 allocs/op
-BenchmarkPat_Param20              695614              3433 ns/op            3992 B/op         75 allocs/op
-BenchmarkTraffic_Param20          453583              5186 ns/op            7664 B/op         52 allocs/op
+BenchmarkGin_Param20            19447232               123.8 ns/op             0 B/op          0 allocs/op
+BenchmarkEcho_Param20           18642206               128.0 ns/op             0 B/op          0 allocs/op
+BenchmarkFox_Param20            12932709               185.6 ns/op             0 B/op          0 allocs/op
+BenchmarkHttpRouter_Param20      9025162               266.7 ns/op           704 B/op          1 allocs/op
+BenchmarkBeego_Param20           2373394              1004 ns/op             352 B/op          3 allocs/op
+BenchmarkChi_Param20             1399316              1734 ns/op            2504 B/op          9 allocs/op
+BenchmarkHttpTreeMux_Param20     1311330              1836 ns/op            3144 B/op         13 allocs/op
+BenchmarkGorillaMux_Param20      1000000              2067 ns/op            3272 B/op         13 allocs/op
+BenchmarkMartini_Param20          878756              2723 ns/op            3568 B/op         18 allocs/op
+BenchmarkPat_Param20              703573              3460 ns/op            3992 B/op         75 allocs/op
+BenchmarkTraffic_Param20          458248              5142 ns/op            7664 B/op         52 allocs/op
 ```
 
 Now let's see how expensive it is to access a parameter. The handler function reads the value (by the name of the parameter, e.g. with a map 
@@ -856,38 +855,35 @@ lookup; depends on the router) and writes it to `/dev/null`
 
 **GOMAXPROCS: 1**
 ```
-BenchmarkGin_ParamWrite                 81540667                27.21 ns/op            0 B/op          0 allocs/op
-BenchmarkFox_ParamWrite                 69228854                34.00 ns/op            0 B/op          0 allocs/op
-BenchmarkHttpRouter_ParamWrite          69800920                34.05 ns/op           32 B/op          1 allocs/op
-BenchmarkEcho_ParamWrite                46682539                49.16 ns/op            8 B/op          1 allocs/op
-BenchmarkHttpTreeMux_ParamWrite         15320574               160.0 ns/op           352 B/op          3 allocs/op
-BenchmarkChi_ParamWrite                  7458879               323.0 ns/op           704 B/op          4 allocs/op
-BenchmarkBeego_ParamWrite                7340652               327.7 ns/op           360 B/op          4 allocs/op
-BenchmarkPat_ParamWrite                  4767104               501.8 ns/op           896 B/op         12 allocs/op
-BenchmarkGorillaMux_ParamWrite           4066573               592.5 ns/op          1152 B/op          8 allocs/op
-BenchmarkTraffic_ParamWrite              2079380              1148 ns/op            2232 B/op         23 allocs/op
-BenchmarkMartini_ParamWrite              1760973              1355 ns/op            1144 B/op         15 allocs/op
+BenchmarkGin_ParamWrite                 82057476                26.87 ns/op            0 B/op          0 allocs/op
+BenchmarkFox_ParamWrite                 72516771                32.68 ns/op            0 B/op          0 allocs/op
+BenchmarkHttpRouter_ParamWrite          71118048                33.78 ns/op           32 B/op          1 allocs/op
+BenchmarkEcho_ParamWrite                45928765                50.17 ns/op            8 B/op          1 allocs/op
+BenchmarkHttpTreeMux_ParamWrite         15136818               159.6 ns/op           352 B/op          3 allocs/op
+BenchmarkChi_ParamWrite                  7253366               325.9 ns/op           704 B/op          4 allocs/op
+BenchmarkBeego_ParamWrite                7241011               330.4 ns/op           360 B/op          4 allocs/op
+BenchmarkPat_ParamWrite                  4791008               502.9 ns/op           896 B/op         12 allocs/op
+BenchmarkGorillaMux_ParamWrite           4056636               594.9 ns/op          1152 B/op          8 allocs/op
+BenchmarkTraffic_ParamWrite              2107534              1149 ns/op            2232 B/op         23 allocs/op
+BenchmarkMartini_ParamWrite              1764926              1352 ns/op            1144 B/op         15 allocs/op
 ```
-
-In those micro benchmarks, we can see that `Fox` scale really well, even with long wildcard routes. Like `Gin`, this router reuse the
-data structure (e.g. `fox.Context` slice) containing the matching parameters in order to remove completely heap allocation. 
 
 ### Github
 Finally, this benchmark executes a request for each GitHub API route (203 routes).
 
 **GOMAXPROCS: 1**
 ```
-BenchmarkGin_GithubAll            286442              8405 ns/op               0 B/op          0 allocs/op
-BenchmarkEcho_GithubAll           207840             11112 ns/op               0 B/op          0 allocs/op
-BenchmarkHttpRouter_GithubAll     179312             13219 ns/op           14240 B/op        171 allocs/op
-BenchmarkFox_GithubAll            170670             14033 ns/op               0 B/op          0 allocs/op
-BenchmarkHttpTreeMux_GithubAll     58237             41668 ns/op           67648 B/op        691 allocs/op
-BenchmarkChi_GithubAll             30548             78991 ns/op          130817 B/op        740 allocs/op
-BenchmarkBeego_GithubAll           30604             79720 ns/op           73121 B/op        629 allocs/op
-BenchmarkTraffic_GithubAll          2248           1071896 ns/op          837296 B/op      14315 allocs/op
-BenchmarkPat_GithubAll              2174           1104015 ns/op         1834945 B/op      28773 allocs/op
-BenchmarkGorillaMux_GithubAll       1900           1272217 ns/op          230339 B/op       1620 allocs/op
-BenchmarkMartini_GithubAll          1728           1375748 ns/op          236943 B/op       2805 allocs/op
+BenchmarkGin_GithubAll            275486              8594 ns/op               0 B/op          0 allocs/op
+BenchmarkEcho_GithubAll           191268             11927 ns/op               0 B/op          0 allocs/op
+BenchmarkFox_GithubAll            180686             13396 ns/op               0 B/op          0 allocs/op
+BenchmarkHttpRouter_GithubAll     177955             13499 ns/op           14240 B/op        171 allocs/op
+BenchmarkHttpTreeMux_GithubAll     56208             42220 ns/op           67648 B/op        691 allocs/op
+BenchmarkBeego_GithubAll           29916             79898 ns/op           73121 B/op        629 allocs/op
+BenchmarkChi_GithubAll             30638             80428 ns/op          130817 B/op        740 allocs/op
+BenchmarkTraffic_GithubAll          2254           1078505 ns/op          837296 B/op      14315 allocs/op
+BenchmarkPat_GithubAll              2174           1120138 ns/op         1834945 B/op      28773 allocs/op
+BenchmarkGorillaMux_GithubAll       1879           1289439 ns/op          230339 B/op       1620 allocs/op
+BenchmarkMartini_GithubAll          1678           1406444 ns/op          236944 B/op       2805 allocs/op
 ```
 
 ## Road to v1
