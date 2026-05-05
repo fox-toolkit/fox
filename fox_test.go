@@ -4296,7 +4296,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(300)
 	start, wait := atomicSync()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			defer wg.Done()
 			wait()

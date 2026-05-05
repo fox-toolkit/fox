@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,15 +115,15 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 	}
 	buf = append(buf, " | "...)
 
-	lastGroup := ""
+	var lastGroup strings.Builder
 	for _, goa := range h.Goa {
 		switch {
 		case goa.group != "":
-			lastGroup += goa.group + "."
+			lastGroup.WriteString(goa.group + ".")
 		default:
 			attr := goa.attr
-			if lastGroup != "" {
-				attr.Key = lastGroup + attr.Key
+			if lastGroup.String() != "" {
+				attr.Key = lastGroup.String() + attr.Key
 			}
 
 			buf = appendAttr(record.Level, buf, attr)
@@ -132,8 +133,8 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 	// If there are additional attributes, append them to the log record.
 	if record.NumAttrs() > 0 {
 		record.Attrs(func(attr slog.Attr) bool {
-			if lastGroup != "" {
-				attr.Key = lastGroup + attr.Key
+			if lastGroup.String() != "" {
+				attr.Key = lastGroup.String() + attr.Key
 			}
 			buf = appendAttr(record.Level, buf, attr)
 
