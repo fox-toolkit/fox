@@ -22,7 +22,7 @@ func TestLRU_Basics(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		l.Add(i, i)
 	}
 	if l.Len() != 128 {
@@ -46,7 +46,7 @@ func TestLRU_Basics(t *testing.T) {
 			t.Fatalf("bad value: %v", v)
 		}
 	}
-	for i := 0; i < 128; i++ {
+	for i := range 128 {
 		if _, ok := l.Get(i); ok {
 			t.Fatalf("should be evicted")
 		}
@@ -90,7 +90,7 @@ func TestLRU_GetOldest_RemoveOldest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		l.Add(i, i)
 	}
 	k, _, ok := l.GetOldest()

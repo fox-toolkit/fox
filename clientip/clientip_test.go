@@ -311,7 +311,7 @@ func TestAddressesAndRangesToIPNets(t *testing.T) {
 			}
 
 			require.Equal(t, len(tt.want), len(got))
-			for i := 0; i < len(got); i++ {
+			for i := range got {
 				if got[i].String() != tt.want[i] {
 					assert.Equal(t, tt.want[i], got[i].String())
 				}

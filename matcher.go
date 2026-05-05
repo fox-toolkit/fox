@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/fox-toolkit/fox/internal/netutil"
@@ -59,12 +60,7 @@ func (m QueryMatcher) Match(c RequestContext) bool {
 	if len(values) == 0 {
 		return false
 	}
-	for _, v := range values {
-		if v == m.value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, m.value)
 }
 
 // Equal reports whether matcher is a [QueryMatcher] with the same key and value.
@@ -129,12 +125,7 @@ func (m QueryRegexpMatcher) Match(c RequestContext) bool {
 	if len(values) == 0 {
 		return false
 	}
-	for _, v := range values {
-		if m.regex.MatchString(v) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(values, m.regex.MatchString)
 }
 
 // Equal reports whether matcher is a [QueryRegexpMatcher] with the same key and regular expression source.
@@ -182,12 +173,7 @@ func (m HeaderMatcher) Match(c RequestContext) bool {
 	if len(values) == 0 {
 		return false
 	}
-	for _, v := range values {
-		if v == m.value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, m.value)
 }
 
 // Equal reports whether matcher is a [HeaderMatcher] with the same key and value.
@@ -247,12 +233,7 @@ func (m HeaderRegexpMatcher) Match(c RequestContext) bool {
 	if len(values) == 0 {
 		return false
 	}
-	for _, v := range values {
-		if m.regex.MatchString(v) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(values, m.regex.MatchString)
 }
 
 // Equal reports whether matcher is a [HeaderRegexpMatcher] with the same key and regular expression source.

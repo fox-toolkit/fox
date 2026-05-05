@@ -83,12 +83,12 @@ func recovery(logger *slog.Logger, c *Context, handle RecoveryFunc) {
 			sb.Write(before)
 			for header := range iterutil.SplitBytesSeq(after, reqHeaderSep) {
 				sb.Write(reqHeaderSep)
-				idx := bytes.IndexByte(header, ':')
-				if idx < 0 {
+				before0, _, ok := bytes.Cut(header, []byte{':'})
+				if !ok {
 					continue
 				}
-				if slices.Contains(blacklistedHeader, string(header[:idx])) {
-					sb.Write(header[:idx])
+				if slices.Contains(blacklistedHeader, string(before0)) {
+					sb.Write(before0)
 					sb.WriteString(": <redacted>")
 					continue
 				}

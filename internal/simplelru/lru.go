@@ -153,10 +153,7 @@ func (c *LRU[K, V]) Cap() int {
 
 // Resize changes the cache size.
 func (c *LRU[K, V]) Resize(size int) (evicted int) {
-	diff := c.Len() - size
-	if diff < 0 {
-		diff = 0
-	}
+	diff := max(c.Len()-size, 0)
 	for i := 0; i < diff; i++ {
 		c.removeOldest()
 	}
