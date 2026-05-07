@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQueryMatcher_Match(t *testing.T) {
@@ -728,6 +729,49 @@ func TestMatchHeaderRegexp(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantKey, m.Key())
 			assert.NotNil(t, m.Regex())
+		})
+	}
+}
+
+func TestRegexpMatcherAlternationPrecedence(t *testing.T) {
+	mq, err := MatchQueryRegexp("scope", "read|write")
+	require.NoError(t, err)
+	mh, err := MatchHeaderRegexp("X-Role", "admin|user|guest")
+	require.NoError(t, err)
+
+	queryCases := []struct {
+		url  string
+		want bool
+	}{
+		{"/?scope=read", true},
+		{"/?scope=write", true},
+		{"/?scope=readBYPASS", false},
+		{"/?scope=EVILwrite", false},
+	}
+	for _, tc := range queryCases {
+		t.Run("query "+tc.url, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
+			c := NewTestContextOnly(httptest.NewRecorder(), req)
+			assert.Equal(t, tc.want, mq.Match(c))
+		})
+	}
+
+	headerCases := []struct {
+		value string
+		want  bool
+	}{
+		{"admin", true},
+		{"user", true},
+		{"guest", true},
+		{"adminBYPASS", false},
+		{"EVILguest", false},
+	}
+	for _, tc := range headerCases {
+		t.Run("header "+tc.value, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("X-Role", tc.value)
+			c := NewTestContextOnly(httptest.NewRecorder(), req)
+			assert.Equal(t, tc.want, mh.Match(c))
 		})
 	}
 }

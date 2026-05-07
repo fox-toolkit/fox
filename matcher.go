@@ -85,7 +85,7 @@ func MatchQueryRegexp(key, expr string) (QueryRegexpMatcher, error) {
 	if key == "" {
 		return QueryRegexpMatcher{}, errors.New("empty query key")
 	}
-	regex, err := regexp.Compile("^" + expr + "$")
+	regex, err := regexp.Compile("^(?:" + expr + ")$")
 	if err != nil {
 		return QueryRegexpMatcher{}, err
 	}
@@ -198,7 +198,7 @@ func MatchHeaderRegexp(key, expr string) (HeaderRegexpMatcher, error) {
 	if key == "" {
 		return HeaderRegexpMatcher{}, errors.New("empty header key")
 	}
-	regex, err := regexp.Compile("^" + expr + "$")
+	regex, err := regexp.Compile("^(?:" + expr + ")$")
 	if err != nil {
 		return HeaderRegexpMatcher{}, err
 	}

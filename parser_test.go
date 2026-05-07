@@ -30,7 +30,7 @@ func Test_parsePattern(t *testing.T) {
 			typ:   nodeParam,
 		}
 		if reg != "" {
-			tk.regexp = regexp.MustCompile("^" + reg + "$")
+			tk.regexp = regexp.MustCompile("^(?:" + reg + ")$")
 		}
 		return tk
 	}
@@ -41,7 +41,7 @@ func Test_parsePattern(t *testing.T) {
 			typ:   nodeWildcard,
 		}
 		if reg != "" {
-			tk.regexp = regexp.MustCompile("^" + reg + "$")
+			tk.regexp = regexp.MustCompile("^(?:" + reg + ")$")
 		}
 		return tk
 	}
