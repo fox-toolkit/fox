@@ -1,3 +1,7 @@
+// Copyright 2022 Sylvain Müller. All rights reserved.
+// Mount of this source code is governed by a Apache-2.0 license that can be found
+// at https://github.com/fox-toolkit/fox/blob/master/LICENSE.txt.
+
 package slogpretty
 
 import (
@@ -19,7 +23,6 @@ func TestHandler_Handle(t *testing.T) {
 		We:  &lockedWriter{w: bufWe},
 		Wo:  &lockedWriter{w: bufWo},
 		Lvl: slog.LevelDebug,
-		Goa: make([]GroupOrAttrs, 0),
 	}
 
 	record := slog.Record{
