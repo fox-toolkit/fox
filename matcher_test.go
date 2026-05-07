@@ -623,7 +623,7 @@ func TestMatchQueryRegexp(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantKey, m.Key())
-			assert.NotNil(t, m.Regex())
+			assert.Equal(t, tc.expr, m.Value())
 		})
 	}
 }
@@ -728,7 +728,7 @@ func TestMatchHeaderRegexp(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantKey, m.Key())
-			assert.NotNil(t, m.Regex())
+			assert.Equal(t, tc.expr, m.Value())
 		})
 	}
 }

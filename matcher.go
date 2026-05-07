@@ -108,14 +108,15 @@ func (m QueryRegexpMatcher) Key() string {
 	return m.key
 }
 
-// Regex returns a copy of the compiled regular expression used to evaluate query values.
-func (m QueryRegexpMatcher) Regex() *regexp.Regexp {
-	return new(*m.regex)
+// Value returns the literal regular expression.
+func (m QueryRegexpMatcher) Value() string {
+	expr := m.regex.String()
+	return expr[4 : len(expr)-2]
 }
 
 // String returns a textual representation of the matcher in the form "qx:key=expr".
 func (m QueryRegexpMatcher) String() string {
-	return "qx:" + m.key + "=" + m.regex.String()
+	return "qx:" + m.key + "=" + m.Value()
 }
 
 // Match reports whether the request URL contains the configured key with any value matching the configured regular
@@ -221,9 +222,10 @@ func (m HeaderRegexpMatcher) Key() string {
 	return m.canonicalKey
 }
 
-// Regex returns a copy of the compiled regular expression used to evaluate header values.
-func (m HeaderRegexpMatcher) Regex() *regexp.Regexp {
-	return new(*m.regex)
+// Value returns the literal regular expression.
+func (m HeaderRegexpMatcher) Value() string {
+	expr := m.regex.String()
+	return expr[4 : len(expr)-2]
 }
 
 // Match reports whether the request contains the configured header with any value matching the configured regular
@@ -247,7 +249,7 @@ func (m HeaderRegexpMatcher) Equal(matcher Matcher) bool {
 
 // String returns a textual representation of the matcher in the form "hx:key=expr".
 func (m HeaderRegexpMatcher) String() string {
-	return "hx:" + m.canonicalKey + "=" + m.regex.String()
+	return "hx:" + m.canonicalKey + "=" + m.Value()
 }
 
 // MatchClientIP returns a [ClientIPMatcher] that matches when the resolved client IP belongs to the given CIDR range.
