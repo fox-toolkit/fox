@@ -225,7 +225,7 @@ f.MustAdd(fox.MethodGet, "/api/users", V1Handler) // Fallback route
 ````
 
 Built-in matchers include `fox.WithQueryMatcher`, `fox.WithQueryRegexpMatcher`, `fox.WithHeaderMatcher`, `fox.WithHeaderRegexpMatcher`,
-`WithSchemeMatcher` and `fox.WithClientIPMatcher`. Multiple matchers on a route use AND logic. Routes without matchers serve as fallbacks.
+`fox.WithSchemeMatcher` and `fox.WithClientIPMatcher`. Multiple matchers on a route use AND logic. Routes without matchers serve as fallbacks.
 For custom matching logic, implement the `fox.Matcher` interface and use `fox.WithMatcher`. See [Priority rules](#priority-rules) for matcher
 evaluation order.
 
