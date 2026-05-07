@@ -1,6 +1,6 @@
-// The code in this package is derivative of https://gitlab.com/greyxor/slogor.
-// Mount of this source code is governed by a MIT license that can be found
-// at https://gitlab.com/greyxor/slogor/-/blob/main/LICENSE?ref_type=heads.
+// Copyright 2022 Sylvain Müller. All rights reserved.
+// Mount of this source code is governed by a Apache-2.0 license that can be found
+// at https://github.com/fox-toolkit/fox/blob/master/LICENSE.txt.
 
 package slogpretty
 
