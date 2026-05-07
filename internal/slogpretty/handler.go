@@ -10,7 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -26,8 +26,7 @@ var _ slog.Handler = (*Handler)(nil)
 
 var logBufPool = sync.Pool{
 	New: func() any {
-		b := make([]byte, 0, initialBufferSize)
-		return &b
+		return new(make([]byte, 0, initialBufferSize))
 	},
 }
 
@@ -36,7 +35,6 @@ var (
 		We:  &lockedWriter{w: os.Stderr},
 		Wo:  &lockedWriter{w: os.Stdout},
 		Lvl: slog.LevelDebug,
-		Goa: make([]GroupOrAttrs, 0),
 	}
 	timeFormat = fmt.Sprintf("%s %s", time.DateOnly, time.TimeOnly)
 )
@@ -48,16 +46,12 @@ func freeBuf(b *[]byte) {
 	}
 }
 
-type GroupOrAttrs struct {
-	attr  slog.Attr
-	group string
-}
-
 type Handler struct {
-	We  io.Writer
-	Wo  io.Writer
-	Lvl slog.Leveler
-	Goa []GroupOrAttrs
+	We          io.Writer
+	Wo          io.Writer
+	Lvl         slog.Leveler
+	groupPrefix string
+	attrs       []slog.Attr
 }
 
 func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
@@ -77,9 +71,9 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 
 	if !record.Time.IsZero() {
 		buf = append(buf, ansi.Faint...)
-		buf = append(buf, record.Time.Format(timeFormat)...)
+		buf = record.Time.AppendFormat(buf, timeFormat)
 		buf = append(buf, ansi.NormalIntensity...)
-		buf = append(buf, " "...)
+		buf = append(buf, ' ')
 	}
 
 	// Write level with appropriate formatting and color.
@@ -89,14 +83,14 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 	case slog.LevelInfo:
 		buf = append(buf, ansi.FgGreen...)
 		buf = append(buf, record.Level.String()...)
-		buf = append(buf, " "...)
+		buf = append(buf, ' ')
 	case slog.LevelError:
 		buf = append(buf, ansi.FgRed...)
 		buf = append(buf, record.Level.String()...)
 	case slog.LevelWarn:
 		buf = append(buf, ansi.FgYellow...)
 		buf = append(buf, record.Level.String()...)
-		buf = append(buf, " "...)
+		buf = append(buf, ' ')
 	case slog.LevelDebug:
 		buf = append(buf, ansi.FgMagenta...)
 		buf = append(buf, record.Level.String()...)
@@ -115,29 +109,14 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 	}
 	buf = append(buf, " | "...)
 
-	var lastGroup strings.Builder
-	for _, goa := range h.Goa {
-		switch {
-		case goa.group != "":
-			lastGroup.WriteString(goa.group + ".")
-		default:
-			attr := goa.attr
-			if lastGroup.String() != "" {
-				attr.Key = lastGroup.String() + attr.Key
-			}
-
-			buf = appendAttr(record.Level, buf, attr)
-		}
+	for i := range h.attrs {
+		buf = appendAttr(record.Level, buf, "", h.attrs[i])
 	}
 
-	// If there are additional attributes, append them to the log record.
 	if record.NumAttrs() > 0 {
+		prefix := h.groupPrefix
 		record.Attrs(func(attr slog.Attr) bool {
-			if lastGroup.String() != "" {
-				attr.Key = lastGroup.String() + attr.Key
-			}
-			buf = appendAttr(record.Level, buf, attr)
-
+			buf = appendAttr(record.Level, buf, prefix, attr)
 			return true
 		})
 	}
@@ -159,34 +138,44 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newAttrs := make([]GroupOrAttrs, len(attrs))
-	for i, attr := range attrs {
-		newAttrs[i] = GroupOrAttrs{attr: attr}
+	if len(attrs) == 0 {
+		return h
+	}
+
+	merged := make([]slog.Attr, len(h.attrs), len(h.attrs)+len(attrs))
+	copy(merged, h.attrs)
+	for _, attr := range attrs {
+		if h.groupPrefix != "" {
+			attr.Key = h.groupPrefix + attr.Key
+		}
+		merged = append(merged, attr)
 	}
 
 	return &Handler{
-		We:  h.We,
-		Wo:  h.Wo,
-		Lvl: h.Lvl,
-		Goa: append(h.Goa, newAttrs...),
+		We:          h.We,
+		Wo:          h.Wo,
+		Lvl:         h.Lvl,
+		attrs:       merged,
+		groupPrefix: h.groupPrefix,
 	}
 }
 
 func (h *Handler) WithGroup(name string) slog.Handler {
+	if name == "" {
+		return h
+	}
 	return &Handler{
-		We:  h.We,
-		Wo:  h.Wo,
-		Lvl: h.Lvl,
-		Goa: append(h.Goa, GroupOrAttrs{group: name}),
+		We:          h.We,
+		Wo:          h.Wo,
+		Lvl:         h.Lvl,
+		attrs:       h.attrs,
+		groupPrefix: h.groupPrefix + name + ".",
 	}
 }
 
-// appendAttr appends the attribute to the buffer.
-func appendAttr(level slog.Level, buf []byte, attr slog.Attr) []byte {
-	// Resolve the Attr's value before doing anything else.
+func appendAttr(level slog.Level, buf []byte, keyPrefix string, attr slog.Attr) []byte {
 	attr.Value = attr.Value.Resolve()
 
-	// Ignore empty Attrs.
 	if attr.Equal(slog.Attr{}) {
 		return buf
 	}
@@ -194,35 +183,64 @@ func appendAttr(level slog.Level, buf []byte, attr slog.Attr) []byte {
 	buf = append(buf, ansi.Faint...)
 	buf = append(buf, ansi.Bold...)
 
+	if keyPrefix != "" {
+		buf = append(buf, keyPrefix...)
+	}
 	buf = append(buf, attr.Key...)
-	buf = append(buf, "="...)
+	buf = append(buf, '=')
 	buf = append(buf, ansi.NormalIntensity...)
 
-	value := attr.Value.String()
 	switch attr.Key {
 	case "method":
 		buf = append(buf, ansi.BgBlue...)
-		value = " " + value + " "
+		buf = append(buf, ' ')
+		buf = appendValue(buf, attr.Value)
+		buf = append(buf, ' ')
 	case "status":
 		buf = append(buf, levelColor(level)...)
-		value = " " + value + " "
+		buf = append(buf, ' ')
+		buf = appendValue(buf, attr.Value)
+		buf = append(buf, ' ')
 	case "location":
 		buf = append(buf, ansi.FgYellow...)
+		buf = appendValue(buf, attr.Value)
 	case "latency":
 		dt := roundLatency(attr.Value.Duration())
 		buf = append(buf, latencyColor(dt)...)
-		value = dt.String()
+		buf = append(buf, dt.String()...)
 	case "error":
 		buf = append(buf, ansi.FgRed...)
+		buf = appendValue(buf, attr.Value)
 	default:
 		buf = append(buf, ansi.FgCyan...)
+		buf = appendValue(buf, attr.Value)
 	}
 
-	buf = append(buf, value...)
 	buf = append(buf, ansi.Reset...)
-	buf = append(buf, " "...)
+	buf = append(buf, ' ')
 
 	return buf
+}
+
+func appendValue(buf []byte, v slog.Value) []byte {
+	switch v.Kind() {
+	case slog.KindString:
+		return append(buf, v.String()...)
+	case slog.KindInt64:
+		return strconv.AppendInt(buf, v.Int64(), 10)
+	case slog.KindUint64:
+		return strconv.AppendUint(buf, v.Uint64(), 10)
+	case slog.KindBool:
+		return strconv.AppendBool(buf, v.Bool())
+	case slog.KindFloat64:
+		return strconv.AppendFloat(buf, v.Float64(), 'g', -1, 64)
+	case slog.KindDuration:
+		return append(buf, v.Duration().String()...)
+	case slog.KindTime:
+		return v.Time().AppendFormat(buf, time.RFC3339Nano)
+	default:
+		return append(buf, v.String()...)
+	}
 }
 
 type lockedWriter struct {

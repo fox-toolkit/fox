@@ -19,7 +19,6 @@ func TestHandler_Handle(t *testing.T) {
 		We:  &lockedWriter{w: bufWe},
 		Wo:  &lockedWriter{w: bufWo},
 		Lvl: slog.LevelDebug,
-		Goa: make([]GroupOrAttrs, 0),
 	}
 
 	record := slog.Record{
