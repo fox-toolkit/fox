@@ -391,7 +391,7 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 		return nil, newPatternError("regexp", 0, 0, "missing expression")
 	}
 
-	re, err := regexp.Compile("^" + rawRegex + "$")
+	re, err := regexp.Compile("^(?:" + rawRegex + ")$")
 	if err != nil {
 		return nil, &PatternError{
 			Reason: "regexp",

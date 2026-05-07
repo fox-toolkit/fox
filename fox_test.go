@@ -1546,6 +1546,38 @@ func TestWildcardSuffix(t *testing.T) {
 	}
 }
 
+func TestRegexpParamAlternationPrecedence(t *testing.T) {
+	r := MustRouter(AllowRegexpParam(true))
+	require.NoError(t, onlyError(r.Add(MethodGet, "/role/{role:admin|user|guest}", pathHandler)))
+	require.NoError(t, onlyError(r.Add(MethodGet, "/scope/{scope:read|write}/items", pathHandler)))
+
+	cases := []struct {
+		path string
+		want int
+	}{
+		{"/role/admin", http.StatusOK},
+		{"/role/user", http.StatusOK},
+		{"/role/guest", http.StatusOK},
+		{"/role/adminBYPASS", http.StatusNotFound},
+		{"/role/EVILguest", http.StatusNotFound},
+		{"/role/userX", http.StatusNotFound},
+		{"/role/Xuser", http.StatusNotFound},
+		{"/scope/read/items", http.StatusOK},
+		{"/scope/write/items", http.StatusOK},
+		{"/scope/readBYPASS/items", http.StatusNotFound},
+		{"/scope/EVILwrite/items", http.StatusNotFound},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tc.want, w.Code)
+		})
+	}
+}
+
 func TestInsertUpdateAndDeleteWithHostname(t *testing.T) {
 	cases := []struct {
 		name   string
