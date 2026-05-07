@@ -108,7 +108,7 @@ func (m QueryRegexpMatcher) Key() string {
 	return m.key
 }
 
-// Value returns the literal regular expression.
+// Value returns the regular expression matching the query parameter.
 func (m QueryRegexpMatcher) Value() string {
 	expr := m.regex.String()
 	return expr[4 : len(expr)-2]
@@ -222,7 +222,7 @@ func (m HeaderRegexpMatcher) Key() string {
 	return m.canonicalKey
 }
 
-// Value returns the literal regular expression.
+// Value returns the regular expression matching the header.
 func (m HeaderRegexpMatcher) Value() string {
 	expr := m.regex.String()
 	return expr[4 : len(expr)-2]
