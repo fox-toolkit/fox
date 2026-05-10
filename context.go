@@ -465,15 +465,21 @@ func (mw wrapM) handle(c *Context) {
 
 	mw.m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Avoid allocation if w has not been wrapped by m.
-		rec, ok := w.(*recorder)
-		if !ok {
+		var rec *recorder
+		switch v := w.(type) {
+		case flusherWriter:
+			rec, _ = v.ResponseWriter.(*recorder)
+		case *recorder:
+			rec = v
+		}
+		if rec == nil {
 			rec = new(recorder)
 			rec.reset(w)
 		}
 		cc := c.CloneWith(rec, r)
 		defer cc.Close()
 		mw.next(cc)
-	})).ServeHTTP(c.Writer(), r)
+	})).ServeHTTP(flusherWriter{c.Writer()}, r)
 }
 
 func sumLen(s []string) int {

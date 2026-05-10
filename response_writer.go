@@ -296,6 +296,14 @@ type onlyWrite struct {
 	io.Writer
 }
 
+type flusherWriter struct {
+	ResponseWriter
+}
+
+func (s flusherWriter) Flush() { _ = s.FlushError() }
+
+func (s flusherWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 type noopWriter struct {
 	h http.Header
 }

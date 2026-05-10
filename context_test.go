@@ -639,6 +639,35 @@ func TestWrapM_RestoresRequestPattern(t *testing.T) {
 	assert.Empty(t, req.Pattern)
 }
 
+func TestWrapM_FlusherShim(t *testing.T) {
+	var sawFlusher bool
+	var flushed bool
+
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			flusher, ok := w.(http.Flusher)
+			sawFlusher = ok
+			h.ServeHTTP(w, r)
+			if ok {
+				flusher.Flush()
+				flushed = true
+			}
+		})
+	}
+
+	f := MustRouter(WithMiddleware(WrapM(mw)))
+	f.MustAdd(MethodGet, "/", func(c *Context) {
+		require.NoError(t, c.String(http.StatusOK, "ok"))
+	})
+
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	assert.True(t, sawFlusher)
+	assert.True(t, flushed)
+	assert.True(t, w.Flushed)
+}
+
 func BenchmarkWrapH(b *testing.B) {
 	req := httptest.NewRequest(http.MethodGet, "https://example.com/a/b/c", nil)
 	w := httptest.NewRecorder()
