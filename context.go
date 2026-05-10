@@ -456,10 +456,11 @@ func (mw wrapM) handle(c *Context) {
 	defer func() { req.Pattern = p }()
 
 	req.Pattern = c.Pattern()
+	r := req
 	if route := c.Route(); route != nil && route.ParamsLen() > 0 {
 		params := slices.AppendSeq(make(Params, 0, route.ParamsLen()), c.Params())
-		ctx := context.WithValue(c.Request().Context(), paramsKey, params)
-		req = req.WithContext(ctx)
+		ctx := context.WithValue(req.Context(), paramsKey, params)
+		r = req.WithContext(ctx)
 	}
 
 	mw.m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -472,7 +473,7 @@ func (mw wrapM) handle(c *Context) {
 		cc := c.CloneWith(rec, r)
 		defer cc.Close()
 		mw.next(cc)
-	})).ServeHTTP(c.Writer(), req)
+	})).ServeHTTP(c.Writer(), r)
 }
 
 func sumLen(s []string) int {

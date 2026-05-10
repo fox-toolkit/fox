@@ -617,6 +617,28 @@ func TestWrapM(t *testing.T) {
 	assert.Equal(t, "OK", w.Body.String())
 }
 
+func TestWrapM_RestoresRequestPattern(t *testing.T) {
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		})
+	}
+
+	f := MustRouter(WithMiddleware(WrapM(mw)))
+	f.MustAdd(MethodGet, "/foo/{bar}", func(c *Context) {
+		assert.Equal(t, "/foo/{bar}", c.Request().Pattern)
+		require.NoError(t, c.String(http.StatusOK, "OK"))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/foo/bar", nil)
+	require.Empty(t, req.Pattern)
+
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, req)
+
+	assert.Empty(t, req.Pattern)
+}
+
 func BenchmarkWrapH(b *testing.B) {
 	req := httptest.NewRequest(http.MethodGet, "https://example.com/a/b/c", nil)
 	w := httptest.NewRecorder()
