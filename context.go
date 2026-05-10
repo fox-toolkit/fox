@@ -456,23 +456,30 @@ func (mw wrapM) handle(c *Context) {
 	defer func() { req.Pattern = p }()
 
 	req.Pattern = c.Pattern()
+	r := req
 	if route := c.Route(); route != nil && route.ParamsLen() > 0 {
 		params := slices.AppendSeq(make(Params, 0, route.ParamsLen()), c.Params())
-		ctx := context.WithValue(c.Request().Context(), paramsKey, params)
-		req = req.WithContext(ctx)
+		ctx := context.WithValue(req.Context(), paramsKey, params)
+		r = req.WithContext(ctx)
 	}
 
 	mw.m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Avoid allocation if w has not been wrapped by m.
-		rec, ok := w.(*recorder)
-		if !ok {
+		var rec *recorder
+		switch v := w.(type) {
+		case flusherWriter:
+			rec, _ = v.ResponseWriter.(*recorder)
+		case *recorder:
+			rec = v
+		}
+		if rec == nil {
 			rec = new(recorder)
 			rec.reset(w)
 		}
 		cc := c.CloneWith(rec, r)
 		defer cc.Close()
 		mw.next(cc)
-	})).ServeHTTP(c.Writer(), req)
+	})).ServeHTTP(flusherWriter{c.Writer()}, r)
 }
 
 func sumLen(s []string) int {
