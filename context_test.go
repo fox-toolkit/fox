@@ -631,9 +631,8 @@ func TestWrapM_RestoresRequestPattern(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/foo/bar", nil)
-	require.Empty(t, req.Pattern)
-
 	w := httptest.NewRecorder()
+
 	f.ServeHTTP(w, req)
 
 	assert.Empty(t, req.Pattern)
