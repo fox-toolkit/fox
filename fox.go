@@ -818,6 +818,7 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 
 			if route.handleSlash == RedirectSlash {
 				*c.params = (*c.params)[:0]
+				*c.subPatterns = (*c.subPatterns)[:0]
 				c.route = nil
 				c.pattern = ""
 				c.scope = RedirectSlashHandler
@@ -839,6 +840,7 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 		case RedirectPath:
 			if idx, n, tsr := tree.lookupByPath(r.Method, CleanPath(path), c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
 				*c.params = (*c.params)[:0]
+				*c.subPatterns = (*c.subPatterns)[:0]
 				c.route = nil
 				c.pattern = ""
 				c.scope = RedirectPathHandler
@@ -850,6 +852,7 @@ func (fox *Router) serveSubRouter(c *Context, path string) {
 	}
 
 	*c.params = (*c.params)[:0]
+	*c.subPatterns = (*c.subPatterns)[:0]
 	c.route = nil
 	c.pattern = ""
 

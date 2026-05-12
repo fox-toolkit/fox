@@ -1477,6 +1477,78 @@ func TestRouter_ServeHTTP_HandleSubRouter(t *testing.T) {
 		fx.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
+
+	t.Run("sub-router no route handler sees clean context", func(t *testing.T) {
+		var pat, tenant string
+		var route *Route
+		noRoute := HandlerFunc(func(c *Context) {
+			pat = c.Pattern()
+			tenant = c.Param("tenant")
+			route = c.Route()
+			http.Error(c.Writer(), "x", http.StatusNotFound)
+		})
+
+		sub := MustRouter(WithNoRouteHandler(noRoute))
+		sub.MustAdd(MethodGet, "/known", emptyHandler)
+
+		fx := MustRouter()
+		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{tenant}/+{rest}", Sub(sub))))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/acme/notfound", nil)
+		w := httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+
+		assert.Equal(t, "", pat)
+		assert.Equal(t, "", tenant)
+		assert.Nil(t, route)
+	})
+
+	t.Run("sub-router no method handler sees clean context", func(t *testing.T) {
+		var pat, tenant string
+		noMethod := HandlerFunc(func(c *Context) {
+			pat = c.Pattern()
+			tenant = c.Param("tenant")
+			http.Error(c.Writer(), "x", http.StatusMethodNotAllowed)
+		})
+
+		sub := MustRouter(WithNoMethod(true), WithNoMethodHandler(noMethod))
+		sub.MustAdd(MethodGet, "/users", emptyHandler)
+
+		fx := MustRouter()
+		require.NoError(t, onlyError(fx.Add(MethodAny, "/api/{tenant}/+{rest}", Sub(sub))))
+
+		req := httptest.NewRequest(http.MethodPost, "/api/acme/users", nil)
+		w := httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+
+		assert.Equal(t, "", pat)
+		assert.Equal(t, "", tenant)
+	})
+
+	t.Run("sub-router redirect slash handler sees clean context", func(t *testing.T) {
+		var pat, tenant string
+		mw := WithMiddlewareFor(RedirectSlashHandler, func(next HandlerFunc) HandlerFunc {
+			return func(c *Context) {
+				pat = c.Pattern()
+				tenant = c.Param("tenant")
+				next(c)
+			}
+		})
+
+		sub := MustRouter(mw)
+		sub.MustAdd(MethodGet, "/users/", emptyHandler, WithHandleTrailingSlash(RedirectSlash))
+
+		fx := MustRouter()
+		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{tenant}/+{rest}", Sub(sub))))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/acme/users", nil)
+		w := httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "", pat)
+		assert.Equal(t, "", tenant)
+	})
 }
 
 func TestRouter_ServeHTTP_ParamsWithDomainMalloc(t *testing.T) {
