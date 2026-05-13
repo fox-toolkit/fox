@@ -1434,6 +1434,26 @@ func TestRouter_ServeHTTP_HandleSubRouter(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
+	t.Run("sub-router with parent param and static suffix propagates params", func(t *testing.T) {
+		var paramSeen, patternSeen string
+		sub := MustRouter()
+		sub.MustAdd(MethodGet, "/", func(c *Context) {
+			paramSeen = c.Param("ver")
+			patternSeen = c.Pattern()
+		})
+
+		fx := MustRouter()
+		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{ver}/admin", Sub(sub))))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin", nil)
+		w := httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "v1", paramSeen)
+		assert.Equal(t, "/api/{ver}/admin/", patternSeen)
+	})
+
 	t.Run("sub-router registered in non route handler", func(t *testing.T) {
 		sub := MustRouter()
 		sub.MustAdd(MethodGet, "/users", patternHandler)

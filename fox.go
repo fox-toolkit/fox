@@ -1003,6 +1003,8 @@ func Sub(router *Router) HandlerFunc {
 			// gracefully as a defensive measure: if the parent registers /api and the sub-router registers /,
 			// we treat it similarly to /api*{any} (optional wildcard), matching /api with the pattern /api/.
 			*subCtx.subPatterns = append(*subCtx.subPatterns, strings.TrimSuffix(c.pattern, "/"))
+			*subCtx.params = append(*subCtx.params, *c.params...)
+			*subCtx.paramsKeys = append((*subCtx.paramsKeys)[:0], keys...)
 			router.serveSubRouter(subCtx, "/")
 			return
 		}
