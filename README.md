@@ -914,3 +914,4 @@ See [`LICENSE-fox-logo.txt`](https://github.com/fox-toolkit/fox/blob/static/LICE
 - [realclientip/realclientip-go](https://github.com/realclientip/realclientip-go): Fox uses a derivative version of Adam Pritchard's `realclientip-go` library. 
 See his insightful [blog post](https://adam-p.ca/blog/2022/03/x-forwarded-for/) on the topic for more details.
 - The router API is influenced by popular routers such as [Gin](https://github.com/gin-gonic/gin) and [Echo](https://github.com/labstack/echo).
+- Thanks to [pawndev](https://github.com/pawndev) for development help and the many thoughtful PR reviews.
