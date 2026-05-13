@@ -1478,6 +1478,34 @@ func TestRouter_ServeHTTP_HandleSubRouter(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
+	t.Run("sub-router registered with regex wildcard", func(t *testing.T) {
+		sub := MustRouter()
+		sub.MustAdd(MethodGet, "/users", patternHandler)
+
+		fx := MustRouter(AllowRegexpParam(true))
+		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/+{rest:[a-z]+}", Sub(sub))))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+		w := httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "/api/users", w.Body.String())
+	})
+
+	t.Run("sub-router registered with regex param", func(t *testing.T) {
+		sub := MustRouter()
+		sub.MustAdd(MethodGet, "/users", patternHandler)
+
+		fx := MustRouter(AllowRegexpParam(true))
+		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{name:[a-z]+}", Sub(sub))))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+		w := httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "/api/users", w.Body.String())
+	})
+
 	t.Run("sub-router no route handler sees clean context", func(t *testing.T) {
 		var pat, tenant string
 		var route *Route

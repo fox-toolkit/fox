@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -975,15 +976,24 @@ func Sub(router *Router) HandlerFunc {
 
 		*subCtx.subPatterns = append(*subCtx.subPatterns, *c.subPatterns...)
 
-		lastTkType := route.pattern.tokens[len(route.pattern.tokens)-1].typ
+		lastTk := route.pattern.tokens[len(route.pattern.tokens)-1]
 		var p string
-		switch lastTkType {
+		switch lastTk.typ {
 		case nodeWildcard:
 			key := (*c.paramsKeys)[len(*c.paramsKeys)-1]
-			p = strings.TrimSuffix(c.pattern[:len(c.pattern)-(len(key)+wildcardExtraChar)], "/")
+			extra := len(key) + wildcardExtraChar
+			if lastTk.regexp != nil {
+				// +1 for the ':' separator between name and regex source.
+				extra += 1 + len(rawExpr(lastTk.regexp))
+			}
+			p = strings.TrimSuffix(c.pattern[:len(c.pattern)-extra], "/")
 		case nodeParam:
 			key := (*c.paramsKeys)[len(*c.paramsKeys)-1]
-			p = strings.TrimSuffix(c.pattern[:len(c.pattern)-(len(key)+paramExtraChar)], "/")
+			extra := len(key) + paramExtraChar
+			if lastTk.regexp != nil {
+				extra += 1 + len(rawExpr(lastTk.regexp))
+			}
+			p = strings.TrimSuffix(c.pattern[:len(c.pattern)-extra], "/")
 		default:
 			// Reaching this case means the parent route does not end with a catch-all parameter (e.g., /api/
 			// instead of /api/+{rest}). This is technically a misuse of the sub-router API, but we handle it
@@ -1123,4 +1133,9 @@ func firstHeader(headers http.Header, k string) (string, bool) {
 		return "", false
 	}
 	return v[0], true
+}
+
+func rawExpr(re *regexp.Regexp) string {
+	expr := re.String()
+	return expr[4 : len(expr)-2]
 }

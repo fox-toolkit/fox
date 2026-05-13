@@ -110,8 +110,7 @@ func (m QueryRegexpMatcher) Key() string {
 
 // Value returns the regular expression matching the query parameter.
 func (m QueryRegexpMatcher) Value() string {
-	expr := m.regex.String()
-	return expr[4 : len(expr)-2]
+	return rawExpr(m.regex)
 }
 
 // String returns a textual representation of the matcher in the form "qx:key=expr".
@@ -224,8 +223,7 @@ func (m HeaderRegexpMatcher) Key() string {
 
 // Value returns the regular expression matching the header.
 func (m HeaderRegexpMatcher) Value() string {
-	expr := m.regex.String()
-	return expr[4 : len(expr)-2]
+	return rawExpr(m.regex)
 }
 
 // Match reports whether the request contains the configured header with any value matching the configured regular
