@@ -398,7 +398,6 @@ func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *
 	if n != nil {
 		c.route = n.routes[idx]
 		c.pattern = c.route.pattern.str
-		*c.paramsKeys = c.route.params
 		return c.route, c, tsr
 	}
 
@@ -611,7 +610,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !tsr && n != nil {
 		c.route = n.routes[idx]
 		c.pattern = c.route.pattern.str
-		*c.paramsKeys = c.route.params
 		c.route.hall(c)
 		return
 	}
@@ -622,7 +620,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
 				c.pattern = c.route.pattern.str
-				*c.paramsKeys = c.route.params
 				route.hall(c)
 				return
 			}
@@ -643,7 +640,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
 				c.route = n.routes[idx]
 				c.pattern = c.route.pattern.str
-				*c.paramsKeys = c.route.params
 				c.route.hall(c)
 				return
 			}
@@ -977,10 +973,17 @@ func Sub(router *Router) HandlerFunc {
 		*subCtx.subPatterns = append(*subCtx.subPatterns, *c.subPatterns...)
 
 		lastTk := route.pattern.tokens[len(route.pattern.tokens)-1]
+		// For a top-level parent c.paramsKeys is empty, so we
+		// read the last key directly from c.route.params. For nested
+		// sub-routers, c.paramsKeys holds the composed chain.
+		keys := *c.paramsKeys
+		if len(keys) == 0 {
+			keys = c.route.params
+		}
 		var p string
 		switch lastTk.typ {
 		case nodeWildcard:
-			key := (*c.paramsKeys)[len(*c.paramsKeys)-1]
+			key := keys[len(keys)-1]
 			extra := len(key) + wildcardExtraChar
 			if lastTk.regexp != nil {
 				// +1 for the ':' separator between name and regex source.
@@ -988,7 +991,7 @@ func Sub(router *Router) HandlerFunc {
 			}
 			p = strings.TrimSuffix(c.pattern[:len(c.pattern)-extra], "/")
 		case nodeParam:
-			key := (*c.paramsKeys)[len(*c.paramsKeys)-1]
+			key := keys[len(keys)-1]
 			extra := len(key) + paramExtraChar
 			if lastTk.regexp != nil {
 				extra += 1 + len(rawExpr(lastTk.regexp))
@@ -1029,7 +1032,7 @@ func Sub(router *Router) HandlerFunc {
 		// Subrouters are never evaluated in lazy lookup mode, so params are always
 		// captured. If parent has no params beyond the catch-all, this is a no-op.
 		*subCtx.params = append(*subCtx.params, (*c.params)[:len(*c.params)-1]...)
-		*subCtx.paramsKeys = append((*subCtx.paramsKeys)[:0], (*c.paramsKeys)[:len(*c.paramsKeys)-1]...)
+		*subCtx.paramsKeys = append((*subCtx.paramsKeys)[:0], keys[:len(keys)-1]...)
 
 		// Serve the sub router
 		router.serveSubRouter(subCtx, suffix)
