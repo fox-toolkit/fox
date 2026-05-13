@@ -96,6 +96,7 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.cachedQueries = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
+	*c.paramsKeys = (*c.paramsKeys)[:0]
 	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
@@ -105,6 +106,7 @@ func (c *Context) resetNil() {
 	c.cachedQueries = nil
 	c.route = nil
 	*c.params = (*c.params)[:0]
+	*c.paramsKeys = (*c.paramsKeys)[:0]
 	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
@@ -126,6 +128,7 @@ func (c *Context) resetWithWriter(w ResponseWriter, r *http.Request) {
 	c.cachedQueries = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
+	*c.paramsKeys = (*c.paramsKeys)[:0]
 	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
@@ -188,8 +191,9 @@ func (c *Context) ClientIP() (*net.IPAddr, error) {
 // Params returns an iterator over the matched wildcard parameters for the current route.
 func (c *Context) Params() iter.Seq[Param] {
 	return func(yield func(Param) bool) {
+		keys := c.keys()
 		for i, p := range *c.params {
-			if !yield(Param{Key: (*c.paramsKeys)[i], Value: p}) {
+			if !yield(Param{Key: keys[i], Value: p}) {
 				return
 			}
 		}
@@ -198,13 +202,23 @@ func (c *Context) Params() iter.Seq[Param] {
 
 // Param retrieve a matching wildcard segment by name.
 func (c *Context) Param(name string) string {
-	for i := range *c.params {
-		key := (*c.paramsKeys)[i]
-		if key == name {
-			return (*c.params)[i]
+	keys := c.keys()
+	for i, p := range *c.params {
+		if keys[i] == name {
+			return p
 		}
 	}
 	return ""
+}
+
+func (c *Context) keys() []string {
+	if len(*c.paramsKeys) > 0 {
+		return *c.paramsKeys
+	}
+	if c.route != nil {
+		return c.route.params
+	}
+	return nil
 }
 
 // Method returns the request method.

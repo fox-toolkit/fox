@@ -1506,6 +1506,26 @@ func TestRouter_ServeHTTP_HandleSubRouter(t *testing.T) {
 		assert.Equal(t, "/api/users", w.Body.String())
 	})
 
+	t.Run("sub-router used directly then via Sub preserves route.params", func(t *testing.T) {
+		sub := MustRouter()
+		subRoute, err := sub.Add(MethodGet, "/users/{id}", emptyHandler)
+		require.NoError(t, err)
+		originalParams := slices.Clone(subRoute.params)
+
+		req := httptest.NewRequest(http.MethodGet, "/users/42", nil)
+		w := httptest.NewRecorder()
+		sub.ServeHTTP(w, req)
+
+		fx := MustRouter()
+		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{tenant}/+{rest}", Sub(sub))))
+
+		req = httptest.NewRequest(http.MethodGet, "/api/acme/users/42", nil)
+		w = httptest.NewRecorder()
+		fx.ServeHTTP(w, req)
+
+		assert.Equal(t, originalParams, subRoute.params)
+	})
+
 	t.Run("sub-router no route handler sees clean context", func(t *testing.T) {
 		var pat, tenant string
 		var route *Route
