@@ -900,7 +900,7 @@ BenchmarkMartini_GithubAll          1678           1406444 ns/op          236944
 ## Contributions
 This project aims to provide a lightweight, high-performance router that is easy to use and hard to misuse, designed for building API gateways and reverse proxies.
 Features are chosen carefully with an emphasis on composability, and each addition is evaluated against this core mission. The router exposes a relatively low-level API,
-allowing it to serve as a building block for implementing your own "batteries included" frameworks. Feature requests and PRs along these lines are welcome. 
+allowing it to serve as a building block for implementing your own "batteries included" frameworks. Feature requests along these lines are welcome. 
 
 ## License
 
