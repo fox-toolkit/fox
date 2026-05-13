@@ -62,8 +62,6 @@ type RequestContext interface {
 	QueryParam(name string) string
 	// Header retrieves the value of the request header for the given key.
 	Header(key string) string
-	// Pattern returns the registered route pattern or an empty string if the handler is called in a scope other than [RouteHandler].
-	Pattern() string
 }
 
 // Context represents the context of the current HTTP request. It provides methods to access request data and
