@@ -1232,7 +1232,6 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
-			*c.paramsKeys = c.route.params
 			assert.Equal(t, tc.wantParams, slices.Collect(c.Params()))
 		})
 	}
@@ -1503,7 +1502,6 @@ func Test_iTree_lookup_Matchers(t *testing.T) {
 			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
-			*c.paramsKeys = c.route.params
 			assert.Equal(t, tc.wantParams, slices.Collect(c.Params()))
 		})
 	}
@@ -1649,7 +1647,6 @@ func Test_iTree_lookup_MatchersPriority(t *testing.T) {
 			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantMatcher, n.routes[idx].matchers)
 			c.route = n.routes[idx]
-			*c.paramsKeys = c.route.params
 			assert.Equal(t, tc.wantParams, slices.Collect(c.Params()))
 		})
 	}
@@ -2927,7 +2924,6 @@ func Test_iTree_lookup_Overlapping(t *testing.T) {
 			assert.False(t, tsr)
 			assert.Equal(t, tc.wantMatch, n.routes[idx].pattern.str)
 			c.route = n.routes[idx]
-			*c.paramsKeys = c.route.params
 			if len(tc.wantParams) == 0 {
 				assert.Empty(t, slices.Collect(c.Params()))
 			} else {
@@ -4080,7 +4076,6 @@ func Test_iTree_lookup_InfixWildcard(t *testing.T) {
 			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
-			*c.paramsKeys = c.route.params
 			assert.Equal(t, tc.wantParams, slices.Collect(c.Params()))
 		})
 	}
@@ -4451,7 +4446,6 @@ func Test_iTree_lookup_InfixWildcardTsr(t *testing.T) {
 			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
 			c.route = n.routes[idx]
-			*c.paramsKeys = c.route.params
 			assert.Equal(t, tc.wantParams, slices.Collect(c.Params()))
 		})
 	}
