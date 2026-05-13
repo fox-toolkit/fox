@@ -953,9 +953,7 @@ func concat(a, b string) string {
 // placeholder ("?" for params, "*" for catch-alls).
 func canonicalKey(tk token) string {
 	if tk.regexp != nil {
-		// Strip the surrounding ^(?: and )$ added by compileParamRegexp.
-		expr := tk.regexp.String()
-		return expr[4 : len(expr)-2]
+		return rawExpr(tk.regexp)
 	}
 	switch tk.typ {
 	case nodeParam:
