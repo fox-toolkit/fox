@@ -135,7 +135,7 @@ func (r *Route) String() string {
 
 // match reports whether the request satisfies this route's method constraint (if any)
 // and all attached matchers.
-func (r *Route) match(method string, c RequestContext) bool {
+func (r *Route) match(method string, c *Context) bool {
 	// Fast path: routes with exactly one method and no matchers cache that
 	// method in methodFast.
 	if r.methodFast == method {
@@ -149,7 +149,7 @@ func (r *Route) match(method string, c RequestContext) bool {
 // inlinable.
 //
 //go:noinline
-func (r *Route) matchSlow(method string, c RequestContext) bool {
+func (r *Route) matchSlow(method string, c *Context) bool {
 	methods := r.methods
 	switch len(methods) {
 	case 0:
@@ -165,8 +165,9 @@ func (r *Route) matchSlow(method string, c RequestContext) bool {
 			return false
 		}
 	}
+	sealed := onlyRequestContext{c}
 	for _, m := range r.matchers {
-		if !m.Match(c) {
+		if !m.Match(sealed) {
 			return false
 		}
 	}

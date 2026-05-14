@@ -415,6 +415,23 @@ func (c *Context) getQueries() url.Values {
 	return c.cachedQueries
 }
 
+// onlyRequestContext wraps *Context so matchers can only reach the [RequestContext] interface and cannot
+// misuse the full Context API.
+type onlyRequestContext struct {
+	c *Context
+}
+
+func (s onlyRequestContext) Request() *http.Request         { return s.c.Request() }
+func (s onlyRequestContext) RemoteIP() *net.IPAddr          { return s.c.RemoteIP() }
+func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) { return s.c.ClientIP() }
+func (s onlyRequestContext) Method() string                 { return s.c.Method() }
+func (s onlyRequestContext) Path() string                   { return s.c.Path() }
+func (s onlyRequestContext) EscapedPath() string            { return s.c.EscapedPath() }
+func (s onlyRequestContext) Host() string                   { return s.c.Host() }
+func (s onlyRequestContext) QueryParams() url.Values        { return s.c.QueryParams() }
+func (s onlyRequestContext) QueryParam(name string) string  { return s.c.QueryParam(name) }
+func (s onlyRequestContext) Header(key string) string       { return s.c.Header(key) }
+
 // WrapF is an adapter for wrapping [http.HandlerFunc] and returns a [HandlerFunc] function.
 // The route parameters are being accessed by the wrapped handler through the context.
 func WrapF(f http.HandlerFunc) HandlerFunc {
