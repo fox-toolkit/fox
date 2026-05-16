@@ -446,6 +446,9 @@ func WrapH(h http.Handler) HandlerFunc {
 
 // WrapM is an adapter for wrapping http.Handler middleware and returns a [MiddlewareFunc] function.
 // The route parameters are being accessed by the wrapped handler through the context.
+//
+// Note that m is invoked on every request, so any setup it does before returning
+// its handler runs per request.
 func WrapM(m func(http.Handler) http.Handler) MiddlewareFunc {
 	return func(next HandlerFunc) HandlerFunc {
 		return wrapM{next: next, m: m}.handle
