@@ -321,6 +321,9 @@ func WithClientIPResolver(resolver ClientIPResolver) interface {
 // packages that use route annotation.
 func WithAnnotation(key, value any) RouteOption {
 	return optionFunc(func(s sealedOption) error {
+		if key == nil {
+			return fmt.Errorf("%w: annotation key is nil", ErrInvalidConfig)
+		}
 		if !reflect.TypeOf(key).Comparable() {
 			return fmt.Errorf("%w: annotation key is not comparable", ErrInvalidConfig)
 		}

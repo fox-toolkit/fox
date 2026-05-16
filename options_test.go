@@ -762,6 +762,7 @@ func TestWithAnnotation_Invalid(t *testing.T) {
 	f, err := NewRouter()
 	require.NoError(t, err)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(nonComparableKey, nil))), ErrInvalidConfig)
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(nil, "value"))), ErrInvalidConfig)
 }
 
 func TestWithQueryMatcher(t *testing.T) {
