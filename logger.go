@@ -13,7 +13,7 @@ import (
 // Keys for "built-in" logger attribute for the logger middleware.
 const (
 	// LoggerStatusKey is the key used by the built-in logger middleware for the HTTP response status code
-	// when the log method is called. The associated [slog.Value] is a string.
+	// when the log method is called. The associated [slog.Value] is an int.
 	LoggerStatusKey = "status"
 	// LoggerMethodKey is the key used by the built-in logger middleware for the HTTP request method.
 	// The associated [slog.Value] is a string.
