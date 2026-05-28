@@ -1,6 +1,7 @@
 package fox
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -665,6 +666,42 @@ func TestWithTrailingSlash_LeadingDoubleSlash(t *testing.T) {
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "example.com//foo", emptyHandler, WithTrailingSlash(RedirectSlash))), ErrInvalidRoute)
 	assert.NoError(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithTrailingSlash(RelaxedSlash))))
 	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithTrailingSlash(ExactSlash))))
+}
+
+func TestWithAnnotationFunc(t *testing.T) {
+	f := MustRouter()
+
+	rte, err := f.NewRoute(MethodGet, "/foo", emptyHandler,
+		WithAnnotationFunc("key", func(prev any) (any, error) {
+			assert.Nil(t, prev)
+			return []string{"a"}, nil
+		}),
+		WithAnnotationFunc("key", func(prev any) (any, error) {
+			return append(prev.([]string), "b"), nil
+		}),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, rte.Annotation("key"))
+}
+
+func TestWithAnnotationFunc_Invalid(t *testing.T) {
+	var nonComparableKey = []int{1, 2, 3}
+	f, err := NewRouter()
+	require.NoError(t, err)
+	fn := func(prev any) (any, error) { return nil, nil }
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotationFunc(nonComparableKey, fn))), ErrInvalidConfig)
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotationFunc(nil, fn))), ErrInvalidConfig)
+}
+
+func TestWithAnnotationFunc_FnError(t *testing.T) {
+	f, err := NewRouter()
+	require.NoError(t, err)
+	fnErr := errors.New("boom")
+	err = onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotationFunc("key", func(prev any) (any, error) {
+		return nil, fnErr
+	})))
+	assert.ErrorIs(t, err, ErrInvalidConfig)
+	assert.ErrorIs(t, err, fnErr)
 }
 
 func TestWithQueryMatcher(t *testing.T) {

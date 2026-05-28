@@ -385,6 +385,30 @@ func WithAnnotation(key, value any) RouteOption {
 	})
 }
 
+// WithAnnotationFunc attaches arbitrary metadata to routes like [WithAnnotation], but the annotation value
+// is produced by a function. The function receives the value currently stored under key (or nil if none)
+// and returns the value to store, making successive options on the same key composable (and order-sensitive).
+// If the function returns an error, route registration fails with that error wrapped in [ErrInvalidConfig].
+func WithAnnotationFunc(key any, fn func(prev any) (value any, err error)) RouteOption {
+	return optionFunc(func(s sealedOption) error {
+		if key == nil {
+			return fmt.Errorf("%w: annotation key is nil", ErrInvalidConfig)
+		}
+		if !reflect.TypeOf(key).Comparable() {
+			return fmt.Errorf("%w: annotation key is not comparable", ErrInvalidConfig)
+		}
+		if s.route.annots == nil {
+			s.route.annots = make(map[any]any, 1)
+		}
+		value, err := fn(s.route.annots[key])
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
+		s.route.annots[key] = value
+		return nil
+	})
+}
+
 // WithName assigns a name to a route for identification and lookup purposes.
 // The name must be unique among all other routes registered.
 func WithName(name string) RouteOption {
