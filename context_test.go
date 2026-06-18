@@ -493,7 +493,6 @@ func TestWrapF(t *testing.T) {
 			rte, err := f.NewRoute(MethodGet, "/{foo}", emptyHandler)
 			require.NoError(t, err)
 			c.route = rte
-			*c.paramsKeys = rte.params
 
 			params := make(Params, 0)
 			if tc.params != nil {
@@ -561,7 +560,6 @@ func TestWrapH(t *testing.T) {
 			rte, err := f.NewRoute(MethodGet, "/{foo}", emptyHandler)
 			require.NoError(t, err)
 			c.route = rte
-			*c.paramsKeys = rte.params
 
 			params := make(Params, 0)
 			if tc.params != nil {

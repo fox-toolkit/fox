@@ -271,37 +271,6 @@ func BenchmarkContext_CloneWith(b *testing.B) {
 	}
 }
 
-func BenchmarkSubRouter(b *testing.B) {
-
-	main := MustRouter()
-	sub1 := MustRouter()
-	sub2 := MustRouter()
-
-	sub2.MustAdd(MethodGet, "/users/email", emptyHandler)
-	sub1.MustAdd(MethodAny, "/{name}/*{any}", Sub(sub2))
-	main.MustAdd(MethodAny, "/{v1}/*{any}", Sub(sub1))
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/john/users/email", nil)
-	w := new(mockResponseWriter)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for range b.N {
-		main.ServeHTTP(w, req)
-	}
-}
-
-func BenchmarkStaticAllSubRouter(b *testing.B) {
-	f := MustRouter()
-	sub := MustRouter()
-	for _, route := range staticRoutes {
-		require.NoError(b, onlyError(sub.Add([]string{route.method}, route.path, emptyHandler)))
-	}
-	f.MustAdd(MethodAny, "example.com/*{any}", Sub(sub))
-
-	benchRoute(b, f, staticRoutes)
-}
-
 func BenchmarkVeryLongPattern(b *testing.B) {
 	f := MustRouter()
 	f.MustAdd(MethodGet, "/hello/very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very_very", emptyHandler)

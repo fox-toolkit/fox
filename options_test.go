@@ -259,33 +259,6 @@ func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsEnable(t *testing.T) {
 			f.ServeHTTP(w, req)
 			assert.Equal(t, tc.wantCode, w.Code)
 			assert.ElementsMatch(t, tc.want, parseAllowHeader(w.Header().Get("Allow")))
-
-			// Skip sub router test for system-wide OPTIONS request
-			if tc.target == "*" {
-				return
-			}
-
-			t.Run("with sub router", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithAutoOptions(true), WithHandleTrailingSlash(RelaxedSlash))
-
-				for _, method := range tc.methods {
-					require.NoError(t, onlyError(sub.Add([]string{method}, tc.path, func(c *Context) {
-						req := httptest.NewRequest(http.MethodGet, c.Path(), nil)
-						req.Host = c.Host()
-						c.SetHeader("Allow", strings.Join(tc.methods, ","))
-						c.Writer().WriteHeader(http.StatusNoContent)
-					})))
-				}
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(http.MethodOptions, tc.target, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-				assert.ElementsMatch(t, tc.want, parseAllowHeader(w.Header().Get("Allow")))
-			})
 		})
 	}
 }
@@ -435,27 +408,6 @@ func TestRouter_ServeHTTP_AllowedMethod(t *testing.T) {
 			f.ServeHTTP(w, req)
 			assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 			assert.ElementsMatch(t, tc.want, parseAllowHeader(w.Header().Get("Allow")))
-
-			t.Run("with sub router", func(t *testing.T) {
-				sub := MustRouter(WithNoMethod(true))
-				for _, route := range tc.routes {
-					sub.MustAdd(route.methods, route.pattern, emptyHandler)
-				}
-
-				r, err := f.Add(MethodAny, "example.com/*{any}", Sub(sub))
-				require.NoError(t, err)
-
-				defer func() {
-					require.NoError(t, onlyError(f.DeleteRoute(r)))
-				}()
-
-				req := httptest.NewRequest(tc.method, tc.target, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
-				assert.ElementsMatch(t, tc.want, parseAllowHeader(w.Header().Get("Allow")))
-			})
 		})
 	}
 }
@@ -693,23 +645,6 @@ func TestRouter_ServeHTTP_AutomaticCORSPreflightOptions(t *testing.T) {
 			f.ServeHTTP(w, req)
 			assert.Equal(t, tc.wantCode, w.Code)
 			assert.Empty(t, w.Header().Get("Allow"))
-
-			t.Run("with sub router", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithAutoOptions(true), WithNoMethod(true))
-				for _, method := range tc.methods {
-					require.NoError(t, onlyError(sub.Add([]string{method}, tc.path, emptyHandler)))
-				}
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(http.MethodOptions, tc.target, nil)
-				req.Host = "example.com"
-				req.Header = tc.headers
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-				assert.Empty(t, w.Header().Get("Allow"))
-			})
 		})
 	}
 }

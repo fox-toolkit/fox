@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strings"
 
 	"github.com/fox-toolkit/fox/internal/bytesconv"
 	"github.com/fox-toolkit/fox/internal/netutil"
@@ -71,8 +70,6 @@ type Context struct {
 	w             ResponseWriter
 	req           *http.Request
 	params        *[]string
-	paramsKeys    *[]string
-	subPatterns   *[]string
 	skipStack     *skipStack
 	route         *Route
 	tree          *iTree  // no reset
@@ -94,8 +91,6 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.cachedQueries = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
-	*c.paramsKeys = (*c.paramsKeys)[:0]
-	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
 func (c *Context) resetNil() {
@@ -104,8 +99,6 @@ func (c *Context) resetNil() {
 	c.cachedQueries = nil
 	c.route = nil
 	*c.params = (*c.params)[:0]
-	*c.paramsKeys = (*c.paramsKeys)[:0]
-	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
 // resetWithRequest resets the [Context] to its initial state, with the provided [http.Request]. This is used
@@ -126,8 +119,6 @@ func (c *Context) resetWithWriter(w ResponseWriter, r *http.Request) {
 	c.cachedQueries = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
-	*c.paramsKeys = (*c.paramsKeys)[:0]
-	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
 // Request returns the [http.Request].
@@ -189,9 +180,8 @@ func (c *Context) ClientIP() (*net.IPAddr, error) {
 // Params returns an iterator over the matched wildcard parameters for the current route.
 func (c *Context) Params() iter.Seq[Param] {
 	return func(yield func(Param) bool) {
-		keys := c.keys()
 		for i, p := range *c.params {
-			if !yield(Param{Key: keys[i], Value: p}) {
+			if !yield(Param{Key: c.route.params[i], Value: p}) {
 				return
 			}
 		}
@@ -200,23 +190,12 @@ func (c *Context) Params() iter.Seq[Param] {
 
 // Param retrieve a matching wildcard segment by name.
 func (c *Context) Param(name string) string {
-	keys := c.keys()
 	for i, p := range *c.params {
-		if keys[i] == name {
+		if c.route.params[i] == name {
 			return p
 		}
 	}
 	return ""
-}
-
-func (c *Context) keys() []string {
-	if len(*c.paramsKeys) > 0 {
-		return *c.paramsKeys
-	}
-	if c.route != nil {
-		return c.route.params
-	}
-	return nil
 }
 
 // Method returns the request method.
@@ -275,20 +254,7 @@ func (c *Context) Header(key string) string {
 
 // Pattern returns the registered route pattern or an empty string if the handler is called in a scope other than [RouteHandler].
 func (c *Context) Pattern() string {
-	switch len(*c.subPatterns) {
-	case 0:
-		return c.pattern
-	case 1:
-		return (*c.subPatterns)[0] + c.pattern
-	}
-
-	var sb strings.Builder
-	sb.Grow(len(c.pattern) + sumLen(*c.subPatterns))
-	for _, p := range *c.subPatterns {
-		sb.WriteString(p)
-	}
-	sb.WriteString(c.pattern)
-	return sb.String()
+	return c.pattern
 }
 
 // Route returns the registered [Route] or nil if the handler is called in a scope other than [RouteHandler].
@@ -342,17 +308,9 @@ func (c *Context) Clone() *Context {
 	cp.rec.ResponseWriter = noopWriter{c.rec.Header().Clone()}
 	cp.w = noUnwrap{&cp.rec}
 
-	subPatterns := make([]string, len(*c.subPatterns))
-	copy(subPatterns, *c.subPatterns)
-	cp.subPatterns = &subPatterns
-
 	params := make([]string, len(*c.params))
 	copy(params, *c.params)
 	cp.params = &params
-
-	keys := make([]string, len(*c.paramsKeys))
-	copy(keys, *c.paramsKeys)
-	cp.paramsKeys = &keys
 
 	return &cp
 }
@@ -371,8 +329,6 @@ func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
 	cp.pattern = c.pattern
 	cp.cachedQueries = nil // For safety, in case r is a different request than c.req
 
-	copyWithResize(cp.subPatterns, c.subPatterns)
-	copyWithResize(cp.paramsKeys, c.paramsKeys)
 	copyWithResize(cp.params, c.params)
 
 	return cp
@@ -512,12 +468,4 @@ func (mw wrapM) handle(c *Context) {
 		defer cc.Close()
 		mw.next(cc)
 	})).ServeHTTP(flusherWriter{c.Writer()}, r)
-}
-
-func sumLen(s []string) int {
-	var n int
-	for _, v := range s {
-		n += len(v)
-	}
-	return n
 }

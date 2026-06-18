@@ -30,7 +30,7 @@ The current API is not yet stabilized. Breaking changes may occur before `v1.0.0
 
 **Flexible routing:** Fox strikes a balance between routing flexibility, performance and clarity by enforcing clear priority rules, ensuring that
 there are no unintended matches and maintaining high performance even for complex routing patterns. Supported features include named parameters,
-suffix and infix catch-all, regexp constraints, hostname matching, method and method-less routes, route matchers, and sub-routers.
+suffix and infix catch-all, regexp constraints, hostname matching, method and method-less routes, and route matchers.
 
 **Trailing slash handling:** Automatically handle trailing slash inconsistencies by either ignoring them, redirecting to 
 the canonical path, or enforcing strict matching based on your needs.
@@ -51,7 +51,6 @@ the canonical path, or enforcing strict matching based on your needs.
   * [Named wildcards](#named-wildcards-catch-all)
   * [Route matchers](#route-matchers)
   * [Method-less routes](#method-less-routes)
-  * [Sub-Routers](#sub-routers)
   * [Hostname validation & restrictions](#hostname-validation--restrictions)
   * [Path encoding](#path-encoding)
   * [Priority rules](#priority-rules)
@@ -249,28 +248,6 @@ f.MustAdd(fox.MethodGet, "/resource", GetHandler)
 // All other methods handled here
 f.MustAdd(fox.MethodAny, "/resource", FallbackHandler)
 ````
-
-#### Sub-Routers
-Fox provides a composable routing API where routers can be mounted as regular routes, each with its own middleware and configuration.
-
-```go
-api := fox.MustRouter(fox.WithMiddleware(AuthMiddleware()))
-api.MustAdd([]string{http.MethodHead, http.MethodGet}, "/", HelloHandler)
-api.MustAdd([]string{http.MethodHead, http.MethodGet}, "/users", ListUser)
-api.MustAdd([]string{http.MethodHead, http.MethodGet}, "/users/{id}", GetUser)
-api.MustAdd(fox.MethodPost, "/users", CreateUser)
-
-f := fox.MustRouter(fox.DefaultOptions())
-f.MustAdd([]string{http.MethodHead, http.MethodGet}, "/*{filepath}", fox.WrapH(http.FileServer(http.Dir("./public/"))))
-f.MustAdd(fox.MethodAny, "/api*{mount}", fox.Sub(api))
-```
-
-Requests matching the prefix are delegated to the mounted router with the remaining path.
-
-Use cases include:
-- Applying middleware, matchers or other configuration to a route prefix
-- Managing entire route subtree at runtime (e.g. insert, update, or delete via the parent router)
-- Organizing routes into groups with shared configuration
 
 #### Hostname validation & restrictions
 
@@ -640,44 +617,6 @@ func main() {
 	if err := http.ListenAndServe(":8080", f); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
-}
-````
-
-Alternatively, you can use a sub-router to apply CORS only to a specific section of your API.
-
-````go
-package main
-
-import (
-	"log"
-	"net/http"
-
-	"github.com/jub0bs/cors"
-	"github.com/fox-toolkit/fox"
-)
-
-func main() {
-	corsMw, err := cors.NewMiddleware(cors.Config{
-		Origins:        []string{"https://example.com"},
-		Methods:        []string{http.MethodHead, http.MethodGet, http.MethodPost},
-		RequestHeaders: []string{"Authorization"},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	corsMw.SetDebug(true) // turn debug mode on (optional)
-
-	f := fox.MustRouter()
-	f.MustAdd([]string{http.MethodHead, http.MethodGet}, "/*{filepath}", fox.WrapH(http.FileServer(http.Dir("./public/"))))
-
-	api := fox.MustRouter(
-		fox.WithAutoOptions(true), // let Fox automatically handle OPTIONS requests
-		fox.WithMiddlewareFor(fox.RouteHandler|fox.OptionsHandler, fox.WrapM(corsMw.Wrap)),
-	)
-	api.MustAdd([]string{http.MethodHead, http.MethodGet}, "/users", ListUsers)
-	api.MustAdd(fox.MethodPost, "/users", CreateUser)
-
-	f.MustAdd(fox.MethodAny, "/api*{any}", fox.Sub(api)) // note: Method-less route
 }
 ````
 
