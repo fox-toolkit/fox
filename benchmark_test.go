@@ -50,13 +50,12 @@ func benchHostname(b *testing.B, router http.Handler, routes []route) {
 }
 
 func benchRouteParallel(b *testing.B, router http.Handler, rte route) {
-	w := new(mockResponseWriter)
-	r, _ := http.NewRequest(rte.method, rte.path, nil)
-
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
+		w := new(mockResponseWriter)
+		r, _ := http.NewRequest(rte.method, rte.path, nil)
 		for pb.Next() {
 			router.ServeHTTP(w, r)
 		}
@@ -243,13 +242,13 @@ func BenchmarkCatchAll(b *testing.B) {
 func BenchmarkCatchAllParallel(b *testing.B) {
 	r, _ := NewRouter()
 	require.NoError(b, onlyError(r.Add(MethodGet, "/something/+{args}", emptyHandler)))
-	w := new(mockResponseWriter)
-	req := httptest.NewRequest("GET", "/something/awesome", nil)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
+		w := new(mockResponseWriter)
+		req := httptest.NewRequest("GET", "/something/awesome", nil)
 		for pb.Next() {
 			r.ServeHTTP(w, req)
 		}
