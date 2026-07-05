@@ -1199,6 +1199,37 @@ func Test_parsePattern_Canonicalization(t *testing.T) {
 	}
 }
 
+func Test_normalizePatternPath(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    string
+		strict  bool
+		wantErr bool
+	}{
+		{name: "non-strict invalid hex kept", in: "/%zz", want: "/%zz"},
+		{name: "non-strict truncated escape after decoded escape", in: "/%61/100%", want: "/a/100%"},
+		{name: "non-strict invalid hex after decoded escape", in: "/a%61%zz", want: "/aa%zz"},
+		{name: "strict canonical escape after decoded escape", in: "/%61%2F", want: "/a%2F", strict: true},
+		{name: "strict unbalanced brace after decoded escape", in: "/%61/{foo", want: "/a/{foo", strict: true},
+		{name: "strict invalid hex rejected", in: "/%zz", strict: true, wantErr: true},
+		{name: "strict truncated escape rejected", in: "/100%", strict: true, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, pe := normalizePatternPath(tc.in, tc.strict)
+			if tc.wantErr {
+				require.NotNil(t, pe)
+				assert.Equal(t, "syntax", pe.Reason)
+				assert.Equal(t, strings.IndexByte(tc.in, '%'), pe.Start)
+				return
+			}
+			require.Nil(t, pe)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestPatternError_PatternField(t *testing.T) {
 	f := MustRouter()
 	var pe *PatternError
