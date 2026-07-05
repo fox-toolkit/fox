@@ -7,6 +7,7 @@ package fox
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -2748,6 +2749,20 @@ func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/foo/baz%0D%0Aqux/",
 		},
+		{
+			name:         "encoded unreserved decoded in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/b%61z",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz/",
+		},
+		{
+			name:         "encoded tilde decoded in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/%7Euser",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/~user/",
+		},
 	}
 
 	for _, tc := range cases {
@@ -3625,6 +3640,267 @@ func TestRouter_ServeHTTP_EncodedPath(t *testing.T) {
 	assert.Equal(t, encodedPath, w.Body.String())
 }
 
+func TestRouter_ServeHTTP_UnreservedDecoding(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		routes      []string
+		target      string
+		wantCode    int
+		wantPattern string
+		wantParams  Params
+	}{
+		{
+			name:        "encoded request matches decoded route",
+			routes:      []string{"/users/john"},
+			target:      "/users/j%6Fhn",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/john",
+		},
+		{
+			name:        "encoded route matches decoded request",
+			routes:      []string{"/users/j%6Fhn"},
+			target:      "/users/john",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/john",
+		},
+		{
+			name:        "raw utf8 request matches encoded route",
+			routes:      []string{"/caf%C3%A9"},
+			target:      "https://example.com/café",
+			wantCode:    http.StatusOK,
+			wantPattern: "/caf%C3%A9",
+		},
+		{
+			name:        "param captures decoded unreserved",
+			routes:      []string{"/users/{id}"},
+			target:      "/users/j%6Fhn",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/{id}",
+			wantParams:  Params{{Key: "id", Value: "john"}},
+		},
+		{
+			name:        "param keeps reserved encoded",
+			routes:      []string{"/users/{id}"},
+			target:      "/users/j%C3%A9r%C3%B4me",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/{id}",
+			wantParams:  Params{{Key: "id", Value: "j%C3%A9r%C3%B4me"}},
+		},
+		{
+			name:        "wildcard captures mixed decoded and encoded",
+			routes:      []string{"/files/+{p}"},
+			target:      "/files/a%2Fb/c%61t",
+			wantCode:    http.StatusOK,
+			wantPattern: "/files/+{p}",
+			wantParams:  Params{{Key: "p", Value: "a%2Fb/cat"}},
+		},
+		{
+			name:        "regex evaluates decoded segment",
+			routes:      []string{"/n/{d:[0-9]+}"},
+			target:      "/n/%31%32",
+			wantCode:    http.StatusOK,
+			wantPattern: "/n/{d:[0-9]+}",
+			wantParams:  Params{{Key: "d", Value: "12"}},
+		},
+		{
+			name:     "encoded slash stays distinct",
+			routes:   []string{"/a/b"},
+			target:   "/a%2Fb",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:        "literal plus matches raw plus",
+			routes:      []string{"/emails/a+b"},
+			target:      "/emails/a+b",
+			wantCode:    http.StatusOK,
+			wantPattern: "/emails/a+b",
+		},
+		{
+			name:     "encoded plus does not match literal plus",
+			routes:   []string{"/emails/a+b"},
+			target:   "/emails/a%2Bb",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:        "encoded plus route matches encoded plus request",
+			routes:      []string{"/emails/a%2Bb"},
+			target:      "/emails/a%2Bb",
+			wantCode:    http.StatusOK,
+			wantPattern: "/emails/a%2Bb",
+		},
+		{
+			name:        "literal star matches raw star",
+			routes:      []string{"/glob/*"},
+			target:      "/glob/*",
+			wantCode:    http.StatusOK,
+			wantPattern: "/glob/*",
+		},
+		{
+			name:     "raw star does not match encoded star route",
+			routes:   []string{"/star/%2A"},
+			target:   "/star/*",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:        "encoded brace route matches raw brace request",
+			routes:      []string{"/brace/%7Bid%7D"},
+			target:      "/brace/{id}",
+			wantCode:    http.StatusOK,
+			wantPattern: "/brace/%7Bid%7D",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := NewRouter(AllowRegexpParam(true))
+			require.NoError(t, err)
+
+			var gotParams Params
+			h := func(c *Context) {
+				gotParams = slices.AppendSeq(make(Params, 0, c.Route().ParamsLen()), c.Params())
+				_, _ = io.WriteString(c.Writer(), c.Pattern())
+			}
+			for _, rte := range tc.routes {
+				require.NoError(t, onlyError(f.Add(MethodGet, rte, h)))
+			}
+
+			req := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.wantCode, w.Code)
+			if tc.wantCode == http.StatusOK {
+				assert.Equal(t, tc.wantPattern, w.Body.String())
+				if tc.wantParams != nil {
+					assert.Equal(t, tc.wantParams, gotParams)
+				}
+			}
+		})
+	}
+}
+
+func TestRouter_UnreservedPatternEquivalence(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add conflict on equivalent spelling", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		_, err := f.Add(MethodGet, "/users/j%6Fhn", emptyHandler)
+		var cErr *RouteConflictError
+		require.ErrorAs(t, err, &cErr)
+	})
+
+	t.Run("route exposes canonical pattern", func(t *testing.T) {
+		f, _ := NewRouter()
+		rte, err := f.Add(MethodGet, "/users/j%6Fhn/%7bid%7d", emptyHandler)
+		require.NoError(t, err)
+		assert.Equal(t, "/users/john/%7Bid%7D", rte.Pattern())
+	})
+
+	t.Run("update with equivalent spelling", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		rte, err := f.Update(MethodGet, "/users/j%6Fhn", emptyHandler)
+		require.NoError(t, err)
+		assert.Equal(t, "/users/john", rte.Pattern())
+	})
+
+	t.Run("delete with equivalent spelling", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		rte, err := f.Delete(MethodGet, "/users/j%6Fhn")
+		require.NoError(t, err)
+		assert.Equal(t, "/users/john", rte.Pattern())
+		assert.Equal(t, 0, f.Len())
+	})
+
+	t.Run("search APIs normalize pattern", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/jane", emptyHandler)))
+
+		assert.True(t, f.Has(MethodGet, "/users/j%6Fhn"))
+		rte := f.Route(MethodGet, "/users/j%6Fhn")
+		require.NotNil(t, rte)
+		assert.Equal(t, "/users/john", rte.Pattern())
+
+		it := f.Iter()
+		routes := slices.Collect(it.Routes("/users/j%6Fhn"))
+		require.Len(t, routes, 1)
+		assert.Equal(t, "/users/john", routes[0].Pattern())
+
+		prefixed := slices.Collect(it.PatternPrefix("/users/j%6F"))
+		require.Len(t, prefixed, 1)
+		assert.Equal(t, "/users/john", prefixed[0].Pattern())
+
+		// A prefix cut in the middle of an escape sequence matches nothing.
+		assert.Empty(t, slices.Collect(it.PatternPrefix("/users/j%6")))
+
+		// Literal '*' followed by a later brace segment is looked up as static.
+		require.NoError(t, onlyError(f.Add(MethodGet, "/glob/*0{id}", emptyHandler)))
+		assert.True(t, f.Has(MethodGet, "/glob/*0{id}"))
+		assert.False(t, f.Has(MethodGet, "/glob/*1{id}"))
+	})
+
+	t.Run("txn search APIs normalize pattern", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		require.NoError(t, f.View(func(txn *Txn) error {
+			assert.True(t, txn.Has(MethodGet, "/users/j%6Fhn"))
+			rte := txn.Route(MethodGet, "/users/j%6Fhn")
+			require.NotNil(t, rte)
+			assert.Equal(t, "/users/john", rte.Pattern())
+			return nil
+		}))
+	})
+}
+
+func TestRouter_ServeHTTP_EncodedDotSegments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("strict path no match", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("strict path param captures decoded dots", func(t *testing.T) {
+		f, _ := NewRouter()
+		var got string
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/{x}/bar", func(c *Context) {
+			got = c.Param("x")
+		})))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "..", got)
+	})
+
+	t.Run("relaxed path collapses encoded dots", func(t *testing.T) {
+		f, _ := NewRouter(WithHandleFixedPath(RelaxedPath))
+		var pattern string
+		require.NoError(t, onlyError(f.Add(MethodGet, "/bar", func(c *Context) {
+			pattern = c.Pattern()
+		})))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "/bar", pattern)
+	})
+
+	t.Run("redirect path collapses encoded dots", func(t *testing.T) {
+		f, _ := NewRouter(WithHandleFixedPath(RedirectPath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/bar", w.Header().Get(HeaderLocation))
+	})
+}
+
 func FuzzRouter_Add(f *testing.F) {
 	seeds := []string{
 		// Empty / slashes
@@ -3665,6 +3941,11 @@ func FuzzRouter_Add(f *testing.F) {
 		"/+{a}/+{b}", "/*{a}*{b}", "/+{a}+{b}",
 		// Optional not as suffix (invalid per spec)
 		"/*{path}/foo",
+		// Percent-encoding: unreserved decoded, reserved kept, invalid rejected
+		"/a%61b", "/foo%2Fbar", "/caf%C3%A9", "/%2E%2E/", "/100%", "/%zz", "/%2",
+		"/x%61/{id}", "/{p:[%41]+}",
+		// Literal '+' and '*' in path
+		"/emails/a+b", "/a+", "/glob/*", "/a*b", "/a*{x}", "/a+{x}",
 	}
 	for _, s := range seeds {
 		f.Add(s)
@@ -3723,6 +4004,12 @@ func FuzzRouter_AddDelete(f *testing.F) {
 		"_srv.example.com/\n_foo.example.com/bar",
 		// Mix hostname + path (mode switching on delete)
 		"example.com/users\n/fallback\n/api/users",
+		// Percent-encoding equivalence (second spelling conflicts with first)
+		"/users/john\n/users/j%6Fhn",
+		"/a%61\n/ab\n/a%2Fb",
+		"/%2E%2E/\n/100%\n/%zz",
+		// Literal '+' and '*' in path
+		"/emails/a+b\n/glob/*\n/a+{x}",
 	}
 	for _, s := range seeds {
 		f.Add(s)

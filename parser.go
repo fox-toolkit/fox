@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/fox-toolkit/fox/internal/stringsutil"
 )
 
 type pattern struct {
@@ -46,9 +48,26 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 		}
 	}
 
-	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(path, paramCount)
+	// Canonicalize the path before parsing so the tree is keyed on the decoded
+	// form and encoded dot-segments (e.g. %2E%2E) are caught by validation.
+	// Normalization errors point into the raw pattern, while parsePath errors
+	// below point into the canonical form.
+	normPath, pe := normalizePatternPath(path, true)
 	if pe != nil {
 		pe.Pattern = raw
+		pe.Type = "path"
+		pe.Start += endHost
+		pe.End += endHost
+		return pattern{}, 0, pe
+	}
+	canonical := raw
+	if normPath != path {
+		canonical = raw[:endHost] + normPath
+	}
+
+	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(normPath, paramCount)
+	if pe != nil {
+		pe.Pattern = canonical
 		pe.Type = "path"
 		pe.Start += endHost
 		pe.End += endHost
@@ -60,11 +79,121 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 	tokens = append(tokens, pathTokens...)
 
 	return pattern{
-		str:              raw,
+		str:              canonical,
 		tokens:           tokens,
 		endHost:          endHost,
 		optionalCatchAll: optCatchAll,
 	}, paramCount, nil
+}
+
+// normalizeSearchPattern returns the canonical form of a pattern used as a
+// search argument (e.g. [Router.Route], [Iter.Routes], [Iter.PatternPrefix]).
+// Unlike registration, malformed escape sequences are not rejected but kept
+// as-is. They cannot match any route anyway.
+func normalizeSearchPattern(pattern string) string {
+	endHost := strings.IndexByte(pattern, '/')
+	if endHost == -1 {
+		return pattern
+	}
+	normPath, _ := normalizePatternPath(pattern[endHost:], false)
+	if normPath == pattern[endHost:] {
+		return pattern
+	}
+	return pattern[:endHost] + normPath
+}
+
+// normalizePatternPath returns the canonical form of the path part of a route
+// pattern. Percent-encoded unreserved characters are decoded and the remaining
+// hex sequences are normalized to uppercase, like [stringsutil.NormalizeRoutingPath].
+// Brace segments, including regex constraints, are never decoded. In strict mode,
+// malformed escape sequences are rejected with a [PatternError] positioned
+// relative to path. Otherwise they are kept as-is. The input is returned
+// unchanged, without allocation, when already canonical.
+func normalizePatternPath(path string, strict bool) (string, *PatternError) {
+	var buf strings.Builder
+	i := 0
+	for i < len(path) {
+		c := path[i]
+
+		if c == '{' {
+			end := braceIndex(path[i+1:], 1)
+			if end == -1 {
+				// Unbalanced braces. Copy the remainder as-is and let parsePath
+				// report the error with consistent positions.
+				if buf.Len() > 0 {
+					buf.WriteString(path[i:])
+				}
+				break
+			}
+			if buf.Len() > 0 {
+				buf.WriteString(path[i : i+1+end+1])
+			}
+			i += 1 + end + 1
+			continue
+		}
+
+		if c != '%' {
+			if buf.Len() > 0 {
+				buf.WriteByte(c)
+			}
+			i++
+			continue
+		}
+
+		if i+2 >= len(path) {
+			if strict {
+				return "", newPatternError("syntax", i, len(path), "invalid percent-encoding")
+			}
+			if buf.Len() > 0 {
+				buf.WriteByte(c)
+			}
+			i++
+			continue
+		}
+
+		b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
+		if !ok {
+			if strict {
+				return "", newPatternError("syntax", i, i+3, "invalid percent-encoding")
+			}
+			if buf.Len() > 0 {
+				buf.WriteByte(c)
+			}
+			i++
+			continue
+		}
+
+		hiUpper := stringsutil.UpperHex(path[i+1])
+		loUpper := stringsutil.UpperHex(path[i+2])
+		switch {
+		case stringsutil.IsUnreserved(b):
+			if buf.Len() == 0 {
+				buf.Grow(len(path))
+				buf.WriteString(path[:i])
+			}
+			buf.WriteByte(b)
+		case path[i+1] != hiUpper || path[i+2] != loUpper:
+			if buf.Len() == 0 {
+				buf.Grow(len(path))
+				buf.WriteString(path[:i])
+			}
+			buf.WriteByte('%')
+			buf.WriteByte(hiUpper)
+			buf.WriteByte(loUpper)
+		default:
+			if buf.Len() > 0 {
+				buf.WriteByte('%')
+				buf.WriteByte(hiUpper)
+				buf.WriteByte(loUpper)
+			}
+		}
+		i += 3
+	}
+
+	if buf.Len() == 0 {
+		return path, nil
+	}
+	return buf.String(), nil
 }
 
 func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) {
@@ -228,18 +357,23 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 
 		switch c {
 		case '{', '+', '*':
+			isOpt := c == '*'
+			isWild := c == '+' || isOpt
+			// The wildcard syntax requires an immediate '{'. A bare '+' or '*'
+			// is a literal character (both may appear unescaped in a request path).
+			if isWild && (i+1 >= len(path) || path[i+1] != '{') {
+				sb.WriteByte(c)
+				staticSinceWild++
+				i++
+				continue
+			}
 			if sb.Len() > 0 {
 				tokens = append(tokens, token{typ: nodeStatic, value: sb.String()})
 				sb.Reset()
 			}
-			isOpt := c == '*'
-			isWild := c == '+' || isOpt
 			paramStart := i
 			if isWild {
 				i++
-				if i >= len(path) || path[i] != '{' {
-					return nil, false, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
-				}
 				if prevWild && staticSinceWild <= 1 {
 					paramEnd := len(path)
 					if idx := braceIndex(path[i+1:], 1); idx >= 0 {

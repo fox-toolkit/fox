@@ -244,9 +244,61 @@ func Test_parsePattern(t *testing.T) {
 			wantN: 0,
 		},
 		{
-			name:  "missing arguments name after catch all",
-			path:  "/foo/bar/*",
+			name:       "encoded unreserved decoded in static token",
+			path:       "/a%61b",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/aab", false))),
+		},
+		{
+			name:       "encoded reserved preserved with uppercase hex",
+			path:       "/foo%2fbar/caf%c3%a9",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo%2Fbar/caf%C3%A9", false))),
+		},
+		{
+			name:       "encoded structural characters stay literal",
+			path:       "/a%7Bb%7D/%2A/%2B",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/a%7Bb%7D/%2A/%2B", false))),
+		},
+		{
+			name:       "encoded unreserved decoded before param",
+			path:       "/x%61/{id}",
+			wantN:      1,
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/xa/", false), paramToken("id", ""))),
+		},
+		{
+			name:       "regex constraint not decoded",
+			path:       "/foo/{bar:[%41]+}",
+			wantN:      1,
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/", false), paramToken("bar", "[%41]+"))),
+		},
+		{
+			name:  "encoded dot dot segment rejected",
+			path:  "/foo/%2E%2E/bar",
 			wantN: 0,
+		},
+		{
+			name:  "encoded single dot segment rejected",
+			path:  "/foo/%2e/bar",
+			wantN: 0,
+		},
+		{
+			name:  "trailing percent rejected",
+			path:  "/100%",
+			wantN: 0,
+		},
+		{
+			name:  "truncated escape rejected",
+			path:  "/foo%2",
+			wantN: 0,
+		},
+		{
+			name:  "invalid escape rejected",
+			path:  "/%zz",
+			wantN: 0,
+		},
+		{
+			name:       "literal star as suffix",
+			path:       "/foo/bar/*",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar/*", false))),
 		},
 		{
 			name:  "missing arguments name after param",
@@ -254,9 +306,25 @@ func Test_parsePattern(t *testing.T) {
 			wantN: 0,
 		},
 		{
-			name:  "catch all in the middle of the route",
-			path:  "/foo/bar/*/baz",
-			wantN: 0,
+			name:       "literal star in the middle of the route",
+			path:       "/foo/bar/*/baz",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar/*/baz", false))),
+		},
+		{
+			name:       "literal plus as suffix",
+			path:       "/foo/bar/a+",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/bar/a+", false))),
+		},
+		{
+			name:       "literal plus in the middle of the route",
+			path:       "/emails/a+b/baz",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/emails/a+b/baz", false))),
+		},
+		{
+			name:       "literal plus before wildcard brace still wildcard",
+			path:       "/foo/+{bar}",
+			wantN:      1,
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/", false), wildcardToken("bar", ""))),
 		},
 		{
 			name:  "empty infix catch all",
@@ -1072,8 +1140,9 @@ func Test_parsePattern(t *testing.T) {
 			path: "/foo/{bar:(foo|bar)}",
 		},
 		{
-			name: "no opening brace after * wildcard",
-			path: "/foo/*:bar}",
+			name:       "literal star without opening brace",
+			path:       "/foo/*:bar}",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/*:bar}", false))),
 		},
 		{
 			name: "no infix catch all empty",
@@ -1104,6 +1173,45 @@ func Test_parsePattern(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_parsePattern_Canonicalization(t *testing.T) {
+	f := MustRouter()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"already canonical", "/users/john", "/users/john"},
+		{"encoded unreserved decoded", "/users/j%6Fhn", "/users/john"},
+		{"lowercase hex uppercased", "/a%2fb", "/a%2Fb"},
+		{"encoded brace preserved", "/a%7Bb", "/a%7Bb"},
+		{"hostname preserved path normalized", "example.com/%7e%61", "example.com/~a"},
+		{"param preserved path normalized", "/x%61/{id}/y%2fz", "/xa/{id}/y%2Fz"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pat, _, err := f.parsePattern(tc.in)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, pat.str)
+			assert.Equal(t, strings.IndexByte(tc.in, '/'), pat.endHost)
+		})
+	}
+}
+
+func TestPatternError_PatternField(t *testing.T) {
+	f := MustRouter()
+	var pe *PatternError
+
+	// Normalization errors reference the raw pattern.
+	_, _, err := f.parsePattern("/foo/%zz")
+	require.ErrorAs(t, err, &pe)
+	assert.Equal(t, "/foo/%zz", pe.Pattern)
+
+	// Parse errors reference the canonical (normalized) pattern.
+	_, _, err = f.parsePattern("/foo/%2E%2E/bar")
+	require.ErrorAs(t, err, &pe)
+	assert.Equal(t, "/foo/../bar", pe.Pattern)
 }
 
 func Test_parsePattern_ParamsConstraint(t *testing.T) {
@@ -1372,15 +1480,6 @@ func TestPatternError_Position(t *testing.T) {
 			wantMsg:    "missing parameter after delimiter",
 		},
 		{
-			name:       "path missing parameter after + delimiter",
-			pattern:    "/foo/+bar",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  5,
-			wantEnd:    6,
-			wantMsg:    "missing parameter after delimiter",
-		},
-		{
 			name:       "path consecutive wildcard",
 			pattern:    "/+{a}/+{b}",
 			wantType:   "path",
@@ -1443,6 +1542,42 @@ func TestPatternError_Position(t *testing.T) {
 			wantStart:  15,
 			wantEnd:    17,
 			wantMsg:    "consecutive '/'",
+		},
+		{
+			name:       "path invalid percent encoding",
+			pattern:    "/foo/%zzbar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  5,
+			wantEnd:    8,
+			wantMsg:    "invalid percent-encoding",
+		},
+		{
+			name:       "path truncated percent encoding",
+			pattern:    "/foo%2",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    6,
+			wantMsg:    "invalid percent-encoding",
+		},
+		{
+			name:       "path invalid percent encoding with hostname",
+			pattern:    "example.com/%zz",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  12,
+			wantEnd:    15,
+			wantMsg:    "invalid percent-encoding",
+		},
+		{
+			name:       "path encoded dot segment positions on canonical pattern",
+			pattern:    "/foo/%2E%2E/bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    8,
+			wantMsg:    "dot segment",
 		},
 		{
 			name:       "path dot segment single dot mid",

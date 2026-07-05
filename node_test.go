@@ -206,8 +206,20 @@ func Test_parseBraceSegment(t *testing.T) {
 		{
 			name:    "asterisk with space",
 			pattern: "* {path}",
-			wantEnd: 7, // doesn't start with "+{", so brace in middle is found
-			wantKey: "?",
+			wantEnd: 0, // literal '*': the wildcard syntax requires an immediate '{'
+			wantKey: "",
+		},
+		{
+			name:    "literal star before brace segment",
+			pattern: "*0{id}",
+			wantEnd: 0, // literal '*': the wildcard syntax requires an immediate '{'
+			wantKey: "",
+		},
+		{
+			name:    "literal plus before brace segment",
+			pattern: "+a{id}",
+			wantEnd: 0, // literal '+': the wildcard syntax requires an immediate '{'
+			wantKey: "",
 		},
 		{
 			name:    "brace in middle of static",

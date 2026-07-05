@@ -73,6 +73,11 @@ func TestLogger(t *testing.T) {
 			req:  httptest.NewRequest(http.MethodGet, "/echo/foo%2fbar", nil),
 			want: "time=time level=INFO msg=192.0.2.1 status=200 method=GET host=example.com path=/echo/foo%2Fbar size=0 latency=latency\n",
 		},
+		{
+			name: "should decode unreserved characters in logged path",
+			req:  httptest.NewRequest(http.MethodGet, "/echo/j%6Fhn", nil),
+			want: "time=time level=INFO msg=192.0.2.1 status=200 method=GET host=example.com path=/echo/john size=0 latency=latency\n",
+		},
 	}
 
 	for _, tc := range cases {

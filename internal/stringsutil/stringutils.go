@@ -53,19 +53,83 @@ func ToLowerASCII(b byte) byte {
 	return b
 }
 
-func NormalizeHexUppercase(s string) string {
+// IsUnreserved reports whether b is an RFC 3986 unreserved character:
+// ALPHA / DIGIT / "-" / "." / "_" / "~". Unreserved characters are the only
+// ones that can be safely percent-decoded without changing the meaning of a URI.
+func IsUnreserved(b byte) bool {
+	return 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z' || '0' <= b && b <= '9' ||
+		b == '-' || b == '.' || b == '_' || b == '~'
+}
+
+// DecodeHexPair decodes two ASCII hexadecimal digits into a byte. It returns
+// false if either character is not a hexadecimal digit.
+func DecodeHexPair(hi, lo byte) (byte, bool) {
+	h, ok := hexDigit(hi)
+	if !ok {
+		return 0, false
+	}
+	l, ok := hexDigit(lo)
+	if !ok {
+		return 0, false
+	}
+	return h<<4 | l, true
+}
+
+func hexDigit(c byte) (byte, bool) {
+	switch {
+	case '0' <= c && c <= '9':
+		return c - '0', true
+	case 'a' <= c && c <= 'f':
+		return c - 'a' + 10, true
+	case 'A' <= c && c <= 'F':
+		return c - 'A' + 10, true
+	}
+	return 0, false
+}
+
+// UpperHex converts an ASCII lowercase hexadecimal digit (a-f) to uppercase (A-F).
+// All other bytes are returned unchanged.
+func UpperHex(c byte) byte {
+	if 'a' <= c && c <= 'f' {
+		return c - ('a' - 'A')
+	}
+	return c
+}
+
+// NormalizeRoutingPath returns the canonical routing form of an escaped path:
+// percent-encoded unreserved characters (see [IsUnreserved]) are decoded and
+// the remaining hex sequences are normalized to uppercase.
+// Malformed escape sequences are kept as-is. The input is returned
+// unchanged, without allocation, when already canonical.
+func NormalizeRoutingPath(s string) string {
 	var buf strings.Builder
 	for i := 0; i < len(s); i++ {
-		if s[i] != '%' || i+2 >= len(s) {
+		c := s[i]
+		if c != '%' || i+2 >= len(s) {
 			if buf.Len() > 0 {
-				buf.WriteByte(s[i])
+				buf.WriteByte(c)
 			}
 			continue
 		}
-		hi, lo := s[i+1], s[i+2]
-		hiUpper := upperHex(hi)
-		loUpper := upperHex(lo)
-		if hi != hiUpper || lo != loUpper {
+		b, ok := DecodeHexPair(s[i+1], s[i+2])
+		if !ok {
+			// Malformed escape. Keep the '%' and process the following
+			// bytes as ordinary characters.
+			if buf.Len() > 0 {
+				buf.WriteByte(c)
+			}
+			continue
+		}
+		hiUpper := UpperHex(s[i+1])
+		loUpper := UpperHex(s[i+2])
+		switch {
+		case IsUnreserved(b):
+			if buf.Len() == 0 {
+				buf.Grow(len(s))
+				buf.WriteString(s[:i])
+			}
+			buf.WriteByte(b)
+		case s[i+1] != hiUpper || s[i+2] != loUpper:
 			if buf.Len() == 0 {
 				buf.Grow(len(s))
 				buf.WriteString(s[:i])
@@ -73,10 +137,12 @@ func NormalizeHexUppercase(s string) string {
 			buf.WriteByte('%')
 			buf.WriteByte(hiUpper)
 			buf.WriteByte(loUpper)
-		} else if buf.Len() > 0 {
-			buf.WriteByte('%')
-			buf.WriteByte(hi)
-			buf.WriteByte(lo)
+		default:
+			if buf.Len() > 0 {
+				buf.WriteByte('%')
+				buf.WriteByte(hiUpper)
+				buf.WriteByte(loUpper)
+			}
 		}
 		i += 2
 	}
@@ -84,11 +150,4 @@ func NormalizeHexUppercase(s string) string {
 		return s
 	}
 	return buf.String()
-}
-
-func upperHex(c byte) byte {
-	if 'a' <= c && c <= 'f' {
-		return c - ('a' - 'A')
-	}
-	return c
 }

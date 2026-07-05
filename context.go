@@ -44,13 +44,14 @@ type RequestContext interface {
 	// Method returns the request method.
 	Method() string
 	// Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
-	// For the canonical encoded form used by the router, prefer [RequestContext.EscapedPath].
+	// TODO delete me
 	Path() string
-	// EscapedPath returns the canonical encoded path that the router uses for matching.
-	// It is equivalent to [url.URL.EscapedPath] with hex sequences normalized to uppercase
-	// (e.g. %2f becomes %2F). Use this when the form must match exactly what the router
-	// routed on, such as when constructing redirect targets, cache keys, or routing logs.
-	EscapedPath() string
+	// RoutingPath returns the canonical path that the router uses for matching. It is equivalent
+	// to [url.URL.EscapedPath] with percent-encoded RFC 3986 unreserved characters (A-Z a-z 0-9
+	// - . _ ~) decoded and the remaining hex sequences normalized to uppercase (e.g. %2f becomes
+	// %2F). A typical use is when you need the exact path the router matched on, for example
+	// as a cache key.
+	RoutingPath() string
 	// Host returns the request host.
 	Host() string
 	// QueryParams parses the [http.Request] raw query and returns the corresponding values. The result is cached after
@@ -204,7 +205,7 @@ func (c *Context) Method() string {
 }
 
 // Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
-// For the canonical encoded form used by the router, prefer [Context.EscapedPath].
+// For the canonical form used by the router, prefer [Context.RoutingPath].
 func (c *Context) Path() string {
 	if len(c.req.URL.RawPath) > 0 {
 		return c.req.URL.RawPath
@@ -212,11 +213,12 @@ func (c *Context) Path() string {
 	return c.req.URL.Path
 }
 
-// EscapedPath returns the canonical encoded path that the router uses for matching.
-// It is equivalent to [url.URL.EscapedPath] with hex sequences normalized to uppercase
-// (e.g. %2f becomes %2F). Use this when the form must match exactly what the router
-// routed on, such as when constructing redirect targets, cache keys, or routing logs.
-func (c *Context) EscapedPath() string {
+// RoutingPath returns the canonical path that the router uses for matching. It is equivalent
+// to [url.URL.EscapedPath] with percent-encoded RFC 3986 unreserved characters (A-Z a-z 0-9
+// - . _ ~) decoded and the remaining hex sequences normalized to uppercase (e.g. %2f becomes
+// %2F). A typical use is when you need the exact path the router matched on, for example
+// as a cache key.
+func (c *Context) RoutingPath() string {
 	return routingPath(c.req)
 }
 
@@ -382,7 +384,7 @@ func (s onlyRequestContext) RemoteIP() *net.IPAddr          { return s.c.RemoteI
 func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) { return s.c.ClientIP() }
 func (s onlyRequestContext) Method() string                 { return s.c.Method() }
 func (s onlyRequestContext) Path() string                   { return s.c.Path() }
-func (s onlyRequestContext) EscapedPath() string            { return s.c.EscapedPath() }
+func (s onlyRequestContext) RoutingPath() string            { return s.c.RoutingPath() }
 func (s onlyRequestContext) Host() string                   { return s.c.Host() }
 func (s onlyRequestContext) QueryParams() url.Values        { return s.c.QueryParams() }
 func (s onlyRequestContext) QueryParam(name string) string  { return s.c.QueryParam(name) }

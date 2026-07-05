@@ -245,6 +245,7 @@ func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Ro
 		panic(ErrSettledTxn)
 	}
 
+	pattern = normalizeSearchPattern(pattern)
 	root := txn.rootTxn.patterns
 	matched := root.searchPattern(pattern)
 	if matched == nil || !matched.isLeaf() {
@@ -294,7 +295,7 @@ func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
 	defer tree.pool.Put(c)
 	c.resetWithRequest(r)
 
-	path := c.EscapedPath()
+	path := c.RoutingPath()
 
 	idx, n, tsr := txn.rootTxn.patterns.lookup(method, r.Host, path, c, true)
 	if n != nil {
@@ -321,7 +322,7 @@ func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Con
 	c := tree.pool.Get().(*Context)
 	c.resetWithWriter(w, r)
 
-	path := c.EscapedPath()
+	path := c.RoutingPath()
 
 	idx, n, tsr := txn.rootTxn.patterns.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {

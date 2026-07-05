@@ -114,7 +114,7 @@ func TestContext_Path(t *testing.T) {
 	assert.Equal(t, "/foo", w.Body.String())
 }
 
-func TestContext_EscapedPath(t *testing.T) {
+func TestContext_RoutingPath(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name   string
@@ -151,12 +151,42 @@ func TestContext_EscapedPath(t *testing.T) {
 			target: "https://example.com/foo/bar%2Fbaz",
 			want:   "/foo/bar%2Fbaz",
 		},
+		{
+			name:   "encoded unreserved letter decoded",
+			target: "https://example.com/foo/b%61r",
+			want:   "/foo/bar",
+		},
+		{
+			name:   "encoded unreserved uppercase decoded",
+			target: "https://example.com/foo/%42AR",
+			want:   "/foo/BAR",
+		},
+		{
+			name:   "encoded tilde decoded",
+			target: "https://example.com/%7euser",
+			want:   "/~user",
+		},
+		{
+			name:   "encoded unreserved decoded next to preserved escape",
+			target: "https://example.com/%61%2F%62",
+			want:   "/a%2Fb",
+		},
+		{
+			name:   "encoded dot decoded",
+			target: "https://example.com/foo/%2E%2E/bar",
+			want:   "/foo/../bar",
+		},
+		{
+			name:   "raw plus and star preserved",
+			target: "https://example.com/a+b/c*d",
+			want:   "/a+b/c*d",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := NewRouter()
 			f.MustAdd(MethodGet, "/*{any}", func(c *Context) {
-				_, _ = io.WriteString(c.Writer(), c.EscapedPath())
+				_, _ = io.WriteString(c.Writer(), c.RoutingPath())
 			})
 
 			w := httptest.NewRecorder()

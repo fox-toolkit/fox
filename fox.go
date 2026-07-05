@@ -324,6 +324,7 @@ func (fox *Router) Has(methods []string, pattern string, matchers ...Matcher) bo
 func (fox *Router) Route(methods []string, pattern string, matchers ...Matcher) *Route {
 	tree := fox.getTree()
 
+	pattern = normalizeSearchPattern(pattern)
 	root := tree.patterns
 	matched := root.searchPattern(pattern)
 	if matched == nil || !matched.isLeaf() {
@@ -370,7 +371,7 @@ func (fox *Router) Match(method string, r *http.Request) (route *Route, tsr bool
 	defer tree.pool.Put(c)
 	c.resetWithRequest(r)
 
-	path := c.EscapedPath()
+	path := c.RoutingPath()
 
 	idx, n, tsr := tree.lookup(method, r.Host, path, c, true)
 	if n != nil {
@@ -392,7 +393,7 @@ func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *
 	c := tree.pool.Get().(*Context)
 	c.resetWithWriter(w, r)
 
-	path := c.EscapedPath()
+	path := c.RoutingPath()
 
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {
@@ -604,7 +605,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.reset(w, r)
 	defer tree.pool.Put(c)
 
-	path := c.EscapedPath()
+	path := c.RoutingPath()
 
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if !tsr && n != nil {
@@ -811,7 +812,7 @@ func internalTrailingSlashHandler(c *Context) {
 		code = http.StatusPermanentRedirect
 	}
 
-	path := escapeLeadingSlashes(fixTrailingSlash(c.EscapedPath()))
+	path := escapeLeadingSlashes(fixTrailingSlash(c.RoutingPath()))
 	if q := req.URL.RawQuery; q != "" {
 		path += "?" + q
 	}
@@ -828,7 +829,7 @@ func internalFixedPathHandler(c *Context) {
 		code = http.StatusPermanentRedirect
 	}
 
-	cleanedPath := escapeLeadingSlashes(CleanPath(c.EscapedPath()))
+	cleanedPath := escapeLeadingSlashes(CleanPath(c.RoutingPath()))
 	if q := req.URL.RawQuery; q != "" {
 		cleanedPath += "?" + q
 	}
@@ -840,7 +841,7 @@ func routingPath(r *http.Request) string {
 	if r.URL.RawPath == "" {
 		return r.URL.EscapedPath()
 	}
-	return stringsutil.NormalizeHexUppercase(r.URL.EscapedPath())
+	return stringsutil.NormalizeRoutingPath(r.URL.EscapedPath())
 }
 
 func applyMiddleware(scope HandlerScope, mws []middleware, h HandlerFunc) HandlerFunc {

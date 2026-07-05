@@ -44,6 +44,7 @@ func (it Iter) Methods() iter.Seq[string] {
 // concurrent use by multiple goroutine and while mutation on routes are ongoing.
 func (it Iter) Routes(pattern string) iter.Seq[*Route] {
 	return func(yield func(*Route) bool) {
+		pattern = normalizeSearchPattern(pattern)
 		matched := it.patterns.searchPattern(pattern)
 		if matched == nil || !matched.isLeaf() {
 			return
@@ -107,9 +108,11 @@ func (it Iter) NamePrefix(prefix string) iter.Seq[*Route] {
 // PatternPrefix returns a range iterator over all routes in the routing tree that match a given pattern prefix.
 // The iterator reflect a snapshot of the routing tree at the time [Iter] is created. This function is safe for
 // concurrent use by multiple goroutine and while mutation on routes are ongoing.
-// Note: Partial parameter syntax (e.g., /users/{name:) is not supported and will not match any routes.
+// Note: Partial parameter syntax (e.g., /users/{name:) or a prefix ending in the middle of an escape
+// sequence (e.g., /users/%4 for %41, which is stored decoded as A) is not supported and will not match any routes.
 func (it Iter) PatternPrefix(prefix string) iter.Seq[*Route] {
 	return func(yield func(*Route) bool) {
+		prefix = normalizeSearchPattern(prefix)
 		var stacks []stack
 		if it.maxDepth < stackSizeThreshold {
 			stacks = make([]stack, 0, stackSizeThreshold) // stack allocation
