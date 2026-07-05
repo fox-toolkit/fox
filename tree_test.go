@@ -1497,7 +1497,7 @@ func Test_iTree_lookup_Matchers(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			req.Host = tc.host
 			c.req = req
-			idx, n, tsr := tree.lookup(http.MethodGet, tc.host, c.Path(), c, false)
+			idx, n, tsr := tree.lookup(http.MethodGet, tc.host, c.RoutingPath(), c, false)
 			require.NotNil(t, n)
 			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
@@ -1642,7 +1642,7 @@ func Test_iTree_lookup_MatchersPriority(t *testing.T) {
 			c := newTestContext(f)
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			c.req = req
-			idx, n, _ := tree.lookup(http.MethodGet, "", c.Path(), c, false)
+			idx, n, _ := tree.lookup(http.MethodGet, "", c.RoutingPath(), c, false)
 			require.NotNil(t, n)
 			assert.Equal(t, tc.wantPattern, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantMatcher, n.routes[idx].matchers)

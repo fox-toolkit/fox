@@ -29,7 +29,7 @@ import (
 
 var (
 	emptyHandler   = HandlerFunc(func(c *Context) {})
-	pathHandler    = HandlerFunc(func(c *Context) { _ = c.String(200, c.Path()) })
+	pathHandler    = HandlerFunc(func(c *Context) { _ = c.String(200, c.Request().URL.Path) })
 	patternHandler = HandlerFunc(func(c *Context) { _ = c.String(200, c.Pattern()) })
 )
 
@@ -997,7 +997,7 @@ func TestRouter_ServeHTTP_Params(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1009,8 +1009,8 @@ func TestRouter_ServeHTTP_Params(t *testing.T) {
 			ps, _ := url.PathUnescape(c.Param(key))
 			assert.Equal(t, value, ps)
 		}
-		assert.Equal(t, c.Path(), c.Pattern())
-		_ = c.String(200, c.Path())
+		assert.Equal(t, c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, c.Request().URL.Path)
 	}
 	for _, route := range githubAPI {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, route.path, h)))
@@ -1043,7 +1043,7 @@ func TestRouter_ServeHTTP_ParamsHostname(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1056,8 +1056,8 @@ func TestRouter_ServeHTTP_ParamsHostname(t *testing.T) {
 		}
 
 		host := strings.ToLower(netutil.StripHostPort(c.Host()))
-		assert.Equal(t, host+c.Path(), c.Pattern())
-		_ = c.String(200, host+c.Path())
+		assert.Equal(t, host+c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, host+c.Request().URL.Path)
 	}
 	for _, route := range wildcardHostnames {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, route.path+"/foo", h)))
@@ -1125,7 +1125,7 @@ func TestRouter_ServeHTTP_ParamsTxn(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1137,8 +1137,8 @@ func TestRouter_ServeHTTP_ParamsTxn(t *testing.T) {
 			ps, _ := url.PathUnescape(c.Param(key))
 			assert.Equal(t, value, ps)
 		}
-		assert.Equal(t, c.Path(), c.Pattern())
-		_ = c.String(200, c.Path())
+		assert.Equal(t, c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, c.Request().URL.Path)
 	}
 	require.NoError(t, r.Updates(func(txn *Txn) error {
 		for _, route := range githubAPI {
@@ -1162,7 +1162,7 @@ func TestRouter_ServeHTTP_ParamsWithDomain(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1175,8 +1175,8 @@ func TestRouter_ServeHTTP_ParamsWithDomain(t *testing.T) {
 			assert.Equal(t, value, ps)
 		}
 
-		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Path(), c.Pattern())
-		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Path())
+		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Request().URL.Path)
 	}
 	for _, route := range githubAPI {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, "foo.{bar}.com"+route.path, h)))
@@ -1195,7 +1195,7 @@ func TestRouter_ServeHTTP_ParamsWithDomainTxn(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1208,8 +1208,8 @@ func TestRouter_ServeHTTP_ParamsWithDomainTxn(t *testing.T) {
 			assert.Equal(t, value, ps)
 		}
 
-		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Path(), c.Pattern())
-		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Path())
+		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Request().URL.Path)
 	}
 	require.NoError(t, r.Updates(func(txn *Txn) error {
 		for _, route := range githubAPI {

@@ -248,7 +248,7 @@ func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsEnable(t *testing.T) {
 			f := MustRouter(WithAutoOptions(true), WithHandleTrailingSlash(RelaxedSlash))
 			for _, method := range tc.methods {
 				require.NoError(t, onlyError(f.Add([]string{method}, tc.path, func(c *Context) {
-					req := httptest.NewRequest(http.MethodGet, c.Path(), nil)
+					req := httptest.NewRequest(http.MethodGet, c.Request().URL.Path, nil)
 					req.Host = c.Host()
 					c.SetHeader("Allow", strings.Join(tc.methods, ","))
 					c.Writer().WriteHeader(http.StatusNoContent)
@@ -580,7 +580,7 @@ func TestRouter_ServeHTTP_AutomaticOptions(t *testing.T) {
 			require.True(t, rf.SystemWideOptions)
 			for _, method := range tc.methods {
 				require.NoError(t, onlyError(f.Add([]string{method}, tc.path, func(c *Context) {
-					req := httptest.NewRequest(http.MethodGet, c.Path(), nil)
+					req := httptest.NewRequest(http.MethodGet, c.Request().URL.Path, nil)
 					req.Host = c.Host()
 					c.SetHeader("Allow", strings.Join(tc.methods, ","))
 					c.Writer().WriteHeader(http.StatusNoContent)
@@ -678,7 +678,7 @@ func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsDisable(t *testing.T) {
 			f, _ := NewRouter(WithAutoOptions(true))
 			for _, method := range tc.methods {
 				require.NoError(t, onlyError(f.Add([]string{method}, tc.path, func(c *Context) {
-					req := httptest.NewRequest(http.MethodGet, c.Path(), nil)
+					req := httptest.NewRequest(http.MethodGet, c.Request().URL.Path, nil)
 					req.Host = c.Host()
 					c.SetHeader("Allow", strings.Join(tc.methods, ","))
 					c.Writer().WriteHeader(http.StatusNoContent)

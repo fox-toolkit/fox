@@ -43,9 +43,6 @@ type RequestContext interface {
 	ClientIP() (*net.IPAddr, error)
 	// Method returns the request method.
 	Method() string
-	// Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
-	// TODO delete me
-	Path() string
 	// RoutingPath returns the canonical path that the router uses for matching. It is equivalent
 	// to [url.URL.EscapedPath] with percent-encoded RFC 3986 unreserved characters (A-Z a-z 0-9
 	// - . _ ~) decoded and the remaining hex sequences normalized to uppercase (e.g. %2f becomes
@@ -202,15 +199,6 @@ func (c *Context) Param(name string) string {
 // Method returns the request method.
 func (c *Context) Method() string {
 	return c.req.Method
-}
-
-// Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
-// For the canonical form used by the router, prefer [Context.RoutingPath].
-func (c *Context) Path() string {
-	if len(c.req.URL.RawPath) > 0 {
-		return c.req.URL.RawPath
-	}
-	return c.req.URL.Path
 }
 
 // RoutingPath returns the canonical path that the router uses for matching. It is equivalent
@@ -383,7 +371,6 @@ func (s onlyRequestContext) Request() *http.Request         { return s.c.Request
 func (s onlyRequestContext) RemoteIP() *net.IPAddr          { return s.c.RemoteIP() }
 func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) { return s.c.ClientIP() }
 func (s onlyRequestContext) Method() string                 { return s.c.Method() }
-func (s onlyRequestContext) Path() string                   { return s.c.Path() }
 func (s onlyRequestContext) RoutingPath() string            { return s.c.RoutingPath() }
 func (s onlyRequestContext) Host() string                   { return s.c.Host() }
 func (s onlyRequestContext) QueryParams() url.Values        { return s.c.QueryParams() }

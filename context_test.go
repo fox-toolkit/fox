@@ -101,19 +101,6 @@ func TestContext_Route(t *testing.T) {
 	assert.Equal(t, "/foo", w.Body.String())
 }
 
-func TestContext_Path(t *testing.T) {
-	t.Parallel()
-	f, _ := NewRouter()
-	f.MustAdd(MethodGet, "/{a}", func(c *Context) {
-		_, _ = io.WriteString(c.Writer(), c.Path())
-	})
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "https://example.com/foo", nil)
-	f.ServeHTTP(w, r)
-	assert.Equal(t, "/foo", w.Body.String())
-}
-
 func TestContext_RoutingPath(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
