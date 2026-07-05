@@ -608,107 +608,123 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	path := c.RoutingPath()
 
-	if (fox.handlePath == RelaxedPath || fox.handlePath == RedirectPath) && r.Method != http.MethodConnect && r.URL.Path != "/" && r.URL.Path != "*" {
+	if fox.shouldCleanPath(r) {
 		if cleaned := CleanPath(path); cleaned != path {
 			if fox.handlePath == RelaxedPath {
-				fox.serveRewrittenClean(w, r, tree, c, cleaned)
-				return
+				fox.serveRelaxedPath(w, r, tree, c, cleaned)
+			} else {
+				fox.serveRedirectPath(w, r, tree, c, cleaned)
 			}
-			fox.serve(w, r, tree, c, cleaned, true)
 			return
 		}
 	}
 
-	fox.serve(w, r, tree, c, path, false)
+	fox.serve(w, r, tree, c, path)
 }
 
-// serveRewrittenClean rewrites the request URL to the clean routing path before serving, so the whole
-// pipeline (handlers, middlewares, no route/no method handlers and trailing slash redirects) sees the
-// clean path. It owns the restore defer to keep the defers in ServeHTTP open-coded.
-func (fox *Router) serveRewrittenClean(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, cleaned string) {
+// shouldCleanPath reports whether the routing path must be cleaned before matching, as required by
+// the eager RelaxedPath and RedirectPath modes. CONNECT requests, the root path and the "*" form
+// (system-wide OPTIONS) are never cleaned.
+func (fox *Router) shouldCleanPath(r *http.Request) bool {
+	return (fox.handlePath == RelaxedPath || fox.handlePath == RedirectPath) &&
+		r.Method != http.MethodConnect && r.URL.Path != "/" && r.URL.Path != "*"
+}
+
+// serveRelaxedPath serves a non-canonical request path in RelaxedPath mode: the request URL is
+// rewritten to the clean routing path so the whole pipeline (handlers, middlewares, no route/no
+// method handlers and trailing slash redirects) sees the clean path. It owns the restore defer to
+// keep the defers in ServeHTTP open-coded.
+func (fox *Router) serveRelaxedPath(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, cleaned string) {
 	u := r.URL
 	oldPath, oldRawPath, ok := rewriteRequestPath(u, cleaned)
 	if !ok {
-		fox.serve(w, r, tree, c, cleaned, false)
+		fox.serve(w, r, tree, c, cleaned)
 		return
 	}
 	defer func() {
 		u.Path, u.RawPath = oldPath, oldRawPath
 	}()
 
-	fox.serve(w, r, tree, c, cleaned, false)
+	fox.serve(w, r, tree, c, cleaned)
 }
 
-// serve routes the request using the provided routing path. With dirtyRedirect, the path is the clean
-// form of a non-canonical request path and a redirect is issued if it has a target.
-func (fox *Router) serve(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, path string, dirtyRedirect bool) {
-	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, dirtyRedirect)
+// serveRedirectPath handles a non-canonical request path in RedirectPath mode: it redirects to the
+// clean path if it has a target, and falls back to no method or no route handling otherwise.
+func (fox *Router) serveRedirectPath(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, cleaned string) {
+	idx, n, tsr := tree.lookup(r.Method, r.Host, cleaned, c, true)
+	if n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
+		*c.params = (*c.params)[:0]
+		c.route = nil
+		c.pattern = ""
+		c.scope = RedirectPathHandler
+		fox.pathRedirect(c)
+		return
+	}
+	fox.serveNoMatch(w, r, tree, c, cleaned)
+}
 
-	if dirtyRedirect {
-		if n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
-			*c.params = (*c.params)[:0]
-			c.route = nil
-			c.pattern = ""
-			c.scope = RedirectPathHandler
-			fox.pathRedirect(c)
-			return
-		}
-		// The clean path has no target, fall through to no method or no route handling.
-	} else {
-		if !tsr && n != nil {
-			c.route = n.routes[idx]
-			c.pattern = c.route.pattern.str
-			c.route.hall(c)
-			return
-		}
+// serve routes the request using the provided routing path.
+func (fox *Router) serve(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, path string) {
+	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 
-		if r.Method != http.MethodConnect && r.URL.Path != "/" {
-			if tsr && n != nil {
-				route := n.routes[idx]
-				if route.handleSlash == RelaxedSlash {
-					c.route = route
-					c.pattern = c.route.pattern.str
-					serveRewritten(c, fixTrailingSlash(path))
-					return
-				}
+	if !tsr && n != nil {
+		c.route = n.routes[idx]
+		c.pattern = c.route.pattern.str
+		c.route.hall(c)
+		return
+	}
 
-				if route.handleSlash == RedirectSlash {
-					*c.params = (*c.params)[:0]
-					c.route = nil
-					c.pattern = ""
-					c.scope = RedirectSlashHandler
-					fox.tsrRedirect(c)
-					return
-				}
+	if r.Method != http.MethodConnect && r.URL.Path != "/" {
+		if tsr && n != nil {
+			route := n.routes[idx]
+			if route.handleSlash == RelaxedSlash {
+				c.route = route
+				c.pattern = c.route.pattern.str
+				serveRewritten(c, fixTrailingSlash(path))
+				return
 			}
 
-			switch fox.handlePath {
-			case RelaxedPathLazy:
+			if route.handleSlash == RedirectSlash {
 				*c.params = (*c.params)[:0]
-				cleanedPath := CleanPath(path)
-				if idx, n, tsr := tree.lookup(r.Method, r.Host, cleanedPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
-					c.route = n.routes[idx]
-					c.pattern = c.route.pattern.str
-					if tsr {
-						cleanedPath = fixTrailingSlash(cleanedPath)
-					}
-					serveRewritten(c, cleanedPath)
-					return
+				c.route = nil
+				c.pattern = ""
+				c.scope = RedirectSlashHandler
+				fox.tsrRedirect(c)
+				return
+			}
+		}
+
+		switch fox.handlePath {
+		case RelaxedPathLazy:
+			*c.params = (*c.params)[:0]
+			cleanedPath := CleanPath(path)
+			if idx, n, tsr := tree.lookup(r.Method, r.Host, cleanedPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
+				c.route = n.routes[idx]
+				c.pattern = c.route.pattern.str
+				if tsr {
+					cleanedPath = fixTrailingSlash(cleanedPath)
 				}
-			case RedirectPathLazy:
-				if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
-					*c.params = (*c.params)[:0]
-					c.route = nil
-					c.pattern = ""
-					c.scope = RedirectPathHandler
-					fox.pathRedirect(c)
-					return
-				}
-			default:
+				serveRewritten(c, cleanedPath)
+				return
+			}
+		case RedirectPathLazy:
+			if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
+				*c.params = (*c.params)[:0]
+				c.route = nil
+				c.pattern = ""
+				c.scope = RedirectPathHandler
+				fox.pathRedirect(c)
+				return
 			}
 		}
 	}
 
+	fox.serveNoMatch(w, r, tree, c, path)
+}
+
+// serveNoMatch handles requests without a matching route: system-wide OPTIONS, automatic OPTIONS,
+// method not allowed and, as a last resort, no route.
+func (fox *Router) serveNoMatch(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, path string) {
 	*c.params = (*c.params)[:0]
 	c.route = nil
 	c.pattern = ""
