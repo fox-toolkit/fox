@@ -2678,6 +2678,111 @@ func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
 	}
 }
 
+func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
+	cases := []struct {
+		name        string
+		path        string
+		req         string
+		slashMode   TrailingSlashOption
+		fixedMode   FixedPathOption
+		wantPath    string
+		wantRawPath string
+	}{
+		{
+			name:      "trim trailing slash",
+			path:      "/foo",
+			req:       "/foo/",
+			slashMode: RelaxedSlash,
+			wantPath:  "/foo",
+		},
+		{
+			name:      "append trailing slash",
+			path:      "/foo/",
+			req:       "/foo",
+			slashMode: RelaxedSlash,
+			wantPath:  "/foo/",
+		},
+		{
+			name:      "clean consecutive slash",
+			path:      "/foo/bar",
+			req:       "/foo//bar",
+			fixedMode: RelaxedPath,
+			wantPath:  "/foo/bar",
+		},
+		{
+			name:      "clean encoded dot segments",
+			path:      "/foo/bar",
+			req:       "/baz/%2E%2E/foo/bar",
+			fixedMode: RelaxedPath,
+			wantPath:  "/foo/bar",
+		},
+		{
+			name:      "clean path and trim trailing slash",
+			path:      "/foo",
+			req:       "//foo/",
+			slashMode: RelaxedSlash,
+			fixedMode: RelaxedPath,
+			wantPath:  "/foo",
+		},
+		{
+			name:      "decode unreserved characters",
+			path:      "/foo",
+			req:       "/f%6Fo/",
+			slashMode: RelaxedSlash,
+			wantPath:  "/foo",
+		},
+		{
+			name:        "preserve encoded slash",
+			path:        "/x/{p}",
+			req:         "/x/a%2fb/",
+			slashMode:   RelaxedSlash,
+			wantPath:    "/x/a/b",
+			wantRawPath: "/x/a%2Fb",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := MustRouter(WithHandleFixedPath(tc.fixedMode), WithHandleTrailingSlash(tc.slashMode))
+
+			wantEscaped := tc.wantRawPath
+			if wantEscaped == "" {
+				wantEscaped = tc.wantPath
+			}
+
+			require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
+				assert.Equal(t, tc.wantPath, c.Request().URL.Path)
+				assert.Equal(t, tc.wantRawPath, c.Request().URL.RawPath)
+				assert.Equal(t, wantEscaped, c.Request().URL.EscapedPath())
+				assert.Equal(t, wantEscaped, c.RoutingPath())
+				c.Writer().WriteHeader(http.StatusOK)
+			})))
+
+			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+			originalPath, originalRawPath := req.URL.Path, req.URL.RawPath
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, tc.req, req.RequestURI)
+			assert.Equal(t, originalPath, req.URL.Path)
+			assert.Equal(t, originalRawPath, req.URL.RawPath)
+		})
+	}
+
+	t.Run("restore url on panic", func(t *testing.T) {
+		f := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo", func(c *Context) {
+			panic("boom")
+		})))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo/", nil)
+		w := httptest.NewRecorder()
+		assert.Panics(t, func() { f.ServeHTTP(w, req) })
+		assert.Equal(t, "/foo/", req.URL.Path)
+		assert.Empty(t, req.URL.RawPath)
+	})
+}
+
 func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 	cases := []struct {
 		name         string

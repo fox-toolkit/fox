@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"regexp"
 	"slices"
@@ -621,7 +622,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
 				c.pattern = c.route.pattern.str
-				route.hall(c)
+				serveRewritten(c, fixTrailingSlash(path))
 				return
 			}
 
@@ -638,10 +639,14 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch fox.handlePath {
 		case RelaxedPath:
 			*c.params = (*c.params)[:0]
-			if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
+			cleanedPath := CleanPath(path)
+			if idx, n, tsr := tree.lookup(r.Method, r.Host, cleanedPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
 				c.route = n.routes[idx]
 				c.pattern = c.route.pattern.str
-				c.route.hall(c)
+				if tsr {
+					cleanedPath = fixTrailingSlash(cleanedPath)
+				}
+				serveRewritten(c, cleanedPath)
 				return
 			}
 		case RedirectPath:
@@ -835,6 +840,30 @@ func internalFixedPathHandler(c *Context) {
 	}
 
 	http.Redirect(c.Writer(), req, cleanedPath, code)
+}
+
+// serveRewritten serves the matched route with the request URL rewritten to the escaped routing
+// path, so downstream handlers (e.g. reverse proxies) see the path the router matched on.
+func serveRewritten(c *Context, escaped string) {
+	p, err := url.PathUnescape(escaped)
+	if err != nil {
+		// Unreachable, escaped derives from a URL already parsed by net/http.
+		c.route.hall(c)
+		return
+	}
+
+	u := c.req.URL
+	oldPath, oldRawPath := u.Path, u.RawPath
+	u.Path = p
+	u.RawPath = ""
+	if u.EscapedPath() != escaped {
+		u.RawPath = escaped
+	}
+	defer func() {
+		u.Path, u.RawPath = oldPath, oldRawPath
+	}()
+
+	c.route.hall(c)
 }
 
 func routingPath(r *http.Request) string {
