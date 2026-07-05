@@ -608,7 +608,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	path := c.RoutingPath()
 
-	if (fox.handlePath == RelaxedPath || fox.handlePath == RedirectPath) && r.Method != http.MethodConnect && r.URL.Path != "/" {
+	if (fox.handlePath == RelaxedPath || fox.handlePath == RedirectPath) && r.Method != http.MethodConnect && r.URL.Path != "/" && r.URL.Path != "*" {
 		if cleaned := CleanPath(path); cleaned != path {
 			if fox.handlePath == RelaxedPath {
 				fox.serveRewrittenClean(w, r, tree, c, cleaned)

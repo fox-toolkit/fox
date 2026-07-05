@@ -2934,6 +2934,28 @@ func TestRouter_ServeHTTP_EagerFixedPath(t *testing.T) {
 		f.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
+
+	t.Run("relaxed does not clean system-wide OPTIONS", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RelaxedPath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodOptions, "*", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "GET", w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("redirect does not clean system-wide OPTIONS", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RedirectPath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodOptions, "*", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "GET", w.Header().Get(HeaderAllow))
+	})
 }
 
 func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
