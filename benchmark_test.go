@@ -217,6 +217,30 @@ func BenchmarkWithIgnoreTrailingSlash(b *testing.B) {
 	}
 }
 
+func BenchmarkEagerFixedPathClean(b *testing.B) {
+	f, _ := NewRouter(WithHandleFixedPath(RelaxedPath))
+	for _, route := range staticRoutes {
+		require.NoError(b, onlyError(f.Add([]string{route.method}, route.path, emptyHandler)))
+	}
+
+	benchRoute(b, f, staticRoutes)
+}
+
+func BenchmarkEagerFixedPathDirty(b *testing.B) {
+	f, _ := NewRouter(WithHandleFixedPath(RelaxedPath))
+	f.MustAdd(MethodGet, "/foo/bar/baz", emptyHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/foo//bar/../bar/baz", nil)
+	w := new(mockResponseWriter)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		f.ServeHTTP(w, req)
+	}
+}
+
 func BenchmarkStaticParallel(b *testing.B) {
 	r, _ := NewRouter()
 	for _, route := range staticRoutes {

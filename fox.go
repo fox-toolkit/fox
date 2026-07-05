@@ -608,57 +608,104 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	path := c.RoutingPath()
 
-	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
-	if !tsr && n != nil {
-		c.route = n.routes[idx]
-		c.pattern = c.route.pattern.str
-		c.route.hall(c)
-		return
+	if (fox.handlePath == RelaxedPath || fox.handlePath == RedirectPath) && r.Method != http.MethodConnect && r.URL.Path != "/" {
+		if cleaned := CleanPath(path); cleaned != path {
+			if fox.handlePath == RelaxedPath {
+				fox.serveRewrittenClean(w, r, tree, c, cleaned)
+				return
+			}
+			fox.serve(w, r, tree, c, cleaned, true)
+			return
+		}
 	}
 
-	if r.Method != http.MethodConnect && r.URL.Path != "/" {
-		if tsr && n != nil {
-			route := n.routes[idx]
-			if route.handleSlash == RelaxedSlash {
-				c.route = route
-				c.pattern = c.route.pattern.str
-				serveRewritten(c, fixTrailingSlash(path))
-				return
-			}
+	fox.serve(w, r, tree, c, path, false)
+}
 
-			if route.handleSlash == RedirectSlash {
-				*c.params = (*c.params)[:0]
-				c.route = nil
-				c.pattern = ""
-				c.scope = RedirectSlashHandler
-				fox.tsrRedirect(c)
-				return
-			}
+// serveRewrittenClean rewrites the request URL to the clean routing path before serving, so the whole
+// pipeline (handlers, middlewares, no route/no method handlers and trailing slash redirects) sees the
+// clean path. It owns the restore defer to keep the defers in ServeHTTP open-coded.
+func (fox *Router) serveRewrittenClean(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, cleaned string) {
+	u := r.URL
+	oldPath, oldRawPath, ok := rewriteRequestPath(u, cleaned)
+	if !ok {
+		fox.serve(w, r, tree, c, cleaned, false)
+		return
+	}
+	defer func() {
+		u.Path, u.RawPath = oldPath, oldRawPath
+	}()
+
+	fox.serve(w, r, tree, c, cleaned, false)
+}
+
+// serve routes the request using the provided routing path. With dirtyRedirect, the path is the clean
+// form of a non-canonical request path and a redirect is issued if it has a target.
+func (fox *Router) serve(w http.ResponseWriter, r *http.Request, tree *iTree, c *Context, path string, dirtyRedirect bool) {
+	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, dirtyRedirect)
+
+	if dirtyRedirect {
+		if n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
+			*c.params = (*c.params)[:0]
+			c.route = nil
+			c.pattern = ""
+			c.scope = RedirectPathHandler
+			fox.pathRedirect(c)
+			return
+		}
+		// The clean path has no target, fall through to no method or no route handling.
+	} else {
+		if !tsr && n != nil {
+			c.route = n.routes[idx]
+			c.pattern = c.route.pattern.str
+			c.route.hall(c)
+			return
 		}
 
-		switch fox.handlePath {
-		case RelaxedPath:
-			*c.params = (*c.params)[:0]
-			cleanedPath := CleanPath(path)
-			if idx, n, tsr := tree.lookup(r.Method, r.Host, cleanedPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
-				c.route = n.routes[idx]
-				c.pattern = c.route.pattern.str
-				if tsr {
-					cleanedPath = fixTrailingSlash(cleanedPath)
+		if r.Method != http.MethodConnect && r.URL.Path != "/" {
+			if tsr && n != nil {
+				route := n.routes[idx]
+				if route.handleSlash == RelaxedSlash {
+					c.route = route
+					c.pattern = c.route.pattern.str
+					serveRewritten(c, fixTrailingSlash(path))
+					return
 				}
-				serveRewritten(c, cleanedPath)
-				return
+
+				if route.handleSlash == RedirectSlash {
+					*c.params = (*c.params)[:0]
+					c.route = nil
+					c.pattern = ""
+					c.scope = RedirectSlashHandler
+					fox.tsrRedirect(c)
+					return
+				}
 			}
-		case RedirectPath:
-			if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
+
+			switch fox.handlePath {
+			case RelaxedPathLazy:
 				*c.params = (*c.params)[:0]
-				c.route = nil
-				c.pattern = ""
-				c.scope = RedirectPathHandler
-				fox.pathRedirect(c)
-				return
+				cleanedPath := CleanPath(path)
+				if idx, n, tsr := tree.lookup(r.Method, r.Host, cleanedPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
+					c.route = n.routes[idx]
+					c.pattern = c.route.pattern.str
+					if tsr {
+						cleanedPath = fixTrailingSlash(cleanedPath)
+					}
+					serveRewritten(c, cleanedPath)
+					return
+				}
+			case RedirectPathLazy:
+				if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
+					*c.params = (*c.params)[:0]
+					c.route = nil
+					c.pattern = ""
+					c.scope = RedirectPathHandler
+					fox.pathRedirect(c)
+					return
+				}
+			default:
 			}
-		default:
 		}
 	}
 
@@ -842,22 +889,32 @@ func internalFixedPathHandler(c *Context) {
 	http.Redirect(c.Writer(), req, cleanedPath, code)
 }
 
-// serveRewritten serves the matched route with the request URL rewritten to the escaped routing
-// path, so downstream handlers (e.g. reverse proxies) see the path the router matched on.
-func serveRewritten(c *Context, escaped string) {
+// rewriteRequestPath rewrites u.Path and u.RawPath to the escaped routing path and returns the
+// previous values, which the caller must restore before the request goes out of scope.
+func rewriteRequestPath(u *url.URL, escaped string) (oldPath, oldRawPath string, ok bool) {
 	p, err := url.PathUnescape(escaped)
 	if err != nil {
 		// Unreachable, escaped derives from a URL already parsed by net/http.
-		c.route.hall(c)
-		return
+		return "", "", false
 	}
 
-	u := c.req.URL
-	oldPath, oldRawPath := u.Path, u.RawPath
+	oldPath, oldRawPath = u.Path, u.RawPath
 	u.Path = p
 	u.RawPath = ""
 	if u.EscapedPath() != escaped {
 		u.RawPath = escaped
+	}
+	return oldPath, oldRawPath, true
+}
+
+// serveRewritten serves the matched route with the request URL rewritten to the escaped routing
+// path, so downstream handlers (e.g. reverse proxies) see the path the router matched on.
+func serveRewritten(c *Context, escaped string) {
+	u := c.req.URL
+	oldPath, oldRawPath, ok := rewriteRequestPath(u, escaped)
+	if !ok {
+		c.route.hall(c)
+		return
 	}
 	defer func() {
 		u.Path, u.RawPath = oldPath, oldRawPath

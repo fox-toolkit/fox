@@ -2555,46 +2555,52 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithHandleFixedPath(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
-			rf := f.RouterInfo()
-			assert.Equal(t, RedirectPath, rf.FixedPathOption)
+	for mode, modeName := range map[FixedPathOption]string{RedirectPath: "eager", RedirectPathLazy: "lazy"} {
+		t.Run(modeName, func(t *testing.T) {
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					f := MustRouter(WithHandleFixedPath(mode), WithHandleTrailingSlash(tc.slashMode))
+					rf := f.RouterInfo()
+					assert.Equal(t, mode, rf.FixedPathOption)
 
-			require.NoError(t, onlyError(f.Add([]string{tc.method}, tc.path, emptyHandler)))
+					require.NoError(t, onlyError(f.Add([]string{tc.method}, tc.path, emptyHandler)))
 
-			req := httptest.NewRequest(tc.method, tc.req, nil)
-			w := httptest.NewRecorder()
-			f.ServeHTTP(w, req)
-			assert.Equal(t, tc.wantCode, w.Code)
-			if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
-				assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+					req := httptest.NewRequest(tc.method, tc.req, nil)
+					w := httptest.NewRecorder()
+					f.ServeHTTP(w, req)
+					assert.Equal(t, tc.wantCode, w.Code)
+					if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
+						assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+					}
+
+					t.Run("with any", func(t *testing.T) {
+						f := MustRouter(WithHandleFixedPath(mode), WithHandleTrailingSlash(tc.slashMode))
+
+						require.NoError(t, onlyError(f.Add(MethodAny, tc.path, emptyHandler)))
+
+						req := httptest.NewRequest(tc.method, tc.req, nil)
+						w := httptest.NewRecorder()
+						f.ServeHTTP(w, req)
+						assert.Equal(t, tc.wantCode, w.Code)
+						if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
+							assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+						}
+					})
+				})
 			}
-
-			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithHandleFixedPath(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
-
-				require.NoError(t, onlyError(f.Add(MethodAny, tc.path, emptyHandler)))
-
-				req := httptest.NewRequest(tc.method, tc.req, nil)
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-				if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
-					assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
-				}
-			})
 		})
 	}
 }
 
 func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
 	cases := []struct {
-		name      string
-		path      string
-		req       string
-		slashMode TrailingSlashOption
-		wantCode  int
+		name         string
+		path         string
+		req          string
+		slashMode    TrailingSlashOption
+		wantCode     int
+		wantLocation string
+		wantCodeLazy int // overrides wantCode in lazy mode when non-zero
 	}{
 		{
 			name:      "handle with consecutive slash",
@@ -2618,11 +2624,13 @@ func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
 			wantCode:  http.StatusNotFound,
 		},
 		{
-			name:      "do not handle with consecutive slash and redirect slash",
-			path:      "/foo/bar",
-			slashMode: RedirectSlash,
-			req:       "/foo//bar/",
-			wantCode:  http.StatusNotFound,
+			name:         "consecutive slash and redirect slash",
+			path:         "/foo/bar",
+			slashMode:    RedirectSlash,
+			req:          "/foo//bar/",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/bar",
+			wantCodeLazy: http.StatusNotFound,
 		},
 		{
 			name:      "handle with consecutive slash and raw path",
@@ -2647,33 +2655,48 @@ func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithHandleFixedPath(RelaxedPath), WithHandleTrailingSlash(tc.slashMode))
-			rf := f.RouterInfo()
-			assert.Equal(t, RelaxedPath, rf.FixedPathOption)
+	for mode, modeName := range map[FixedPathOption]string{RelaxedPath: "eager", RelaxedPathLazy: "lazy"} {
+		t.Run(modeName, func(t *testing.T) {
+			for _, tc := range cases {
+				wantCode := tc.wantCode
+				if mode == RelaxedPathLazy && tc.wantCodeLazy != 0 {
+					wantCode = tc.wantCodeLazy
+				}
 
-			require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
-				c.Writer().WriteHeader(tc.wantCode)
-			})))
+				t.Run(tc.name, func(t *testing.T) {
+					f := MustRouter(WithHandleFixedPath(mode), WithHandleTrailingSlash(tc.slashMode))
+					rf := f.RouterInfo()
+					assert.Equal(t, mode, rf.FixedPathOption)
 
-			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
-			w := httptest.NewRecorder()
-			f.ServeHTTP(w, req)
-			assert.Equal(t, tc.wantCode, w.Code)
+					require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
+						c.Writer().WriteHeader(http.StatusOK)
+					})))
 
-			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithHandleFixedPath(RelaxedPath), WithHandleTrailingSlash(tc.slashMode))
+					req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+					w := httptest.NewRecorder()
+					f.ServeHTTP(w, req)
+					assert.Equal(t, wantCode, w.Code)
+					if w.Code == http.StatusMovedPermanently {
+						assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+					}
 
-				require.NoError(t, onlyError(f.Add(MethodAny, tc.path, func(c *Context) {
-					c.Writer().WriteHeader(tc.wantCode)
-				})))
+					t.Run("with any", func(t *testing.T) {
+						f := MustRouter(WithHandleFixedPath(mode), WithHandleTrailingSlash(tc.slashMode))
 
-				req := httptest.NewRequest(http.MethodGet, tc.req, nil)
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-			})
+						require.NoError(t, onlyError(f.Add(MethodAny, tc.path, func(c *Context) {
+							c.Writer().WriteHeader(http.StatusOK)
+						})))
+
+						req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+						w := httptest.NewRecorder()
+						f.ServeHTTP(w, req)
+						assert.Equal(t, wantCode, w.Code)
+						if w.Code == http.StatusMovedPermanently {
+							assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+						}
+					})
+				})
+			}
 		})
 	}
 }
@@ -2741,31 +2764,40 @@ func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithHandleFixedPath(tc.fixedMode), WithHandleTrailingSlash(tc.slashMode))
+	for mode, modeName := range map[FixedPathOption]string{RelaxedPath: "eager", RelaxedPathLazy: "lazy"} {
+		t.Run(modeName, func(t *testing.T) {
+			for _, tc := range cases {
+				fixedMode := tc.fixedMode
+				if fixedMode != StrictPath {
+					fixedMode = mode
+				}
 
-			wantEscaped := tc.wantRawPath
-			if wantEscaped == "" {
-				wantEscaped = tc.wantPath
+				t.Run(tc.name, func(t *testing.T) {
+					f := MustRouter(WithHandleFixedPath(fixedMode), WithHandleTrailingSlash(tc.slashMode))
+
+					wantEscaped := tc.wantRawPath
+					if wantEscaped == "" {
+						wantEscaped = tc.wantPath
+					}
+
+					require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
+						assert.Equal(t, tc.wantPath, c.Request().URL.Path)
+						assert.Equal(t, tc.wantRawPath, c.Request().URL.RawPath)
+						assert.Equal(t, wantEscaped, c.Request().URL.EscapedPath())
+						assert.Equal(t, wantEscaped, c.RoutingPath())
+						c.Writer().WriteHeader(http.StatusOK)
+					})))
+
+					req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+					originalPath, originalRawPath := req.URL.Path, req.URL.RawPath
+					w := httptest.NewRecorder()
+					f.ServeHTTP(w, req)
+					assert.Equal(t, http.StatusOK, w.Code)
+					assert.Equal(t, tc.req, req.RequestURI)
+					assert.Equal(t, originalPath, req.URL.Path)
+					assert.Equal(t, originalRawPath, req.URL.RawPath)
+				})
 			}
-
-			require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
-				assert.Equal(t, tc.wantPath, c.Request().URL.Path)
-				assert.Equal(t, tc.wantRawPath, c.Request().URL.RawPath)
-				assert.Equal(t, wantEscaped, c.Request().URL.EscapedPath())
-				assert.Equal(t, wantEscaped, c.RoutingPath())
-				c.Writer().WriteHeader(http.StatusOK)
-			})))
-
-			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
-			originalPath, originalRawPath := req.URL.Path, req.URL.RawPath
-			w := httptest.NewRecorder()
-			f.ServeHTTP(w, req)
-			assert.Equal(t, http.StatusOK, w.Code)
-			assert.Equal(t, tc.req, req.RequestURI)
-			assert.Equal(t, originalPath, req.URL.Path)
-			assert.Equal(t, originalRawPath, req.URL.RawPath)
 		})
 	}
 
@@ -2780,6 +2812,127 @@ func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
 		assert.Panics(t, func() { f.ServeHTTP(w, req) })
 		assert.Equal(t, "/foo/", req.URL.Path)
 		assert.Empty(t, req.URL.RawPath)
+	})
+}
+
+func TestRouter_ServeHTTP_EagerFixedPathWildcard(t *testing.T) {
+	newRouter := func(t *testing.T, mode FixedPathOption) *Router {
+		t.Helper()
+		f := MustRouter(WithHandleFixedPath(mode))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/files/*{path}", func(c *Context) {
+			_ = c.String(http.StatusOK, "wildcard:"+c.Param("path"))
+		})))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/admin", func(c *Context) {
+			_ = c.String(http.StatusOK, "admin")
+		})))
+		return f
+	}
+
+	t.Run("eager relaxed routes the clean path only", func(t *testing.T) {
+		f := newRouter(t, RelaxedPath)
+
+		req := httptest.NewRequest(http.MethodGet, "/files/../admin", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "admin", w.Body.String())
+
+		req = httptest.NewRequest(http.MethodGet, "/files/a//b", nil)
+		w = httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "wildcard:a/b", w.Body.String())
+	})
+
+	t.Run("eager redirect routes the clean path only", func(t *testing.T) {
+		f := newRouter(t, RedirectPath)
+
+		req := httptest.NewRequest(http.MethodGet, "/files/../admin", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/admin", w.Header().Get(HeaderLocation))
+
+		req = httptest.NewRequest(http.MethodGet, "/files/a//b", nil)
+		w = httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/files/a/b", w.Header().Get(HeaderLocation))
+	})
+
+	t.Run("lazy modes match the raw path first", func(t *testing.T) {
+		for _, mode := range []FixedPathOption{RelaxedPathLazy, RedirectPathLazy} {
+			f := newRouter(t, mode)
+
+			req := httptest.NewRequest(http.MethodGet, "/files/../admin", nil)
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, "wildcard:../admin", w.Body.String())
+		}
+	})
+}
+
+func TestRouter_ServeHTTP_EagerFixedPath(t *testing.T) {
+	t.Run("relaxed rewrites the url for the whole pipeline", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RelaxedPath), WithNoRouteHandler(func(c *Context) {
+			assert.Equal(t, "/foo/bar", c.Request().URL.Path)
+			assert.Equal(t, "/foo/bar", c.RoutingPath())
+			DefaultNotFoundHandler(c)
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo//bar", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Equal(t, "/foo//bar", req.URL.Path)
+	})
+
+	t.Run("relaxed restores the url on panic", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RelaxedPath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", func(c *Context) {
+			panic("boom")
+		})))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo//bar", nil)
+		w := httptest.NewRecorder()
+		assert.Panics(t, func() { f.ServeHTTP(w, req) })
+		assert.Equal(t, "/foo//bar", req.URL.Path)
+		assert.Empty(t, req.URL.RawPath)
+	})
+
+	t.Run("redirect leaves the url untouched without target", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RedirectPath), WithNoRouteHandler(func(c *Context) {
+			assert.Equal(t, "/foo//baz", c.Request().URL.Path)
+			DefaultNotFoundHandler(c)
+		}))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo//baz", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("redirect computes 405 on the clean path", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/foo/bar", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo//bar", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		assert.Contains(t, w.Header().Get(HeaderAllow), http.MethodPost)
+	})
+
+	t.Run("connect requests are not cleaned", func(t *testing.T) {
+		f := MustRouter(WithHandleFixedPath(RedirectPath))
+		require.NoError(t, onlyError(f.Add([]string{http.MethodConnect}, "/foo/bar", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodConnect, "/foo//bar", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 }
 

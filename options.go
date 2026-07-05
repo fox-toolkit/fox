@@ -28,6 +28,8 @@ const (
 	StrictPath FixedPathOption = iota
 	RelaxedPath
 	RedirectPath
+	RelaxedPathLazy
+	RedirectPathLazy
 
 	pathOptionSentinel
 )
@@ -146,8 +148,10 @@ func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
 //
 // Available path handling modes:
 //   - StrictPath: No path cleaning is performed. Routes are matched only as requested (disables this feature).
-//   - RelaxedPath: After normal lookup fails, tries matching with a cleaned path. If found, serves the handler directly.
-//   - RedirectPath: After normal lookup fails, tries matching with a cleaned path. If found, redirects to the clean path.
+//   - RelaxedPath: Matches with a cleaned path. If found, serves the handler directly.
+//   - RedirectPath: Matches with a cleaned path. If found, redirects to the clean path.
+//   - RelaxedPathLazy: After normal lookup fails, tries matching with a cleaned path. If found, serves the handler directly.
+//   - RedirectPathLazy: After normal lookup fails, tries matching with a cleaned path. If found, redirects to the clean path.
 //
 // Redirects use the canonical path that the router routed on (see [Context.RoutingPath]).
 //
