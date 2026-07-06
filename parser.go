@@ -137,15 +137,14 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 			}
 
 		case '*':
-			i++
-			if i < len(hostname) && hostname[i] == '{' {
+			if i+1 < len(hostname) && hostname[i+1] == '{' {
 				paramEnd := len(hostname)
-				if idx := braceIndex(hostname[i+1:], 1); idx >= 0 {
-					paramEnd = i + 1 + idx + 1
+				if idx := braceIndex(hostname[i+2:], 1); idx >= 0 {
+					paramEnd = i + 2 + idx + 1
 				}
-				return nil, 0, newPatternError("syntax", i-1, paramEnd, "optional wildcard allowed only as suffix")
+				return nil, 0, newPatternError("syntax", i, paramEnd, "optional wildcard allowed only as suffix")
 			}
-			return nil, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
+			return nil, 0, newPatternError("syntax", i, i+1, "illegal character in label")
 
 		default:
 			switch {

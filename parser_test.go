@@ -1509,13 +1509,13 @@ func TestPatternError_Position(t *testing.T) {
 			wantMsg:    "optional wildcard allowed only as suffix",
 		},
 		{
-			name:       "hostname bare star missing parameter",
+			name:       "hostname bare star illegal character",
 			pattern:    "a.b*/",
 			wantType:   "hostname",
 			wantReason: "syntax",
 			wantStart:  3,
 			wantEnd:    4,
-			wantMsg:    "missing parameter after delimiter",
+			wantMsg:    "illegal character in label",
 		},
 		{
 			name:       "path consecutive wildcard",
