@@ -2769,7 +2769,7 @@ func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
 		})
 	}
 
-	t.Run("restore url on panic", func(t *testing.T) {
+	t.Run("caller url untouched on panic", func(t *testing.T) {
 		f := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/foo", func(c *Context) {
 			panic("boom")

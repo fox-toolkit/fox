@@ -841,8 +841,9 @@ func internalFixedPathHandler(c *Context) {
 	http.Redirect(c.Writer(), req, cleanedPath, code)
 }
 
-// serveRewritten serves the matched route with the request URL rewritten to the escaped routing
-// path, so downstream handlers (e.g. reverse proxies) see the path the router matched on.
+// serveRewritten serves the matched route with a shallow copy of the request whose URL is set to
+// the escaped routing path, so downstream handlers (e.g. reverse proxies) see the path the router
+// matched on. The caller's request is never mutated.
 func serveRewritten(c *Context, escaped string) {
 	p, err := url.PathUnescape(escaped)
 	if err != nil {
@@ -851,16 +852,16 @@ func serveRewritten(c *Context, escaped string) {
 		return
 	}
 
-	u := c.req.URL
-	oldPath, oldRawPath := u.Path, u.RawPath
-	u.Path = p
-	u.RawPath = ""
-	if u.EscapedPath() != escaped {
-		u.RawPath = escaped
+	r2 := new(http.Request)
+	*r2 = *c.req
+	r2.URL = new(url.URL)
+	*r2.URL = *c.req.URL
+	r2.URL.Path = p
+	r2.URL.RawPath = ""
+	if r2.URL.EscapedPath() != escaped {
+		r2.URL.RawPath = escaped
 	}
-	defer func() {
-		u.Path, u.RawPath = oldPath, oldRawPath
-	}()
+	c.req = r2
 
 	c.route.hall(c)
 }
