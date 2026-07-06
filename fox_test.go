@@ -3763,13 +3763,6 @@ func TestRouter_ServeHTTP_UnreservedDecoding(t *testing.T) {
 			wantPattern: "/users/john",
 		},
 		{
-			name:        "encoded route matches decoded request",
-			routes:      []string{"/users/j%6Fhn"},
-			target:      "/users/john",
-			wantCode:    http.StatusOK,
-			wantPattern: "/users/john",
-		},
-		{
 			name:        "raw utf8 request matches encoded route",
 			routes:      []string{"/caf%C3%A9"},
 			target:      "https://example.com/café",
@@ -3885,83 +3878,71 @@ func TestRouter_ServeHTTP_UnreservedDecoding(t *testing.T) {
 	}
 }
 
-func TestRouter_UnreservedPatternEquivalence(t *testing.T) {
+func TestRouter_PatternCanonicalEncoding(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add conflict on equivalent spelling", func(t *testing.T) {
+	t.Run("add rejects non-canonical escape", func(t *testing.T) {
 		f, _ := NewRouter()
-		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		var pe *PatternError
 		_, err := f.Add(MethodGet, "/users/j%6Fhn", emptyHandler)
-		var cErr *RouteConflictError
-		require.ErrorAs(t, err, &cErr)
+		require.ErrorAs(t, err, &pe)
+		_, err = f.Add(MethodGet, "/users/john/%7bid%7d", emptyHandler)
+		require.ErrorAs(t, err, &pe)
 	})
 
-	t.Run("route exposes canonical pattern", func(t *testing.T) {
+	t.Run("update and delete reject non-canonical escape", func(t *testing.T) {
 		f, _ := NewRouter()
-		rte, err := f.Add(MethodGet, "/users/j%6Fhn/%7bid%7d", emptyHandler)
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		var pe *PatternError
+		_, err := f.Update(MethodGet, "/users/j%6Fhn", emptyHandler)
+		require.ErrorAs(t, err, &pe)
+		_, err = f.Delete(MethodGet, "/users/j%6Fhn")
+		require.ErrorAs(t, err, &pe)
+		assert.Equal(t, 1, f.Len())
+	})
+
+	t.Run("route exposes pattern as registered", func(t *testing.T) {
+		f, _ := NewRouter()
+		rte, err := f.Add(MethodGet, "/users/john/%7Bid%7D", emptyHandler)
 		require.NoError(t, err)
 		assert.Equal(t, "/users/john/%7Bid%7D", rte.Pattern())
 	})
 
-	t.Run("update with equivalent spelling", func(t *testing.T) {
-		f, _ := NewRouter()
-		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
-		rte, err := f.Update(MethodGet, "/users/j%6Fhn", emptyHandler)
-		require.NoError(t, err)
-		assert.Equal(t, "/users/john", rte.Pattern())
-	})
-
-	t.Run("delete with equivalent spelling", func(t *testing.T) {
-		f, _ := NewRouter()
-		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
-		rte, err := f.Delete(MethodGet, "/users/j%6Fhn")
-		require.NoError(t, err)
-		assert.Equal(t, "/users/john", rte.Pattern())
-		assert.Equal(t, 0, f.Len())
-	})
-
-	t.Run("search APIs normalize pattern", func(t *testing.T) {
+	t.Run("search APIs match byte-for-byte", func(t *testing.T) {
 		f, _ := NewRouter()
 		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/users/jane", emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/a%2Fb", emptyHandler)))
 
-		assert.True(t, f.Has(MethodGet, "/users/j%6Fhn"))
-		rte := f.Route(MethodGet, "/users/j%6Fhn")
-		require.NotNil(t, rte)
-		assert.Equal(t, "/users/john", rte.Pattern())
+		assert.True(t, f.Has(MethodGet, "/users/john"))
+		assert.False(t, f.Has(MethodGet, "/users/j%6Fhn"))
+		assert.Nil(t, f.Route(MethodGet, "/users/j%6Fhn"))
+		assert.True(t, f.Has(MethodGet, "/a%2Fb"))
+		assert.False(t, f.Has(MethodGet, "/a%2fb"))
+		assert.False(t, f.Has(MethodGet, "/a%2%46b"))
 
 		it := f.Iter()
-		routes := slices.Collect(it.Routes("/users/j%6Fhn"))
+		routes := slices.Collect(it.Routes("/users/john"))
 		require.Len(t, routes, 1)
-		assert.Equal(t, "/users/john", routes[0].Pattern())
+		assert.Empty(t, slices.Collect(it.Routes("/users/j%6Fhn")))
 
-		prefixed := slices.Collect(it.PatternPrefix("/users/j%6F"))
-		require.Len(t, prefixed, 1)
-		assert.Equal(t, "/users/john", prefixed[0].Pattern())
-
-		// A prefix cut in the middle of an escape sequence matches nothing.
-		assert.Empty(t, slices.Collect(it.PatternPrefix("/users/j%6")))
+		prefixed := slices.Collect(it.PatternPrefix("/users/j"))
+		require.Len(t, prefixed, 2)
+		assert.Empty(t, slices.Collect(it.PatternPrefix("/users/j%6F")))
 
 		// Literal '*' followed by a later brace segment is looked up as static.
 		require.NoError(t, onlyError(f.Add(MethodGet, "/glob/*0{id}", emptyHandler)))
 		assert.True(t, f.Has(MethodGet, "/glob/*0{id}"))
 		assert.False(t, f.Has(MethodGet, "/glob/*1{id}"))
-
-		// A malformed escape must not recombine with a following escape:
-		// "%2"+"%46" would otherwise normalize to "%2F" and match.
-		require.NoError(t, onlyError(f.Add(MethodGet, "/a%2Fb", emptyHandler)))
-		assert.False(t, f.Has(MethodGet, "/a%2%46b"))
-		assert.Nil(t, f.Route(MethodGet, "/a%2%46b"))
 	})
 
-	t.Run("txn search APIs normalize pattern", func(t *testing.T) {
+	t.Run("txn search APIs match byte-for-byte", func(t *testing.T) {
 		f, _ := NewRouter()
 		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
 		require.NoError(t, f.View(func(txn *Txn) error {
-			assert.True(t, txn.Has(MethodGet, "/users/j%6Fhn"))
-			rte := txn.Route(MethodGet, "/users/j%6Fhn")
-			require.NotNil(t, rte)
-			assert.Equal(t, "/users/john", rte.Pattern())
+			assert.True(t, txn.Has(MethodGet, "/users/john"))
+			assert.False(t, txn.Has(MethodGet, "/users/j%6Fhn"))
+			assert.Nil(t, txn.Route(MethodGet, "/users/j%6Fhn"))
 			return nil
 		}))
 	})
@@ -4115,7 +4096,7 @@ func FuzzRouter_AddDelete(f *testing.F) {
 		"_srv.example.com/\n_foo.example.com/bar",
 		// Mix hostname + path (mode switching on delete)
 		"example.com/users\n/fallback\n/api/users",
-		// Percent-encoding equivalence (second spelling conflicts with first)
+		// Percent-encoding (non-canonical escapes rejected)
 		"/users/john\n/users/j%6Fhn",
 		"/a%61\n/ab\n/a%2Fb",
 		"/%2E%2E/\n/100%\n/%zz",

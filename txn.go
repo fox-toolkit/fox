@@ -245,7 +245,6 @@ func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Ro
 		panic(ErrSettledTxn)
 	}
 
-	pattern = normalizeSearchPattern(pattern)
 	root := txn.rootTxn.patterns
 	matched := root.searchPattern(pattern)
 	if matched == nil || !matched.isLeaf() {

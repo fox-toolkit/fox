@@ -9,7 +9,7 @@ import (
 )
 
 type pattern struct {
-	str              string // canonical pattern
+	str              string // pattern as registered
 	tokens           []token
 	optionalCatchAll bool
 	endHost          int
@@ -48,11 +48,9 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 		}
 	}
 
-	// Canonicalize the path before parsing so the tree is keyed on the decoded
-	// form and encoded dot-segments (e.g. %2E%2E) are caught by validation.
-	// Normalization errors point into the raw pattern, while parsePath errors
-	// below point into the canonical form.
-	normPath, pe := normalizePatternPath(path, true)
+	// Escape sequences in the path part must use the canonical routing form:
+	// any other encoding could never match a request routing path.
+	pe := validatePatternPath(path)
 	if pe != nil {
 		pe.Pattern = raw
 		pe.Type = "path"
@@ -60,14 +58,10 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 		pe.End += endHost
 		return pattern{}, 0, pe
 	}
-	canonical := raw
-	if normPath != path {
-		canonical = raw[:endHost] + normPath
-	}
 
-	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(normPath, paramCount)
+	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(path, paramCount)
 	if pe != nil {
-		pe.Pattern = canonical
+		pe.Pattern = raw
 		pe.Type = "path"
 		pe.Start += endHost
 		pe.End += endHost
@@ -79,121 +73,51 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 	tokens = append(tokens, pathTokens...)
 
 	return pattern{
-		str:              canonical,
+		str:              raw,
 		tokens:           tokens,
 		endHost:          endHost,
 		optionalCatchAll: optCatchAll,
 	}, paramCount, nil
 }
 
-// normalizeSearchPattern returns the canonical form of a pattern used as a
-// search argument (e.g. [Router.Route], [Iter.Routes], [Iter.PatternPrefix]).
-// Unlike registration, malformed escape sequences are not rejected but kept
-// as-is. They cannot match any route anyway.
-func normalizeSearchPattern(pattern string) string {
-	endHost := strings.IndexByte(pattern, '/')
-	if endHost == -1 {
-		return pattern
-	}
-	normPath, _ := normalizePatternPath(pattern[endHost:], false)
-	if normPath == pattern[endHost:] {
-		return pattern
-	}
-	return pattern[:endHost] + normPath
-}
-
-// normalizePatternPath returns the canonical form of the path part of a route
-// pattern. Percent-encoded unreserved characters are decoded and the remaining
-// hex sequences are normalized to uppercase, like [stringsutil.NormalizeRoutingPath].
-// Brace segments, including regex constraints, are never decoded. In strict mode,
-// malformed escape sequences are rejected with a [PatternError] positioned
-// relative to path. Otherwise the path is kept as-is from the first malformed
-// escape. The input is returned unchanged, without allocation, when already canonical.
-func normalizePatternPath(path string, strict bool) (string, *PatternError) {
-	var buf strings.Builder
+// validatePatternPath checks that escape sequences in the path part of a route
+// pattern use the canonical routing form: a valid, uppercase hex pair encoding
+// a non-unreserved byte, outside brace segments. Any other encoding could never
+// match a request routing path (see [stringsutil.NormalizeRoutingPath]) and is
+// rejected with a [PatternError] positioned relative to path.
+func validatePatternPath(path string) *PatternError {
 	i := 0
 	for i < len(path) {
-		c := path[i]
-
-		if c == '{' {
+		switch path[i] {
+		case '{':
 			end := braceIndex(path[i+1:], 1)
 			if end == -1 {
-				// Unbalanced braces. Copy the remainder as-is and let parsePath
-				// report the error with consistent positions.
-				if buf.Len() > 0 {
-					buf.WriteString(path[i:])
-				}
-				break
-			}
-			if buf.Len() > 0 {
-				buf.WriteString(path[i : i+1+end+1])
+				// Unbalanced braces, let parsePath report the error.
+				return nil
 			}
 			i += 1 + end + 1
-			continue
-		}
-
-		if c != '%' {
-			if buf.Len() > 0 {
-				buf.WriteByte(c)
+		case '%':
+			if i+2 >= len(path) {
+				return newPatternError("syntax", i, len(path), "invalid percent-encoding")
 			}
-			i++
-			continue
-		}
-
-		if i+2 >= len(path) {
-			if strict {
-				return "", newPatternError("syntax", i, len(path), "invalid percent-encoding")
+			b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
+			if !ok {
+				return newPatternError("syntax", i, i+3, "invalid percent-encoding")
 			}
-			// Malformed escape, copy the remainder as-is and stop. A dangling
-			// '%' must not recombine with a following escape into a valid sequence.
-			if buf.Len() > 0 {
-				buf.WriteString(path[i:])
+			if stringsutil.IsUnreserved(b) {
+				return newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%c'", b))
 			}
-			break
-		}
-
-		b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
-		if !ok {
-			if strict {
-				return "", newPatternError("syntax", i, i+3, "invalid percent-encoding")
+			hiUpper := stringsutil.UpperHex(path[i+1])
+			loUpper := stringsutil.UpperHex(path[i+2])
+			if path[i+1] != hiUpper || path[i+2] != loUpper {
+				return newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%%%c%c'", hiUpper, loUpper))
 			}
-			if buf.Len() > 0 {
-				buf.WriteString(path[i:])
-			}
-			break
-		}
-
-		hiUpper := stringsutil.UpperHex(path[i+1])
-		loUpper := stringsutil.UpperHex(path[i+2])
-		switch {
-		case stringsutil.IsUnreserved(b):
-			if buf.Len() == 0 {
-				buf.Grow(len(path))
-				buf.WriteString(path[:i])
-			}
-			buf.WriteByte(b)
-		case path[i+1] != hiUpper || path[i+2] != loUpper:
-			if buf.Len() == 0 {
-				buf.Grow(len(path))
-				buf.WriteString(path[:i])
-			}
-			buf.WriteByte('%')
-			buf.WriteByte(hiUpper)
-			buf.WriteByte(loUpper)
+			i += 3
 		default:
-			if buf.Len() > 0 {
-				buf.WriteByte('%')
-				buf.WriteByte(hiUpper)
-				buf.WriteByte(loUpper)
-			}
+			i++
 		}
-		i += 3
 	}
-
-	if buf.Len() == 0 {
-		return path, nil
-	}
-	return buf.String(), nil
+	return nil
 }
 
 func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) {

@@ -261,11 +261,8 @@ nor the 253-character limit for the full hostname. Internationalized domain name
 
 Fox matches requests against a canonical routing path, equivalent to `url.URL.EscapedPath()` with percent-encoded
 [unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) decoded
-and the remaining hex sequences normalized to uppercase (e.g. `%2f` becomes `%2F`). Route patterns are canonicalized
-the same way at registration, so `/users/j%6Fhn` and `/users/john` are the same route. All other encoded and decoded
-forms are not interchangeable so a request for `/foo%2Fbar` will
-not match a pattern registered as `/foo/bar`. Patterns containing literal characters that require encoding must be
-registered in their encoded form (e.g. `/foo%20bar`, instead of `/foo bar`).
+and the remaining hex sequences normalized to uppercase (e.g. `%2f` becomes `%2F`). All other escape sequences stay
+encoded and distinct from their decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths.
 
 #### Priority rules
 

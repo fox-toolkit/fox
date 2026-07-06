@@ -325,7 +325,6 @@ func (fox *Router) Has(methods []string, pattern string, matchers ...Matcher) bo
 func (fox *Router) Route(methods []string, pattern string, matchers ...Matcher) *Route {
 	tree := fox.getTree()
 
-	pattern = normalizeSearchPattern(pattern)
 	root := tree.patterns
 	matched := root.searchPattern(pattern)
 	if matched == nil || !matched.isLeaf() {

@@ -244,13 +244,18 @@ func Test_parsePattern(t *testing.T) {
 			wantN: 0,
 		},
 		{
-			name:       "encoded unreserved decoded in static token",
-			path:       "/a%61b",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/aab", false))),
+			name:  "encoded unreserved rejected",
+			path:  "/a%61b",
+			wantN: 0,
 		},
 		{
-			name:       "encoded reserved preserved with uppercase hex",
-			path:       "/foo%2fbar/caf%c3%a9",
+			name:  "lowercase hex rejected",
+			path:  "/foo%2fbar/caf%c3%a9",
+			wantN: 0,
+		},
+		{
+			name:       "encoded reserved with uppercase hex kept as registered",
+			path:       "/foo%2Fbar/caf%C3%A9",
 			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo%2Fbar/caf%C3%A9", false))),
 		},
 		{
@@ -259,10 +264,9 @@ func Test_parsePattern(t *testing.T) {
 			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/a%7Bb%7D/%2A/%2B", false))),
 		},
 		{
-			name:       "encoded unreserved decoded before param",
-			path:       "/x%61/{id}",
-			wantN:      1,
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/xa/", false), paramToken("id", ""))),
+			name:  "encoded unreserved before param rejected",
+			path:  "/x%61/{id}",
+			wantN: 0,
 		},
 		{
 			name:       "regex constraint not decoded",
@@ -1175,59 +1179,79 @@ func Test_parsePattern(t *testing.T) {
 	}
 }
 
-func Test_parsePattern_Canonicalization(t *testing.T) {
+func Test_parsePattern_CanonicalEncoding(t *testing.T) {
 	f := MustRouter()
-	cases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"already canonical", "/users/john", "/users/john"},
-		{"encoded unreserved decoded", "/users/j%6Fhn", "/users/john"},
-		{"lowercase hex uppercased", "/a%2fb", "/a%2Fb"},
-		{"encoded brace preserved", "/a%7Bb", "/a%7Bb"},
-		{"hostname preserved path normalized", "example.com/%7e%61", "example.com/~a"},
-		{"param preserved path normalized", "/x%61/{id}/y%2fz", "/xa/{id}/y%2Fz"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			pat, _, err := f.parsePattern(tc.in)
+
+	t.Run("valid patterns are stored as registered", func(t *testing.T) {
+		cases := []string{
+			"/users/john",
+			"/a%7Bb",
+			"/a%2Fb/{id}",
+			"example.com/caf%C3%A9",
+		}
+		for _, in := range cases {
+			pat, _, err := f.parsePattern(in)
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, pat.str)
-			assert.Equal(t, strings.IndexByte(tc.in, '/'), pat.endHost)
-		})
-	}
+			assert.Equal(t, in, pat.str)
+			assert.Equal(t, strings.IndexByte(in, '/'), pat.endHost)
+		}
+	})
+
+	t.Run("non-canonical escapes are rejected", func(t *testing.T) {
+		cases := []struct {
+			name     string
+			in       string
+			wantHint string
+		}{
+			{"encoded unreserved", "/users/j%6Fhn", "non-canonical percent-encoding, write 'o'"},
+			{"lowercase hex", "/a%2fb", "non-canonical percent-encoding, write '%2F'"},
+			{"encoded tilde", "/%7E", "non-canonical percent-encoding, write '~'"},
+			{"with hostname", "example.com/%7e%61", "non-canonical percent-encoding, write '~'"},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, err := f.parsePattern(tc.in)
+				var pe *PatternError
+				require.ErrorAs(t, err, &pe)
+				assert.Equal(t, "syntax", pe.Reason)
+				assert.Equal(t, tc.in, pe.Pattern)
+				assert.Contains(t, pe.Error(), tc.wantHint)
+			})
+		}
+	})
 }
 
-func Test_normalizePatternPath(t *testing.T) {
+func Test_validatePatternPath(t *testing.T) {
 	cases := []struct {
-		name    string
-		in      string
-		want    string
-		strict  bool
-		wantErr bool
+		name      string
+		in        string
+		wantHint  string // empty means valid
+		wantStart int
+		wantEnd   int
 	}{
-		{name: "non-strict invalid hex kept", in: "/%zz", want: "/%zz"},
-		{name: "non-strict truncated escape after decoded escape", in: "/%61/100%", want: "/a/100%"},
-		{name: "non-strict invalid hex after decoded escape", in: "/a%61%zz", want: "/aa%zz"},
-		{name: "non-strict malformed escape does not recombine", in: "/a%2%46b", want: "/a%2%46b"},
-		{name: "non-strict malformed escape after decoded escape stops normalization", in: "/%61%2%46b", want: "/a%2%46b"},
-		{name: "strict canonical escape after decoded escape", in: "/%61%2F", want: "/a%2F", strict: true},
-		{name: "strict unbalanced brace after decoded escape", in: "/%61/{foo", want: "/a/{foo", strict: true},
-		{name: "strict invalid hex rejected", in: "/%zz", strict: true, wantErr: true},
-		{name: "strict truncated escape rejected", in: "/100%", strict: true, wantErr: true},
+		{name: "no escape", in: "/users/john"},
+		{name: "canonical escape", in: "/a%2Fb"},
+		{name: "escape inside brace segment ignored", in: "/foo/{bar:[%61%2f]+}"},
+		{name: "unbalanced brace deferred to parsePath", in: "/foo/{bar%2"},
+		{name: "truncated escape", in: "/100%", wantHint: "invalid percent-encoding", wantStart: 4, wantEnd: 5},
+		{name: "truncated hex pair", in: "/foo%2", wantHint: "invalid percent-encoding", wantStart: 4, wantEnd: 6},
+		{name: "invalid hex", in: "/%zz", wantHint: "invalid percent-encoding", wantStart: 1, wantEnd: 4},
+		{name: "encoded unreserved", in: "/%41", wantHint: "non-canonical percent-encoding, write 'A'", wantStart: 1, wantEnd: 4},
+		{name: "lowercase hex", in: "/%2f", wantHint: "non-canonical percent-encoding, write '%2F'", wantStart: 1, wantEnd: 4},
+		{name: "escape after brace segment", in: "/{id}/%2e", wantHint: "non-canonical percent-encoding, write '.'", wantStart: 6, wantEnd: 9},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, pe := normalizePatternPath(tc.in, tc.strict)
-			if tc.wantErr {
-				require.NotNil(t, pe)
-				assert.Equal(t, "syntax", pe.Reason)
-				assert.Equal(t, strings.IndexByte(tc.in, '%'), pe.Start)
+			pe := validatePatternPath(tc.in)
+			if tc.wantHint == "" {
+				require.Nil(t, pe)
 				return
 			}
-			require.Nil(t, pe)
-			assert.Equal(t, tc.want, got)
+			require.NotNil(t, pe)
+			assert.Equal(t, "syntax", pe.Reason)
+			assert.Equal(t, tc.wantStart, pe.Start)
+			assert.Equal(t, tc.wantEnd, pe.End)
+			assert.Contains(t, pe.Error(), tc.wantHint)
 		})
 	}
 }
@@ -1236,13 +1260,13 @@ func TestPatternError_PatternField(t *testing.T) {
 	f := MustRouter()
 	var pe *PatternError
 
-	// Normalization errors reference the raw pattern.
+	// Validation errors reference the pattern as given.
 	_, _, err := f.parsePattern("/foo/%zz")
 	require.ErrorAs(t, err, &pe)
 	assert.Equal(t, "/foo/%zz", pe.Pattern)
 
-	// Parse errors reference the canonical (normalized) pattern.
-	_, _, err = f.parsePattern("/foo/%2E%2E/bar")
+	// Parse errors too.
+	_, _, err = f.parsePattern("/foo/../bar")
 	require.ErrorAs(t, err, &pe)
 	assert.Equal(t, "/foo/../bar", pe.Pattern)
 }
@@ -1604,13 +1628,13 @@ func TestPatternError_Position(t *testing.T) {
 			wantMsg:    "invalid percent-encoding",
 		},
 		{
-			name:       "path encoded dot segment positions on canonical pattern",
+			name:       "path encoded dot segment rejected as non-canonical",
 			pattern:    "/foo/%2E%2E/bar",
 			wantType:   "path",
 			wantReason: "syntax",
-			wantStart:  4,
+			wantStart:  5,
 			wantEnd:    8,
-			wantMsg:    "dot segment",
+			wantMsg:    "non-canonical percent-encoding, write '.'",
 		},
 		{
 			name:       "path dot segment single dot mid",
