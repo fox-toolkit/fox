@@ -1210,6 +1210,8 @@ func Test_normalizePatternPath(t *testing.T) {
 		{name: "non-strict invalid hex kept", in: "/%zz", want: "/%zz"},
 		{name: "non-strict truncated escape after decoded escape", in: "/%61/100%", want: "/a/100%"},
 		{name: "non-strict invalid hex after decoded escape", in: "/a%61%zz", want: "/aa%zz"},
+		{name: "non-strict malformed escape does not recombine", in: "/a%2%46b", want: "/a%2%46b"},
+		{name: "non-strict malformed escape after decoded escape stops normalization", in: "/%61%2%46b", want: "/a%2%46b"},
 		{name: "strict canonical escape after decoded escape", in: "/%61%2F", want: "/a%2F", strict: true},
 		{name: "strict unbalanced brace after decoded escape", in: "/%61/{foo", want: "/a/{foo", strict: true},
 		{name: "strict invalid hex rejected", in: "/%zz", strict: true, wantErr: true},

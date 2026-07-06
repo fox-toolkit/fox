@@ -3946,6 +3946,12 @@ func TestRouter_UnreservedPatternEquivalence(t *testing.T) {
 		require.NoError(t, onlyError(f.Add(MethodGet, "/glob/*0{id}", emptyHandler)))
 		assert.True(t, f.Has(MethodGet, "/glob/*0{id}"))
 		assert.False(t, f.Has(MethodGet, "/glob/*1{id}"))
+
+		// A malformed escape must not recombine with a following escape:
+		// "%2"+"%46" would otherwise normalize to "%2F" and match.
+		require.NoError(t, onlyError(f.Add(MethodGet, "/a%2Fb", emptyHandler)))
+		assert.False(t, f.Has(MethodGet, "/a%2%46b"))
+		assert.Nil(t, f.Route(MethodGet, "/a%2%46b"))
 	})
 
 	t.Run("txn search APIs normalize pattern", func(t *testing.T) {

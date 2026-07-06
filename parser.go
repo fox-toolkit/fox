@@ -107,8 +107,8 @@ func normalizeSearchPattern(pattern string) string {
 // hex sequences are normalized to uppercase, like [stringsutil.NormalizeRoutingPath].
 // Brace segments, including regex constraints, are never decoded. In strict mode,
 // malformed escape sequences are rejected with a [PatternError] positioned
-// relative to path. Otherwise they are kept as-is. The input is returned
-// unchanged, without allocation, when already canonical.
+// relative to path. Otherwise the path is kept as-is from the first malformed
+// escape. The input is returned unchanged, without allocation, when already canonical.
 func normalizePatternPath(path string, strict bool) (string, *PatternError) {
 	var buf strings.Builder
 	i := 0
@@ -144,11 +144,12 @@ func normalizePatternPath(path string, strict bool) (string, *PatternError) {
 			if strict {
 				return "", newPatternError("syntax", i, len(path), "invalid percent-encoding")
 			}
+			// Malformed escape, copy the remainder as-is and stop. A dangling
+			// '%' must not recombine with a following escape into a valid sequence.
 			if buf.Len() > 0 {
-				buf.WriteByte(c)
+				buf.WriteString(path[i:])
 			}
-			i++
-			continue
+			break
 		}
 
 		b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
@@ -157,10 +158,9 @@ func normalizePatternPath(path string, strict bool) (string, *PatternError) {
 				return "", newPatternError("syntax", i, i+3, "invalid percent-encoding")
 			}
 			if buf.Len() > 0 {
-				buf.WriteByte(c)
+				buf.WriteString(path[i:])
 			}
-			i++
-			continue
+			break
 		}
 
 		hiUpper := stringsutil.UpperHex(path[i+1])

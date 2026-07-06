@@ -175,12 +175,14 @@ func TestNormalizeRoutingPath(t *testing.T) {
 		{"truncated escape", "/%2", "/%2"},
 		{"invalid hex digits", "/%zz", "/%zz"},
 		{"invalid escape then text", "/%g1abc", "/%g1abc"},
-		{"invalid escape then valid escape", "/%zz%61", "/%zza"},
+		{"invalid escape then valid escape", "/%zz%61", "/%zz%61"},
 		{"invalid second hex digit", "/%4z", "/%4z"},
 		{"valid escape then invalid escape", "/a%61%zz", "/aa%zz"},
 		{"valid escape then truncated hex", "/%61%4z", "/a%4z"},
 		{"normalized escape then trailing percent", "/caf%c3%a9/100%", "/caf%C3%A9/100%"},
-		{"percent before valid escape", "/%%41", "/%A"},
+		{"percent before valid escape", "/%%41", "/%%41"},
+		{"malformed escape does not recombine", "/a%2%46b", "/a%2%46b"},
+		{"malformed escape after decoded escape stops normalization", "/%61%2%46b", "/a%2%46b"},
 		{"raw plus and star untouched", "/a+b/c*d", "/a+b/c*d"},
 	}
 

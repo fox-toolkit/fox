@@ -99,8 +99,8 @@ func UpperHex(c byte) byte {
 // NormalizeRoutingPath returns the canonical routing form of an escaped path:
 // percent-encoded unreserved characters (see [IsUnreserved]) are decoded and
 // the remaining hex sequences are normalized to uppercase.
-// Malformed escape sequences are kept as-is. The input is returned
-// unchanged, without allocation, when already canonical.
+// The path is kept as-is from the first malformed escape sequence. The input
+// is returned unchanged, without allocation, when already canonical.
 func NormalizeRoutingPath(s string) string {
 	var buf strings.Builder
 	for i := 0; i < len(s); i++ {
@@ -113,12 +113,12 @@ func NormalizeRoutingPath(s string) string {
 		}
 		b, ok := DecodeHexPair(s[i+1], s[i+2])
 		if !ok {
-			// Malformed escape. Keep the '%' and process the following
-			// bytes as ordinary characters.
+			// Malformed escape, copy the remainder as-is and stop. A dangling
+			// '%' must not recombine with a following escape into a valid sequence.
 			if buf.Len() > 0 {
-				buf.WriteByte(c)
+				buf.WriteString(s[i:])
 			}
-			continue
+			break
 		}
 		hiUpper := UpperHex(s[i+1])
 		loUpper := UpperHex(s[i+2])
