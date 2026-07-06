@@ -48,17 +48,6 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 		}
 	}
 
-	// Escape sequences in the path part must use the canonical routing form:
-	// any other encoding could never match a request routing path.
-	pe := validatePatternPath(path)
-	if pe != nil {
-		pe.Pattern = raw
-		pe.Type = "path"
-		pe.Start += endHost
-		pe.End += endHost
-		return pattern{}, 0, pe
-	}
-
 	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(path, paramCount)
 	if pe != nil {
 		pe.Pattern = raw
@@ -78,46 +67,6 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 		endHost:          endHost,
 		optionalCatchAll: optCatchAll,
 	}, paramCount, nil
-}
-
-// validatePatternPath checks that escape sequences in the path part of a route
-// pattern use the canonical routing form: a valid, uppercase hex pair encoding
-// a non-unreserved byte, outside brace segments. Any other encoding could never
-// match a request routing path (see [stringsutil.NormalizeRoutingPath]) and is
-// rejected with a [PatternError] positioned relative to path.
-func validatePatternPath(path string) *PatternError {
-	i := 0
-	for i < len(path) {
-		switch path[i] {
-		case '{':
-			end := braceIndex(path[i+1:], 1)
-			if end == -1 {
-				// Unbalanced braces, let parsePath report the error.
-				return nil
-			}
-			i += 1 + end + 1
-		case '%':
-			if i+2 >= len(path) {
-				return newPatternError("syntax", i, len(path), "invalid percent-encoding")
-			}
-			b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
-			if !ok {
-				return newPatternError("syntax", i, i+3, "invalid percent-encoding")
-			}
-			if stringsutil.IsUnreserved(b) {
-				return newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%c'", b))
-			}
-			hiUpper := stringsutil.UpperHex(path[i+1])
-			loUpper := stringsutil.UpperHex(path[i+2])
-			if path[i+1] != hiUpper || path[i+2] != loUpper {
-				return newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%%%c%c'", hiUpper, loUpper))
-			}
-			i += 3
-		default:
-			i++
-		}
-	}
-	return nil
 }
 
 func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) {
@@ -339,6 +288,28 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if i < len(path) && path[i] != '/' {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal character after parameter")
 			}
+
+		case '%':
+			// Escape sequences must use the canonical routing form. Any other encoding could never match a request
+			// routing path (see stringsutil.NormalizeRoutingPath).
+			if i+2 >= len(path) {
+				return nil, false, 0, newPatternError("syntax", i, len(path), "invalid percent-encoding")
+			}
+			b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
+			if !ok {
+				return nil, false, 0, newPatternError("syntax", i, i+3, "invalid percent-encoding")
+			}
+			if stringsutil.IsUnreserved(b) {
+				return nil, false, 0, newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%c'", b))
+			}
+			hiUpper := stringsutil.UpperHex(path[i+1])
+			loUpper := stringsutil.UpperHex(path[i+2])
+			if path[i+1] != hiUpper || path[i+2] != loUpper {
+				return nil, false, 0, newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%%%c%c'", hiUpper, loUpper))
+			}
+			sb.WriteString(path[i : i+3])
+			staticSinceWild += 3
+			i += 3
 
 		default:
 			if isASCIIControl(c) {

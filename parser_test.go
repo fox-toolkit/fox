@@ -275,6 +275,22 @@ func Test_parsePattern(t *testing.T) {
 			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/", false), paramToken("bar", "[%41]+"))),
 		},
 		{
+			name:       "escape inside brace segment not validated",
+			path:       "/foo/{bar:[%61%2f]+}",
+			wantN:      1,
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/", false), paramToken("bar", "[%61%2f]+"))),
+		},
+		{
+			name:  "escape after brace segment rejected",
+			path:  "/{id}/%2e",
+			wantN: 0,
+		},
+		{
+			name:  "unbalanced brace with escape",
+			path:  "/foo/{bar%2",
+			wantN: 0,
+		},
+		{
 			name:  "encoded dot dot segment rejected",
 			path:  "/foo/%2E%2E/bar",
 			wantN: 0,
@@ -1221,41 +1237,6 @@ func Test_parsePattern_CanonicalEncoding(t *testing.T) {
 	})
 }
 
-func Test_validatePatternPath(t *testing.T) {
-	cases := []struct {
-		name      string
-		in        string
-		wantHint  string // empty means valid
-		wantStart int
-		wantEnd   int
-	}{
-		{name: "no escape", in: "/users/john"},
-		{name: "canonical escape", in: "/a%2Fb"},
-		{name: "escape inside brace segment ignored", in: "/foo/{bar:[%61%2f]+}"},
-		{name: "unbalanced brace deferred to parsePath", in: "/foo/{bar%2"},
-		{name: "truncated escape", in: "/100%", wantHint: "invalid percent-encoding", wantStart: 4, wantEnd: 5},
-		{name: "truncated hex pair", in: "/foo%2", wantHint: "invalid percent-encoding", wantStart: 4, wantEnd: 6},
-		{name: "invalid hex", in: "/%zz", wantHint: "invalid percent-encoding", wantStart: 1, wantEnd: 4},
-		{name: "encoded unreserved", in: "/%41", wantHint: "non-canonical percent-encoding, write 'A'", wantStart: 1, wantEnd: 4},
-		{name: "lowercase hex", in: "/%2f", wantHint: "non-canonical percent-encoding, write '%2F'", wantStart: 1, wantEnd: 4},
-		{name: "escape after brace segment", in: "/{id}/%2e", wantHint: "non-canonical percent-encoding, write '.'", wantStart: 6, wantEnd: 9},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			pe := validatePatternPath(tc.in)
-			if tc.wantHint == "" {
-				require.Nil(t, pe)
-				return
-			}
-			require.NotNil(t, pe)
-			assert.Equal(t, "syntax", pe.Reason)
-			assert.Equal(t, tc.wantStart, pe.Start)
-			assert.Equal(t, tc.wantEnd, pe.End)
-			assert.Contains(t, pe.Error(), tc.wantHint)
-		})
-	}
-}
-
 func TestPatternError_PatternField(t *testing.T) {
 	f := MustRouter()
 	var pe *PatternError
@@ -1635,6 +1616,15 @@ func TestPatternError_Position(t *testing.T) {
 			wantStart:  5,
 			wantEnd:    8,
 			wantMsg:    "non-canonical percent-encoding, write '.'",
+		},
+		{
+			name:       "path lowercase hex rejected as non-canonical",
+			pattern:    "/a%2fb",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    5,
+			wantMsg:    "non-canonical percent-encoding, write '%2F'",
 		},
 		{
 			name:       "path dot segment single dot mid",

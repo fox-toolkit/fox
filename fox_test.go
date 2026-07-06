@@ -3345,6 +3345,9 @@ func TestRouter_Has(t *testing.T) {
 		"/john/doe/",
 		"/foo/*{name}",
 		"/foo/uid_*{id}",
+		"/a%2Fb",
+		"/glob/*0{id}",
+		"/glob/+a{id}",
 	}
 
 	f, _ := NewRouter(AllowRegexpParam(true))
@@ -3442,6 +3445,37 @@ func TestRouter_Has(t *testing.T) {
 		{
 			name: "no match mid route params",
 			path: "/users/uid_123",
+		},
+		{
+			name: "strict match encoded route",
+			path: "/a%2Fb",
+			want: true,
+		},
+		{
+			name: "no match lowercase hex",
+			path: "/a%2fb",
+		},
+		{
+			name: "no match malformed escape",
+			path: "/a%2%46b",
+		},
+		{
+			name: "strict match literal star before brace segment",
+			path: "/glob/*0{id}",
+			want: true,
+		},
+		{
+			name: "no match literal star before brace segment",
+			path: "/glob/*1{id}",
+		},
+		{
+			name: "strict match literal plus before brace segment",
+			path: "/glob/+a{id}",
+			want: true,
+		},
+		{
+			name: "no match literal plus before brace segment",
+			path: "/glob/+b{id}",
 		},
 	}
 
@@ -3878,10 +3912,10 @@ func TestRouter_ServeHTTP_UnreservedDecoding(t *testing.T) {
 	}
 }
 
-func TestRouter_PatternCanonicalEncoding(t *testing.T) {
+func TestRouter_NonCanonicalPatternRejected(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add rejects non-canonical escape", func(t *testing.T) {
+	t.Run("add", func(t *testing.T) {
 		f, _ := NewRouter()
 		var pe *PatternError
 		_, err := f.Add(MethodGet, "/users/j%6Fhn", emptyHandler)
@@ -3890,7 +3924,7 @@ func TestRouter_PatternCanonicalEncoding(t *testing.T) {
 		require.ErrorAs(t, err, &pe)
 	})
 
-	t.Run("update and delete reject non-canonical escape", func(t *testing.T) {
+	t.Run("update and delete", func(t *testing.T) {
 		f, _ := NewRouter()
 		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
 		var pe *PatternError
@@ -3899,52 +3933,6 @@ func TestRouter_PatternCanonicalEncoding(t *testing.T) {
 		_, err = f.Delete(MethodGet, "/users/j%6Fhn")
 		require.ErrorAs(t, err, &pe)
 		assert.Equal(t, 1, f.Len())
-	})
-
-	t.Run("route exposes pattern as registered", func(t *testing.T) {
-		f, _ := NewRouter()
-		rte, err := f.Add(MethodGet, "/users/john/%7Bid%7D", emptyHandler)
-		require.NoError(t, err)
-		assert.Equal(t, "/users/john/%7Bid%7D", rte.Pattern())
-	})
-
-	t.Run("search APIs match byte-for-byte", func(t *testing.T) {
-		f, _ := NewRouter()
-		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/users/jane", emptyHandler)))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/a%2Fb", emptyHandler)))
-
-		assert.True(t, f.Has(MethodGet, "/users/john"))
-		assert.False(t, f.Has(MethodGet, "/users/j%6Fhn"))
-		assert.Nil(t, f.Route(MethodGet, "/users/j%6Fhn"))
-		assert.True(t, f.Has(MethodGet, "/a%2Fb"))
-		assert.False(t, f.Has(MethodGet, "/a%2fb"))
-		assert.False(t, f.Has(MethodGet, "/a%2%46b"))
-
-		it := f.Iter()
-		routes := slices.Collect(it.Routes("/users/john"))
-		require.Len(t, routes, 1)
-		assert.Empty(t, slices.Collect(it.Routes("/users/j%6Fhn")))
-
-		prefixed := slices.Collect(it.PatternPrefix("/users/j"))
-		require.Len(t, prefixed, 2)
-		assert.Empty(t, slices.Collect(it.PatternPrefix("/users/j%6F")))
-
-		// Literal '*' followed by a later brace segment is looked up as static.
-		require.NoError(t, onlyError(f.Add(MethodGet, "/glob/*0{id}", emptyHandler)))
-		assert.True(t, f.Has(MethodGet, "/glob/*0{id}"))
-		assert.False(t, f.Has(MethodGet, "/glob/*1{id}"))
-	})
-
-	t.Run("txn search APIs match byte-for-byte", func(t *testing.T) {
-		f, _ := NewRouter()
-		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
-		require.NoError(t, f.View(func(txn *Txn) error {
-			assert.True(t, txn.Has(MethodGet, "/users/john"))
-			assert.False(t, txn.Has(MethodGet, "/users/j%6Fhn"))
-			assert.Nil(t, txn.Route(MethodGet, "/users/j%6Fhn"))
-			return nil
-		}))
 	})
 }
 
