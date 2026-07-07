@@ -81,7 +81,8 @@ func (n *node) lookup(method, hostPort, path string, c *Context, lazy bool) (int
 			return i, pathNode, pathTsr
 		}
 	}
-	// Hostname direct match
+	// Hostname match, direct or tsr. A tsr match counts as a direct match and hostname
+	// routes always have priority, so a hostname tsr beats a path-only direct match.
 	return idx, nd, tsr
 }
 
@@ -311,6 +312,13 @@ Backtrack:
 	goto Walk
 }
 
+// lookupByPath returns the node matching path, or a trailing slash candidate (tsr)
+// when adding or removing the trailing slash would match a non StrictSlash route.
+//
+// Caveat: StrictSlash only prevents a route from being a tsr candidate, it does not veto
+// slash correction triggered by a lower priority route. Since the corrected path
+// is matched from scratch, a higher priority StrictSlash route can win the direct
+// match and end up serving the redirected traffic.
 func lookupByPath(root *node, method, path string, c *Context, lazy bool, stackOffset int) (index int, n *node, tsr bool) {
 
 	var (
