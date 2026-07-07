@@ -4522,6 +4522,45 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 			paths: []string{"/foo/bar"},
 			key:   "/foo/barr/",
 		},
+		{
+			name:  "no tsr on pattern ending with double slash",
+			paths: []string{"/foo//"},
+			key:   "/foo/",
+		},
+		{
+			name:  "no tsr on pattern ending with triple slash",
+			paths: []string{"/foo///"},
+			key:   "/foo//",
+		},
+		{
+			name:  "no tsr on pattern ending with double slash and sibling",
+			paths: []string{"/foo//", "/foo/bar"},
+			key:   "/foo/",
+		},
+		{
+			name:  "no tsr on request ending with double slash and standalone slash node",
+			paths: []string{"/foo/", "/foo//bar", "/foo//qux"},
+			key:   "/foo//",
+		},
+		{
+			name:  "no tsr on request ending with double slash",
+			paths: []string{"/foo/"},
+			key:   "/foo//",
+		},
+		{
+			name:     "match mid edge on pattern with infix double slash",
+			paths:    []string{"/foo//bar/"},
+			key:      "/foo//bar",
+			want:     true,
+			wantPath: "/foo//bar/",
+		},
+		{
+			name:     "incomplete match end of edge on pattern with infix double slash",
+			paths:    []string{"/foo//bar"},
+			key:      "/foo//bar/",
+			want:     true,
+			wantPath: "/foo//bar",
+		},
 	}
 
 	for _, tc := range cases {

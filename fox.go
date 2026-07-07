@@ -15,9 +15,11 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"github.com/fox-toolkit/fox/internal/slicesutil"
 	"github.com/fox-toolkit/fox/internal/stringsutil"
@@ -821,7 +823,75 @@ func internalTrailingSlashHandler(c *Context) {
 		path += "?" + q
 	}
 
-	http.Redirect(c.Writer(), req, path, code)
+	redirect(c.Writer(), req, path, code)
+}
+
+// redirect is like [http.Redirect] but does not clean the path.
+func redirect(w http.ResponseWriter, r *http.Request, url string, code int) {
+	h := w.Header()
+
+	// RFC 7231 notes that a short HTML body is usually included in
+	// the response because older user agents may not understand 301/307.
+	// Do it only if the request didn't already have a Content-Type header.
+	_, hadCT := h[HeaderContentType]
+
+	h.Set(HeaderLocation, hexEscapeNonASCII(url))
+	if !hadCT && r.Method == http.MethodGet {
+		h.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
+	}
+	w.WriteHeader(code)
+
+	// Shouldn't send the body for POST or HEAD; that leaves GET.
+	if !hadCT && r.Method == http.MethodGet {
+		body := "<a href=\"" + htmlEscape(url) + "\">" + http.StatusText(code) + "</a>.\n"
+		_, _ = fmt.Fprintln(w, body)
+	}
+}
+
+// htmlReplacer, htmlEscape and hexEscapeNonASCII are copied from net/http
+// (Copyright 2009 The Go Authors, BSD-style license).
+var htmlReplacer = strings.NewReplacer(
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	// "&#34;" is shorter than "&quot;".
+	`"`, "&#34;",
+	// "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+	"'", "&#39;",
+)
+
+func htmlEscape(s string) string {
+	return htmlReplacer.Replace(s)
+}
+
+func hexEscapeNonASCII(s string) string {
+	newLen := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			newLen += 3
+		} else {
+			newLen++
+		}
+	}
+	if newLen == len(s) {
+		return s
+	}
+	b := make([]byte, 0, newLen)
+	var pos int
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			if pos < i {
+				b = append(b, s[pos:i]...)
+			}
+			b = append(b, '%')
+			b = strconv.AppendInt(b, int64(s[i]), 16)
+			pos = i + 1
+		}
+	}
+	if pos < len(s) {
+		b = append(b, s[pos:]...)
+	}
+	return string(b)
 }
 
 func internalFixedPathHandler(c *Context) {

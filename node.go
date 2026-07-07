@@ -356,7 +356,7 @@ Walk:
 				}
 
 				// Child key is /foo/, we can fully match /foo prefix and the remaining is exactly "/".
-				if strings.HasPrefix(child.key, search) && child.key[len(search):] == "/" {
+				if strings.HasPrefix(child.key, search) && child.key[len(search):] == "/" && !strings.HasSuffix(child.key, "//") {
 					if child.isLeaf() {
 						for i, route := range child.routes {
 							if route.handleSlash != StrictSlash && route.match(method, c) {
@@ -585,13 +585,13 @@ Walk:
 		}
 	}
 
-	if _, child := matched.getStaticEdge(slashDelim); child != nil && child.isLeaf() && child.key == "/" {
+	if _, child := matched.getStaticEdge(slashDelim); child != nil && child.isLeaf() && child.key == "/" && !strings.HasSuffix(path, "/") {
 		for i, route := range child.routes {
 			if route.handleSlash != StrictSlash && route.match(method, c) {
 				return i, child, true
 			}
 		}
-	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" {
+	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" && !strings.HasSuffix(path, "//") {
 		for i, route := range parent.routes {
 			if route.handleSlash != StrictSlash && route.match(method, c) {
 				return i, parent, true
