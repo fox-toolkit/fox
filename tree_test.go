@@ -2675,17 +2675,17 @@ func Test_iTree_lookup_Overlapping(t *testing.T) {
 		},
 		{
 			name: "param at index 1 with 3 nodes",
-			path: "/foo/|barr|",
+			path: "/foo/]barr]",
 			routes: []string{
 				"/foo/{bar}",
 				"/foo/[bar]",
-				"/foo/|bar|",
+				"/foo/]bar]",
 			},
 			wantMatch: "/foo/{bar}",
 			wantParams: Params{
 				{
 					Key:   "bar",
-					Value: "|barr|",
+					Value: "]barr]",
 				},
 			},
 		},
@@ -2695,7 +2695,7 @@ func Test_iTree_lookup_Overlapping(t *testing.T) {
 			routes: []string{
 				"/foo/{bar}",
 				"/foo/~bar~",
-				"/foo/|bar|",
+				"/foo/]bar]",
 			},
 			wantMatch: "/foo/{bar}",
 			wantParams: Params{

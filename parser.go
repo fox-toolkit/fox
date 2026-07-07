@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fox-toolkit/fox/internal/stringsutil"
 )
@@ -299,12 +300,10 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 				return nil, false, 0, newPatternError("syntax", i, i+3, "invalid percent-encoding")
 			}
 			if stringsutil.IsUnreserved(b) {
-				return nil, false, 0, newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%c'", b))
+				return nil, false, 0, newPatternError("syntax", i, i+3, "non-canonical percent-encoding, encodes an unreserved character")
 			}
-			hiUpper := stringsutil.UpperHex(path[i+1])
-			loUpper := stringsutil.UpperHex(path[i+2])
-			if path[i+1] != hiUpper || path[i+2] != loUpper {
-				return nil, false, 0, newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%%%c%c'", hiUpper, loUpper))
+			if path[i+1] != stringsutil.UpperHex(path[i+1]) || path[i+2] != stringsutil.UpperHex(path[i+2]) {
+				return nil, false, 0, newPatternError("syntax", i, i+3, "non-canonical percent-encoding, hex must be uppercase")
 			}
 			sb.WriteString(path[i : i+3])
 			staticSinceWild += 3
@@ -314,6 +313,20 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if isASCIIControl(c) {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
+			// Literals may only use bytes that can appear raw in a request routing path.
+			// Anything else could never match (see stringsutil.IsRoutableRaw).
+			if !stringsutil.IsRoutableRaw(c) {
+				switch c {
+				case '}':
+					return nil, false, 0, newPatternError("syntax", i, i+1, "unbalanced braces")
+				case '?':
+					return nil, false, 0, newPatternError("syntax", i, i+1, "illegal query delimiter in patterns")
+				case '#':
+					return nil, false, 0, newPatternError("syntax", i, i+1, "illegal fragment delimiter in patterns")
+				}
+				_, size := utf8.DecodeRuneInString(path[i:])
+				return nil, false, 0, newPatternError("syntax", i, i+size, "character requires percent-encoding")
+			}
 			if c == '.' && i > 0 && path[i-1] == '/' {
 				next := i + 1
 				if next >= len(path) || path[next] == '/' {
@@ -322,7 +335,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 					if next < len(path) {
 						end = next + 1
 					}
-					return nil, false, 0, newPatternError("syntax", i-1, end, "dot segment")
+					return nil, false, 0, newPatternError("syntax", i-1, end, "unsafe dot segment")
 				}
 				if path[next] == '.' {
 					afterDots := next + 1
@@ -332,7 +345,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 						if afterDots < len(path) {
 							end = afterDots + 1
 						}
-						return nil, false, 0, newPatternError("syntax", i-1, end, "dot segment")
+						return nil, false, 0, newPatternError("syntax", i-1, end, "unsafe dot segment")
 					}
 				}
 			}

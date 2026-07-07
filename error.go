@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -114,16 +115,11 @@ func (e *PatternError) Error() string {
 		sb.WriteString(e.Pattern)
 		sb.WriteByte('\n')
 		sb.WriteString("      ")
-		for i := 0; i < e.Start; i++ {
-			sb.WriteByte(' ')
-		}
-		n := e.End - e.Start
-		if n <= 0 {
-			n = 1
-		}
-		for i := 0; i < n; i++ {
-			sb.WriteByte('^')
-		}
+
+		start := min(max(e.Start, 0), len(e.Pattern))
+		end := min(max(e.End, start), len(e.Pattern))
+		sb.WriteString(strings.Repeat(" ", utf8.RuneCountInString(e.Pattern[:start])))
+		sb.WriteString(strings.Repeat("^", max(utf8.RuneCountInString(e.Pattern[start:end]), 1)))
 	}
 	return sb.String()
 }

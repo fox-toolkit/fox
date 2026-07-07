@@ -1184,8 +1184,8 @@ func Test_parsePattern(t *testing.T) {
 		},
 		{
 			name:       "literal star without opening brace",
-			path:       "/foo/*:bar}",
-			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/*:bar}", false))),
+			path:       "/foo/*:bar",
+			wantTokens: slices.Collect(iterutil.SeqOf(staticToken("/foo/*:bar", false))),
 		},
 		{
 			name: "no infix catch all empty",
@@ -1242,10 +1242,10 @@ func Test_parsePattern_CanonicalEncoding(t *testing.T) {
 			in       string
 			wantHint string
 		}{
-			{"encoded unreserved", "/users/j%6Fhn", "non-canonical percent-encoding, write 'o'"},
-			{"lowercase hex", "/a%2fb", "non-canonical percent-encoding, write '%2F'"},
-			{"encoded tilde", "/%7E", "non-canonical percent-encoding, write '~'"},
-			{"with hostname", "example.com/%7e%61", "non-canonical percent-encoding, write '~'"},
+			{"encoded unreserved", "/users/j%6Fhn", "non-canonical percent-encoding, encodes an unreserved character"},
+			{"lowercase hex", "/a%2fb", "non-canonical percent-encoding, hex must be uppercase"},
+			{"encoded tilde", "/%7E", "non-canonical percent-encoding, encodes an unreserved character"},
+			{"with hostname", "example.com/%7e%61", "non-canonical percent-encoding, encodes an unreserved character"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -1264,12 +1264,10 @@ func TestPatternError_PatternField(t *testing.T) {
 	f := MustRouter()
 	var pe *PatternError
 
-	// Validation errors reference the pattern as given.
 	_, _, err := f.parsePattern("/foo/%zz")
 	require.ErrorAs(t, err, &pe)
 	assert.Equal(t, "/foo/%zz", pe.Pattern)
 
-	// Parse errors too.
 	_, _, err = f.parsePattern("/foo/../bar")
 	require.ErrorAs(t, err, &pe)
 	assert.Equal(t, "/foo/../bar", pe.Pattern)
@@ -1620,7 +1618,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  5,
 			wantEnd:    8,
-			wantMsg:    "non-canonical percent-encoding, write '.'",
+			wantMsg:    "non-canonical percent-encoding, encodes an unreserved character",
 		},
 		{
 			name:       "path lowercase hex rejected as non-canonical",
@@ -1629,7 +1627,88 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  2,
 			wantEnd:    5,
-			wantMsg:    "non-canonical percent-encoding, write '%2F'",
+			wantMsg:    "non-canonical percent-encoding, hex must be uppercase",
+		},
+		{
+			name:       "path raw space requires encoding",
+			pattern:    "/foo bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    5,
+			wantMsg:    "character requires percent-encoding",
+		},
+		{
+			name:       "path raw non-ascii rune spans all bytes",
+			pattern:    "/café",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    6,
+			wantMsg:    "character requires percent-encoding",
+		},
+		{
+			name:       "path invalid utf8 byte spans one byte",
+			pattern:    "/a\x80b",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    3,
+			wantMsg:    "character requires percent-encoding",
+		},
+		{
+			name:       "path raw pipe requires encoding",
+			pattern:    "/a|b",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    3,
+			wantMsg:    "character requires percent-encoding",
+		},
+		{
+			name:       "path raw backslash requires encoding",
+			pattern:    "/a\\b",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    3,
+			wantMsg:    "character requires percent-encoding",
+		},
+		{
+			name:       "path del byte is a control character",
+			pattern:    "/a\x7fb",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  2,
+			wantEnd:    3,
+			wantMsg:    "illegal control character",
+		},
+		{
+			name:       "path query delimiter rejected",
+			pattern:    "/search?q=1",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  7,
+			wantEnd:    8,
+			wantMsg:    "illegal query delimiter in patterns",
+		},
+		{
+			name:       "path fragment delimiter rejected",
+			pattern:    "/foo#frag",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    5,
+			wantMsg:    "illegal fragment delimiter in patterns",
+		},
+		{
+			name:       "path stray closing brace rejected",
+			pattern:    "/foo}bar",
+			wantType:   "path",
+			wantReason: "syntax",
+			wantStart:  4,
+			wantEnd:    5,
+			wantMsg:    "unbalanced braces",
 		},
 		{
 			name:       "path dot segment single dot mid",
@@ -1638,7 +1717,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    7,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path dot segment single dot end",
@@ -1647,7 +1726,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    6,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path dot segment double dot mid",
@@ -1656,7 +1735,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    8,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path dot segment double dot end",
@@ -1665,7 +1744,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    7,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path root single dot",
@@ -1674,7 +1753,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  0,
 			wantEnd:    2,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path root double dot",
@@ -1683,7 +1762,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  0,
 			wantEnd:    3,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "unbalanced braces",
@@ -1831,6 +1910,47 @@ func TestPatternError_Position(t *testing.T) {
 			assert.Contains(t, pe.Error(), tc.wantMsg)
 		})
 	}
+}
+
+func TestPatternError_PointerLine(t *testing.T) {
+	t.Run("multi-byte rune gets a single caret", func(t *testing.T) {
+		f := MustRouter()
+		_, _, err := f.parsePattern("/café")
+		require.Error(t, err)
+		var pe *PatternError
+		require.ErrorAs(t, err, &pe)
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      /café", lines[1])
+		assert.Equal(t, "          ^", lines[2])
+	})
+
+	t.Run("ascii span keeps one caret per character", func(t *testing.T) {
+		f := MustRouter()
+		_, _, err := f.parsePattern("/a/./b")
+		require.Error(t, err)
+		var pe *PatternError
+		require.ErrorAs(t, err, &pe)
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      /a/./b", lines[1])
+		assert.Equal(t, "        ^^^", lines[2])
+	})
+
+	t.Run("multi-byte prefix keeps the caret aligned", func(t *testing.T) {
+		pe := &PatternError{Pattern: "/héllo wörld", Reason: "syntax", Start: 7, End: 8}
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      /héllo wörld", lines[1])
+		assert.Equal(t, "            ^", lines[2])
+	})
+
+	t.Run("out of range offsets clamp without panic", func(t *testing.T) {
+		pe := &PatternError{Pattern: "/a", Reason: "syntax", Start: -1, End: 10}
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      ^^", lines[2])
+	})
 }
 
 func TestPatternError_Unwrap(t *testing.T) {

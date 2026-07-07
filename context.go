@@ -72,7 +72,6 @@ type Context struct {
 	route         *Route
 	tree          *iTree  // no reset
 	fox           *Router // no reset
-	pattern       string
 	cachedQueries url.Values
 	rec           recorder
 	scope         HandlerScope
@@ -244,7 +243,10 @@ func (c *Context) Header(key string) string {
 
 // Pattern returns the registered route pattern or an empty string if the handler is called in a scope other than [RouteHandler].
 func (c *Context) Pattern() string {
-	return c.pattern
+	if c.route == nil {
+		return ""
+	}
+	return c.route.pattern.str
 }
 
 // Route returns the registered [Route] or nil if the handler is called in a scope other than [RouteHandler].
@@ -287,12 +289,11 @@ func (c *Context) Router() *Router {
 // Any attempt to write on the [ResponseWriter] will panic with the error [ErrDiscardedResponseWriter].
 func (c *Context) Clone() *Context {
 	cp := Context{
-		rec:     c.rec,
-		req:     c.req.Clone(c.req.Context()),
-		fox:     c.fox, // Note: no tree here so Context.Close is noop.
-		route:   c.route,
-		scope:   c.scope,
-		pattern: c.pattern,
+		rec:   c.rec,
+		req:   c.req.Clone(c.req.Context()),
+		fox:   c.fox, // Note: no tree here so Context.Close is noop.
+		route: c.route,
+		scope: c.scope,
 	}
 
 	cp.rec.ResponseWriter = noopWriter{c.rec.Header().Clone()}
@@ -316,7 +317,6 @@ func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
 	cp.w = w
 	cp.route = c.route
 	cp.scope = c.scope
-	cp.pattern = c.pattern
 	cp.cachedQueries = nil // For safety, in case r is a different request than c.req
 
 	copyWithResize(cp.params, c.params)
@@ -406,11 +406,6 @@ type wrapH struct {
 
 func (hw wrapH) handle(c *Context) {
 	req := c.Request()
-
-	p := req.Pattern
-	defer func() { req.Pattern = p }()
-
-	req.Pattern = c.Pattern()
 	if route := c.Route(); route != nil && route.ParamsLen() > 0 {
 		params := slices.AppendSeq(make(Params, 0, route.ParamsLen()), c.Params())
 		ctx := context.WithValue(req.Context(), paramsKey, params)
@@ -427,17 +422,11 @@ type wrapM struct {
 }
 
 func (mw wrapM) handle(c *Context) {
-	req := c.Request()
-
-	p := req.Pattern
-	defer func() { req.Pattern = p }()
-
-	req.Pattern = c.Pattern()
-	r := req
+	r := c.Request()
 	if route := c.Route(); route != nil && route.ParamsLen() > 0 {
 		params := slices.AppendSeq(make(Params, 0, route.ParamsLen()), c.Params())
-		ctx := context.WithValue(req.Context(), paramsKey, params)
-		r = req.WithContext(ctx)
+		ctx := context.WithValue(r.Context(), paramsKey, params)
+		r = r.WithContext(ctx)
 	}
 
 	mw.m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
