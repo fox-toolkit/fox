@@ -5,6 +5,8 @@
 
 package fox
 
+import "strings"
+
 // CleanPath is the URL version of [path.Clean], it returns a canonical URL path
 // for p, eliminating . and .. elements.
 //
@@ -171,4 +173,25 @@ func fixTrailingSlash(path string) string {
 		return path[:len(path)-1]
 	}
 	return path + "/"
+}
+
+// hasDotSegment reports whether the path contains a "." or ".." path element.
+func hasDotSegment(path string) bool {
+	for i := 0; ; i++ {
+		j := strings.IndexByte(path[i:], '.')
+		if j < 0 {
+			return false
+		}
+		i += j
+		if i == 0 || path[i-1] == '/' {
+			// "." segment: "/." at end or "/./"
+			if i+1 == len(path) || path[i+1] == '/' {
+				return true
+			}
+			// ".." segment: "/.." at end or "/../"
+			if path[i+1] == '.' && (i+2 == len(path) || path[i+2] == '/') {
+				return true
+			}
+		}
+	}
 }

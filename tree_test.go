@@ -1217,6 +1217,40 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "fallback to plain param after regexp param subtree dead end",
+			routes: []string{
+				"{p:[a-z]+}.x.example.com/",
+				"{p}.y.example.com/",
+			},
+			host:     "abc.y.example.com",
+			path:     "/",
+			wantPath: "{p}.y.example.com/",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "p",
+					Value: "abc",
+				},
+			},
+		},
+		{
+			name: "fallback to param hostname when static hostname path does not match",
+			routes: []string{
+				"foo.example.com/y",
+				"{p}.example.com/x",
+			},
+			host:     "foo.example.com",
+			path:     "/x",
+			wantPath: "{p}.example.com/x",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "p",
+					Value: "foo",
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -2906,6 +2940,20 @@ func Test_iTree_lookup_Overlapping(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "suffix regex catch-all capture includes the trailing slash",
+			path: "/abc/",
+			routes: []string{
+				"/+{w:[a-z/]+}",
+			},
+			wantMatch: "/+{w:[a-z/]+}",
+			wantParams: Params{
+				{
+					Key:   "w",
+					Value: "abc/",
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -4522,11 +4570,95 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 			paths: []string{"/foo/bar"},
 			key:   "/foo/barr/",
 		},
+		{
+			name:  "no tsr on pattern ending with double slash",
+			paths: []string{"/foo//"},
+			key:   "/foo/",
+		},
+		{
+			name:  "no tsr on pattern ending with triple slash",
+			paths: []string{"/foo///"},
+			key:   "/foo//",
+		},
+		{
+			name:  "no tsr on pattern ending with double slash and sibling",
+			paths: []string{"/foo//", "/foo/bar"},
+			key:   "/foo/",
+		},
+		{
+			name:  "no tsr on request ending with double slash and standalone slash node",
+			paths: []string{"/foo/", "/foo//bar", "/foo//qux"},
+			key:   "/foo//",
+		},
+		{
+			name:  "no tsr on request ending with double slash",
+			paths: []string{"/foo/"},
+			key:   "/foo//",
+		},
+		{
+			name:     "match with empty catch all behind a split static node",
+			paths:    []string{"/foo/*{a}", "/foobar"},
+			key:      "/foo",
+			want:     true,
+			wantPath: "/foo/*{a}",
+		},
+		{
+			name:     "match mid edge on pattern with infix double slash",
+			paths:    []string{"/foo//bar/"},
+			key:      "/foo//bar",
+			want:     true,
+			wantPath: "/foo//bar/",
+		},
+		{
+			name:     "incomplete match end of edge on pattern with infix double slash",
+			paths:    []string{"/foo//bar"},
+			key:      "/foo//bar/",
+			want:     true,
+			wantPath: "/foo//bar",
+		},
+		{
+			name:     "tsr on static route wins over direct match on lower priority param route",
+			paths:    []string{"/foo", "/{a}/"},
+			key:      "/foo/",
+			want:     true,
+			wantPath: "/foo",
+		},
+		{
+			name:     "tsr on static route wins over direct match on lower priority param route reversed",
+			paths:    []string{"/foo/", "/{a}"},
+			key:      "/foo",
+			want:     true,
+			wantPath: "/foo/",
+		},
+		{
+			name:     "match infix wildcard with added trailing slash",
+			paths:    []string{"/+{a}/"},
+			key:      "/x/y",
+			want:     true,
+			wantPath: "/+{a}/",
+		},
+		{
+			name:  "no tsr when a suffix catch-all direct matches",
+			paths: []string{"/+{a}/", "/+{a}"},
+			key:   "/x/y",
+		},
+		{
+			name:     "match regex param with extra trailing slash",
+			paths:    []string{"/{p:[a-z]+}"},
+			key:      "/abc/",
+			want:     true,
+			wantPath: "/{p:[a-z]+}",
+		},
+		{
+			name:  "no tsr for suffix regex catch-all rejecting the full capture",
+			paths: []string{"/+{w:[a-z]+}"},
+			key:   "/abc/",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
 			for _, path := range tc.paths {
 				require.NoError(t, onlyError(f.Add(MethodGet, path, emptyHandler)))
 			}

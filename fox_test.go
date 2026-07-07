@@ -2235,6 +2235,28 @@ func TestRouter_ServeHTTP_IgnoreTrailingSlash(t *testing.T) {
 			method:   http.MethodGet,
 			wantCode: http.StatusNotFound,
 		},
+		{
+			name:     "no relaxed match on pattern ending with double slash",
+			paths:    []string{"/foo//"},
+			req:      "/foo/",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no relaxed match on request ending with double slash and standalone slash node",
+			paths:    []string{"/foo/", "/foo//bar", "/foo//qux"},
+			req:      "/foo//",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "relaxed match on single slash boundary within pattern with infix double slash",
+			paths:    []string{"/foo//bar/"},
+			req:      "/foo//bar",
+			method:   http.MethodGet,
+			wantCode: http.StatusOK,
+			wantPath: "/foo//bar/",
+		},
 	}
 
 	for _, tc := range cases {
@@ -2384,6 +2406,72 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 			req:      "/foo/barr/",
 			method:   http.MethodGet,
 			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no redirect on pattern ending with double slash",
+			paths:    []string{"/foo//"},
+			req:      "/foo/",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no redirect on pattern ending with double slash and sibling",
+			paths:    []string{"/foo//", "/foo/bar"},
+			req:      "/foo/",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no redirect on request ending with double slash and standalone slash node",
+			paths:    []string{"/foo/", "/foo//bar", "/foo//qux"},
+			req:      "/foo//",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no redirect on hostname route with pattern ending with double slash",
+			paths:    []string{"ex.com/foo//"},
+			req:      "http://ex.com/foo/",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:         "redirect on single slash boundary within pattern with infix double slash",
+			paths:        []string{"/foo//bar/"},
+			req:          "/foo//bar",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo//bar/",
+		},
+		{
+			name:     "no redirect on path with dot segment",
+			paths:    []string{"/+{args}/"},
+			req:      "/a/..",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no redirect on path with single dot segment",
+			paths:    []string{"/{a}"},
+			req:      "/../",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:         "redirect on path with dot segment lookalike",
+			paths:        []string{"/+{args}/"},
+			req:          "/a/.b",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/a/.b/",
+		},
+		{
+			name:         "hostname tsr wins over path-only direct match",
+			paths:        []string{"ex.com/foo/", "/foo"},
+			req:          "http://ex.com/foo",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/",
 		},
 	}
 
@@ -2783,6 +2871,76 @@ func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
 	})
 }
 
+func TestRouter_ServeHTTP_ConsecutiveSlash(t *testing.T) {
+	cases := []struct {
+		name     string
+		paths    []string
+		req      string
+		wantCode int
+		wantPath string
+	}{
+		{
+			name:     "double slash and single slash coexist",
+			paths:    []string{"/a//b", "/a/b"},
+			req:      "/a//b",
+			wantCode: http.StatusOK,
+			wantPath: "/a//b",
+		},
+		{
+			name:     "single slash not shadowed by double slash",
+			paths:    []string{"/a//b", "/a/b"},
+			req:      "/a/b",
+			wantCode: http.StatusOK,
+			wantPath: "/a/b",
+		},
+		{
+			name:     "triple slash does not match double slash",
+			paths:    []string{"/a//b"},
+			req:      "/a///b",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "param after empty segment",
+			paths:    []string{"/a//{p}"},
+			req:      "/a//x",
+			wantCode: http.StatusOK,
+			wantPath: "/a//{p}",
+		},
+		{
+			name:     "param after empty segment does not match single slash",
+			paths:    []string{"/a//{p}"},
+			req:      "/a/x",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "hostname route with double slash path",
+			paths:    []string{"ex.com//foo"},
+			req:      "http://ex.com//foo",
+			wantCode: http.StatusOK,
+			wantPath: "ex.com//foo",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := MustRouter()
+			for _, path := range tc.paths {
+				require.NoError(t, onlyError(f.Add(MethodGet, path, func(c *Context) {
+					_ = c.String(http.StatusOK, c.Pattern())
+				})))
+			}
+
+			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
+			assert.Equal(t, tc.wantCode, w.Code)
+			if tc.wantPath != "" {
+				assert.Equal(t, tc.wantPath, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -3028,6 +3186,18 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 			wantPath: "/a/foo/*{any}",
 		},
 		{
+			name:   "tsr with empty catch all behind a split static node",
+			routes: []string{"/a/foo/*{any}", "/a/foobar", "/{a}/foo/y", "/{a}/foo/b"},
+			target: "/a/foo",
+			wantParams: Params{
+				{
+					Key:   "any",
+					Value: "",
+				},
+			},
+			wantPath: "/a/foo/*{any}",
+		},
+		{
 			name:   "tsr with empty catch all and param before",
 			routes: []string{"/{a}/foo/*{any}", "/{a}/foo/y", "/{a}/foo/b"},
 			target: "/a/foo",
@@ -3042,6 +3212,42 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 				},
 			},
 			wantPath: "/{a}/foo/*{any}",
+		},
+		{
+			name:   "tsr with infix wildcard",
+			routes: []string{"/+{args}/"},
+			target: "/a/b/c",
+			wantParams: Params{
+				{
+					Key:   "args",
+					Value: "a/b/c",
+				},
+			},
+			wantPath: "/+{args}/",
+		},
+		{
+			name:   "tsr with infix wildcard after param backtrack",
+			routes: []string{"/+{args}/", "/{a}/b"},
+			target: "/x/c",
+			wantParams: Params{
+				{
+					Key:   "args",
+					Value: "x/c",
+				},
+			},
+			wantPath: "/+{args}/",
+		},
+		{
+			name:   "no tsr when a suffix catch-all direct matches",
+			routes: []string{"/+{args}/", "/+{args}"},
+			target: "/a/b/c",
+			wantParams: Params{
+				{
+					Key:   "args",
+					Value: "a/b/c",
+				},
+			},
+			wantPath: "/+{args}",
 		},
 	}
 
@@ -4000,6 +4206,9 @@ func FuzzRouter_Add(f *testing.F) {
 		"/*{filepath}", "/files/*{path}",
 		"/api*{mount}", "/src/file=*{path}",
 		"/users/*{trail}",
+		// Consecutive slashes
+		"/foo//bar", "/foo//", "/foo//{bar}", "/foo//+{bar}",
+		"example.com//", "example.com//foo",
 		// Hostname patterns
 		"example.com/", "example.com/users",
 		"api.example.com/users/{id}",
@@ -4084,6 +4293,11 @@ func FuzzRouter_AddDelete(f *testing.F) {
 		"_srv.example.com/\n_foo.example.com/bar",
 		// Mix hostname + path (mode switching on delete)
 		"example.com/users\n/fallback\n/api/users",
+		// Consecutive slashes (merge/split around "//" keys)
+		"/foo//bar\n/foo//\n/foo/",
+		"/foo//bar\n/foo//qux\n/foo/bar",
+		"example.com//\nexample.com//foo",
+		"example.com/\nexample.com//\nexample.com/foo",
 		// Percent-encoding (non-canonical escapes rejected)
 		"/users/john\n/users/j%6Fhn",
 		"/a%61\n/ab\n/a%2Fb",

@@ -143,6 +143,15 @@ func Test_fixTrailingSlash(t *testing.T) {
 	assert.Equal(t, "/", fixTrailingSlash(""))
 }
 
+func Test_hasDotSegment(t *testing.T) {
+	for _, path := range []string{"/.", "/..", "/./", "/../", "/a/.", "/a/..", "/a/./b", "/a/../b", "/a//../b", ".", ".."} {
+		assert.Truef(t, hasDotSegment(path), "path %s", path)
+	}
+	for _, path := range []string{"", "/", "/foo", "/a.b", "/a..b", "/...", "/a/...", "/.well-known/a", "/foo/.bar", "/foo/..bar", "/foo/bar.", "/foo/bar.."} {
+		assert.Falsef(t, hasDotSegment(path), "path %s", path)
+	}
+}
+
 func BenchmarkCleanPath_Long(b *testing.B) {
 	cleanTests := genLongPaths()
 	b.ResetTimer()

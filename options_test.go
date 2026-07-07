@@ -700,6 +700,14 @@ func TestWithAnnotation_Invalid(t *testing.T) {
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(nil, "value"))), ErrInvalidConfig)
 }
 
+func TestWithHandleTrailingSlash_LeadingDoubleSlash(t *testing.T) {
+	f := MustRouter()
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "example.com//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
+	assert.NoError(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RelaxedSlash))))
+	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithHandleTrailingSlash(StrictSlash))))
+}
+
 func TestWithQueryMatcher(t *testing.T) {
 	cases := []struct {
 		name    string

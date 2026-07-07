@@ -314,9 +314,6 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if isASCIIControl(c) {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
-			if c == '/' && i > 0 && path[i-1] == '/' {
-				return nil, false, 0, newPatternError("syntax", i-1, i+1, "consecutive '/'")
-			}
 			if c == '.' && i > 0 && path[i-1] == '/' {
 				next := i + 1
 				if next >= len(path) || path[next] == '/' {

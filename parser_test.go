@@ -718,10 +718,33 @@ func Test_parsePattern(t *testing.T) {
 		{
 			name: "path with double slash",
 			path: "/foo//bar",
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo//bar", false),
+			)),
 		},
 		{
 			name: "path with > double slash",
 			path: "/foo///bar",
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo///bar", false),
+			)),
+		},
+		{
+			name: "hostname with double slash path",
+			path: "example.com//foo",
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("example.com", true),
+				staticToken("//foo", false),
+			)),
+		},
+		{
+			name:  "param after empty segment",
+			path:  "/foo//{bar}",
+			wantN: 1,
+			wantTokens: slices.Collect(iterutil.SeqOf(
+				staticToken("/foo//", false),
+				paramToken("bar", ""),
+			)),
 		},
 		{
 			name: "path with slash dot slash",
@@ -1564,24 +1587,6 @@ func TestPatternError_Position(t *testing.T) {
 			wantMsg:    "illegal control character",
 		},
 		{
-			name:       "path consecutive slashes",
-			pattern:    "/foo//bar",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  4,
-			wantEnd:    6,
-			wantMsg:    "consecutive '/'",
-		},
-		{
-			name:       "path consecutive slashes with hostname",
-			pattern:    "example.com/foo//bar",
-			wantType:   "path",
-			wantReason: "syntax",
-			wantStart:  15,
-			wantEnd:    17,
-			wantMsg:    "consecutive '/'",
-		},
-		{
 			name:       "path invalid percent encoding",
 			pattern:    "/foo/%zzbar",
 			wantType:   "path",
@@ -1840,7 +1845,7 @@ func TestPatternError_Unwrap(t *testing.T) {
 	})
 	t.Run("non-regexp error returns nil on unwrap", func(t *testing.T) {
 		f := MustRouter()
-		_, _, err := f.parsePattern("/foo//bar")
+		_, _, err := f.parsePattern("/foo/./bar")
 		require.Error(t, err)
 		var pe *PatternError
 		require.ErrorAs(t, err, &pe)
