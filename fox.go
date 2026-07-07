@@ -632,7 +632,9 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			if route.handleSlash == RedirectSlash {
+			// A "." or ".." path element in the Location may be resolved by the client,
+			// redirecting to a different path.
+			if route.handleSlash == RedirectSlash && !hasDotSegment(path) {
 				*c.params = (*c.params)[:0]
 				c.route = nil
 				c.pattern = ""

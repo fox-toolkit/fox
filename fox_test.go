@@ -2443,6 +2443,28 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/foo//bar/",
 		},
+		{
+			name:     "no redirect on path with dot segment",
+			paths:    []string{"/+{args}/"},
+			req:      "/a/..",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:     "no redirect on path with single dot segment",
+			paths:    []string{"/{a}"},
+			req:      "/../",
+			method:   http.MethodGet,
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:         "redirect on path with dot segment lookalike",
+			paths:        []string{"/+{args}/"},
+			req:          "/a/.b",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/a/.b/",
+		},
 	}
 
 	for _, tc := range cases {
