@@ -1217,6 +1217,40 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "fallback to plain param after regexp param subtree dead end",
+			routes: []string{
+				"{p:[a-z]+}.x.example.com/",
+				"{p}.y.example.com/",
+			},
+			host:     "abc.y.example.com",
+			path:     "/",
+			wantPath: "{p}.y.example.com/",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "p",
+					Value: "abc",
+				},
+			},
+		},
+		{
+			name: "fallback to param hostname when static hostname path does not match",
+			routes: []string{
+				"foo.example.com/y",
+				"{p}.example.com/x",
+			},
+			host:     "foo.example.com",
+			path:     "/x",
+			wantPath: "{p}.example.com/x",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "p",
+					Value: "foo",
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
