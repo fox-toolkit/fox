@@ -400,7 +400,6 @@ func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if n != nil {
 		c.route = n.routes[idx]
-		c.pattern = c.route.pattern.str
 		return c.route, c, tsr
 	}
 
@@ -617,7 +616,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if !tsr && n != nil {
 		c.route = n.routes[idx]
-		c.pattern = c.route.pattern.str
+		r.Pattern = c.route.pattern.str
 		c.route.hall(c)
 		return
 	}
@@ -627,7 +626,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route := n.routes[idx]
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
-				c.pattern = c.route.pattern.str
+				r.Pattern = route.pattern.str
 				serveRewritten(c, fixTrailingSlash(path))
 				return
 			}
@@ -637,7 +636,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.handleSlash == RedirectSlash && !hasDotSegment(path) {
 				*c.params = (*c.params)[:0]
 				c.route = nil
-				c.pattern = ""
+				r.Pattern = ""
 				c.scope = RedirectSlashHandler
 				fox.tsrRedirect(c)
 				return
@@ -650,7 +649,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			cleanedPath := CleanPath(path)
 			if idx, n, tsr := tree.lookup(r.Method, r.Host, cleanedPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
 				c.route = n.routes[idx]
-				c.pattern = c.route.pattern.str
+				r.Pattern = c.route.pattern.str
 				if tsr {
 					cleanedPath = fixTrailingSlash(cleanedPath)
 				}
@@ -661,7 +660,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if idx, n, tsr := tree.lookup(r.Method, r.Host, CleanPath(path), c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
 				*c.params = (*c.params)[:0]
 				c.route = nil
-				c.pattern = ""
+				r.Pattern = ""
 				c.scope = RedirectPathHandler
 				fox.pathRedirect(c)
 				return
@@ -672,7 +671,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	*c.params = (*c.params)[:0]
 	c.route = nil
-	c.pattern = ""
+	r.Pattern = ""
 
 	isOPTIONS := r.Method == http.MethodOptions
 

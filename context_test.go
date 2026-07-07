@@ -630,9 +630,11 @@ func TestWrapM(t *testing.T) {
 	assert.Equal(t, "OK", w.Body.String())
 }
 
-func TestWrapM_RestoresRequestPattern(t *testing.T) {
+func TestServeHTTP_SetsRequestPattern(t *testing.T) {
+	var mwPattern string
 	mw := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mwPattern = r.Pattern
 			h.ServeHTTP(w, r)
 		})
 	}
@@ -648,6 +650,12 @@ func TestWrapM_RestoresRequestPattern(t *testing.T) {
 
 	f.ServeHTTP(w, req)
 
+	assert.Equal(t, "/foo/{bar}", mwPattern)
+	assert.Equal(t, "/foo/{bar}", req.Pattern)
+
+	req = httptest.NewRequest(http.MethodGet, "/no/match", nil)
+	req.Pattern = "/outer/"
+	f.ServeHTTP(httptest.NewRecorder(), req)
 	assert.Empty(t, req.Pattern)
 }
 
