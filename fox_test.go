@@ -3178,6 +3178,18 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 			wantPath: "/a/foo/*{any}",
 		},
 		{
+			name:   "tsr with empty catch all behind a split static node",
+			routes: []string{"/a/foo/*{any}", "/a/foobar", "/{a}/foo/y", "/{a}/foo/b"},
+			target: "/a/foo",
+			wantParams: Params{
+				{
+					Key:   "any",
+					Value: "",
+				},
+			},
+			wantPath: "/a/foo/*{any}",
+		},
+		{
 			name:   "tsr with empty catch all and param before",
 			routes: []string{"/{a}/foo/*{any}", "/{a}/foo/y", "/{a}/foo/b"},
 			target: "/a/foo",

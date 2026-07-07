@@ -4548,6 +4548,13 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 			key:   "/foo//",
 		},
 		{
+			name:     "match with empty catch all behind a split static node",
+			paths:    []string{"/foo/*{a}", "/foobar"},
+			key:      "/foo",
+			want:     true,
+			wantPath: "/foo/*{a}",
+		},
+		{
 			name:     "match mid edge on pattern with infix double slash",
 			paths:    []string{"/foo//bar/"},
 			key:      "/foo//bar",

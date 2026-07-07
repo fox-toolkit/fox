@@ -585,10 +585,25 @@ Walk:
 		}
 	}
 
-	if _, child := matched.getStaticEdge(slashDelim); child != nil && child.isLeaf() && child.key == "/" && !strings.HasSuffix(path, "/") {
-		for i, route := range child.routes {
-			if route.handleSlash != StrictSlash && route.match(method, c) {
-				return i, child, true
+	if _, child := matched.getStaticEdge(slashDelim); child != nil && child.key == "/" && !strings.HasSuffix(path, "/") {
+		if child.isLeaf() {
+			for i, route := range child.routes {
+				if route.handleSlash != StrictSlash && route.match(method, c) {
+					return i, child, true
+				}
+			}
+		}
+		// Since /foo/ and /foo/*{any} are permitted with different set of matchers and methods, we still need
+		// to search for match empty catch-all.
+		for _, wildcardNode := range child.wildcards {
+			for i, route := range wildcardNode.routes {
+				if route.handleSlash != StrictSlash && route.pattern.optionalCatchAll && route.match(method, c) {
+					if !lazy {
+						// record empty match
+						*c.params = append(*c.params, "")
+					}
+					return i, wildcardNode, true
+				}
 			}
 		}
 	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" && !strings.HasSuffix(path, "//") {
