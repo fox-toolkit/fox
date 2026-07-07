@@ -286,19 +286,9 @@ Backtrack:
 		return
 	}
 
+	// A skip node pushed with params left to try is always pushed with childWildcardIdx
+	// and wildcardOffset at zero, so restoring every field as saved is correct in all cases.
 	skipped := c.skipStack.pop()
-
-	if skipped.childParamIdx < len(skipped.node.params) {
-		matched = skipped.node
-		*c.params = (*c.params)[:skipped.paramCnt]
-		search = host[skipped.charsMatched:]
-		charsMatched = skipped.charsMatched
-		skipStatic = true
-		childParamIdx = skipped.childParamIdx
-		childWildcardIdx = 0
-		wildcardOffset = 0
-		goto Walk
-	}
 
 	matched = skipped.node
 	*c.params = (*c.params)[:skipped.paramCnt]
@@ -363,27 +353,11 @@ Walk:
 					continue
 				}
 
-				// Child key is /foo/, we can fully match /foo prefix and the remaining is exactly "/".
-				if strings.HasPrefix(child.key, search) && child.key[len(search):] == "/" && !strings.HasSuffix(child.key, "//") {
-					if child.isLeaf() {
-						for i, route := range child.routes {
-							if route.handleSlash != StrictSlash && route.match(method, c) {
-								return i, child, true
-							}
-						}
-					}
-					// Since /foo/ and /foo/*{any} are permitted with different set of matchers and methods, we still need
-					// to search for match empty catch-all.
-					for _, wildcardNode := range child.wildcards {
-						for i, route := range wildcardNode.routes {
-							if route.handleSlash != StrictSlash && route.pattern.optionalCatchAll && route.match(method, c) {
-								if !lazy {
-									// record empty match
-									*c.params = append(*c.params, "")
-								}
-								return i, wildcardNode, true
-							}
-						}
+				// Child key is exactly search plus a trailing slash (e.g. search /foo, key /foo/),
+				// excluding keys ending in "//". The length check keeps the common mismatch cheap.
+				if keyLen == len(search)+1 && child.key[keyLen-1] == '/' && child.key[keyLen-2] != '/' && strings.HasPrefix(child.key, search) {
+					if i, tsrNode := matchTrailingSlash(child, method, c, lazy); tsrNode != nil {
+						return i, tsrNode, true
 					}
 				}
 			}
@@ -594,25 +568,8 @@ Walk:
 	}
 
 	if _, child := matched.getStaticEdge(slashDelim); child != nil && child.key == "/" && !strings.HasSuffix(path, "/") {
-		if child.isLeaf() {
-			for i, route := range child.routes {
-				if route.handleSlash != StrictSlash && route.match(method, c) {
-					return i, child, true
-				}
-			}
-		}
-		// Since /foo/ and /foo/*{any} are permitted with different set of matchers and methods, we still need
-		// to search for match empty catch-all.
-		for _, wildcardNode := range child.wildcards {
-			for i, route := range wildcardNode.routes {
-				if route.handleSlash != StrictSlash && route.pattern.optionalCatchAll && route.match(method, c) {
-					if !lazy {
-						// record empty match
-						*c.params = append(*c.params, "")
-					}
-					return i, wildcardNode, true
-				}
-			}
+		if i, tsrNode := matchTrailingSlash(child, method, c, lazy); tsrNode != nil {
+			return i, tsrNode, true
 		}
 	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" && !strings.HasSuffix(path, "//") {
 		for i, route := range parent.routes {
@@ -623,7 +580,7 @@ Walk:
 	}
 
 Backtrack:
-	if matched.isLeaf() && matched.key != "*" && search == "/" && !strings.HasSuffix(path, "//") {
+	if search == "/" && matched.isLeaf() && matched.key != "*" && !strings.HasSuffix(path, "//") {
 		for i, route := range matched.routes {
 			if route.handleSlash != StrictSlash && route.match(method, c) {
 				return i, matched, true
@@ -635,20 +592,9 @@ Backtrack:
 		return
 	}
 
+	// A skip node pushed with params left to try is always pushed with childWildcardIdx
+	// and wildcardOffset at zero, so restoring every field as saved is correct in all cases.
 	skipped := c.skipStack.pop()
-
-	if skipped.childParamIdx < len(skipped.node.params) {
-		matched = skipped.node
-		parent = skipped.parent
-		*c.params = (*c.params)[:skipped.paramCnt]
-		search = path[skipped.charsMatched:]
-		charsMatched = skipped.charsMatched
-		skipStatic = true
-		childParamIdx = skipped.childParamIdx
-		childWildcardIdx = 0
-		wildcardOffset = 0
-		goto Walk
-	}
 
 	matched = skipped.node
 	parent = skipped.parent
@@ -661,6 +607,33 @@ Backtrack:
 	skipStatic = true
 
 	goto Walk
+}
+
+// matchTrailingSlash returns a trailing slash candidate on child, a static node whose
+// key appends a "/" to the matched path: either a non-strict route on child itself or
+// an empty match on one of its optional catch-all. Returns (-1, nil) when none match.
+func matchTrailingSlash(child *node, method string, c *Context, lazy bool) (int, *node) {
+	if child.isLeaf() {
+		for i, route := range child.routes {
+			if route.handleSlash != StrictSlash && route.match(method, c) {
+				return i, child
+			}
+		}
+	}
+	// Since /foo/ and /foo/*{any} are permitted with different set of matchers and methods,
+	// we still need to search for a matching empty catch-all.
+	for _, wildcardNode := range child.wildcards {
+		for i, route := range wildcardNode.routes {
+			if route.handleSlash != StrictSlash && route.pattern.optionalCatchAll && route.match(method, c) {
+				if !lazy {
+					// record empty match
+					*c.params = append(*c.params, "")
+				}
+				return i, wildcardNode
+			}
+		}
+	}
+	return -1, nil
 }
 
 func (n *node) addRoute(route *Route) {
