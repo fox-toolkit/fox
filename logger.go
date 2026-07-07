@@ -21,8 +21,8 @@ const (
 	// LoggerHostKey is the key used by the built-in logger middleware for the request host.
 	// The associated [slog.Value] is a string.
 	LoggerHostKey = "host"
-	// LoggerPathKey is the key used by the built-in logger middleware for the canonical encoded
-	// request path the router routed on (see [Context.EscapedPath]).
+	// LoggerPathKey is the key used by the built-in logger middleware for the canonical
+	// request path the router routed on (see [Context.RoutingPath]).
 	// The associated [slog.Value] is a string.
 	LoggerPathKey = "path"
 	// LoggerLatencyKey is the key used by the built-in logger middleware for the request processing duration.
@@ -69,7 +69,7 @@ func Logger(handler slog.Handler) MiddlewareFunc {
 				slog.Int(LoggerStatusKey, c.Writer().Status()),
 				slog.String(LoggerMethodKey, c.Method()),
 				slog.String(LoggerHostKey, c.Host()),
-				slog.String(LoggerPathKey, c.EscapedPath()),
+				slog.String(LoggerPathKey, c.RoutingPath()),
 				slog.Int(LoggerSizeKey, c.Writer().Size()),
 				slog.Duration(LoggerLatencyKey, latency),
 			)

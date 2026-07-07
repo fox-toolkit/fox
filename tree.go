@@ -41,17 +41,10 @@ func (t *iTree) lookup(method, hostPort, path string, c *Context, lazy bool) (in
 	return t.patterns.lookup(method, hostPort, path, c, lazy)
 }
 
-func (t *iTree) lookupByPath(method, path string, c *Context, lazy bool) (int, *node, bool) {
-	*c.skipStack = (*c.skipStack)[:0]
-	return lookupByPath(t.patterns, method, path, c, lazy, offsetZero)
-}
-
 func (t *iTree) allocateContext() *Context {
 	return &Context{
-		params:      new(make([]string, 0, t.maxParams)),
-		skipStack:   new(make(skipStack, 0, t.maxDepth)),
-		paramsKeys:  new(make([]string, 0, t.maxParams)),
-		subPatterns: new(make([]string, 0)),
+		params:    new(make([]string, 0, t.maxParams)),
+		skipStack: new(make(skipStack, 0, t.maxDepth)),
 		// This is a read only value, no reset. It's always the
 		// owner of the pool.
 		tree: t,

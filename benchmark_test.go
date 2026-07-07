@@ -50,13 +50,12 @@ func benchHostname(b *testing.B, router http.Handler, routes []route) {
 }
 
 func benchRouteParallel(b *testing.B, router http.Handler, rte route) {
-	w := new(mockResponseWriter)
-	r, _ := http.NewRequest(rte.method, rte.path, nil)
-
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
+		w := new(mockResponseWriter)
+		r, _ := http.NewRequest(rte.method, rte.path, nil)
 		for pb.Next() {
 			router.ServeHTTP(w, r)
 		}
@@ -243,13 +242,13 @@ func BenchmarkCatchAll(b *testing.B) {
 func BenchmarkCatchAllParallel(b *testing.B) {
 	r, _ := NewRouter()
 	require.NoError(b, onlyError(r.Add(MethodGet, "/something/+{args}", emptyHandler)))
-	w := new(mockResponseWriter)
-	req := httptest.NewRequest("GET", "/something/awesome", nil)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
+		w := new(mockResponseWriter)
+		req := httptest.NewRequest("GET", "/something/awesome", nil)
 		for pb.Next() {
 			r.ServeHTTP(w, req)
 		}
@@ -269,37 +268,6 @@ func BenchmarkContext_CloneWith(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		f.ServeHTTP(w, r)
 	}
-}
-
-func BenchmarkSubRouter(b *testing.B) {
-
-	main := MustRouter()
-	sub1 := MustRouter()
-	sub2 := MustRouter()
-
-	sub2.MustAdd(MethodGet, "/users/email", emptyHandler)
-	sub1.MustAdd(MethodAny, "/{name}/*{any}", Sub(sub2))
-	main.MustAdd(MethodAny, "/{v1}/*{any}", Sub(sub1))
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/john/users/email", nil)
-	w := new(mockResponseWriter)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for range b.N {
-		main.ServeHTTP(w, req)
-	}
-}
-
-func BenchmarkStaticAllSubRouter(b *testing.B) {
-	f := MustRouter()
-	sub := MustRouter()
-	for _, route := range staticRoutes {
-		require.NoError(b, onlyError(sub.Add([]string{route.method}, route.path, emptyHandler)))
-	}
-	f.MustAdd(MethodAny, "example.com/*{any}", Sub(sub))
-
-	benchRoute(b, f, staticRoutes)
 }
 
 func BenchmarkVeryLongPattern(b *testing.B) {

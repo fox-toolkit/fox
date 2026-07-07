@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/fox-toolkit/fox/internal/stringsutil"
 )
 
 type pattern struct {
-	str              string // canonical pattern
+	str              string // pattern as registered
 	tokens           []token
 	optionalCatchAll bool
 	endHost          int
@@ -135,15 +137,14 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 			}
 
 		case '*':
-			i++
-			if i < len(hostname) && hostname[i] == '{' {
+			if i+1 < len(hostname) && hostname[i+1] == '{' {
 				paramEnd := len(hostname)
-				if idx := braceIndex(hostname[i+1:], 1); idx >= 0 {
-					paramEnd = i + 1 + idx + 1
+				if idx := braceIndex(hostname[i+2:], 1); idx >= 0 {
+					paramEnd = i + 2 + idx + 1
 				}
-				return nil, 0, newPatternError("syntax", i-1, paramEnd, "optional wildcard allowed only as suffix")
+				return nil, 0, newPatternError("syntax", i, paramEnd, "optional wildcard allowed only as suffix")
 			}
-			return nil, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
+			return nil, 0, newPatternError("syntax", i, i+1, "illegal character in label")
 
 		default:
 			switch {
@@ -228,18 +229,23 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 
 		switch c {
 		case '{', '+', '*':
+			isOpt := c == '*'
+			isWild := c == '+' || isOpt
+			// The wildcard syntax requires an immediate '{'. A bare '+' or '*'
+			// is a literal character (both may appear unescaped in a request path).
+			if isWild && (i+1 >= len(path) || path[i+1] != '{') {
+				sb.WriteByte(c)
+				staticSinceWild++
+				i++
+				continue
+			}
 			if sb.Len() > 0 {
 				tokens = append(tokens, token{typ: nodeStatic, value: sb.String()})
 				sb.Reset()
 			}
-			isOpt := c == '*'
-			isWild := c == '+' || isOpt
 			paramStart := i
 			if isWild {
 				i++
-				if i >= len(path) || path[i] != '{' {
-					return nil, false, 0, newPatternError("syntax", i-1, i, "missing parameter after delimiter")
-				}
 				if prevWild && staticSinceWild <= 1 {
 					paramEnd := len(path)
 					if idx := braceIndex(path[i+1:], 1); idx >= 0 {
@@ -281,6 +287,28 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if i < len(path) && path[i] != '/' {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal character after parameter")
 			}
+
+		case '%':
+			// Escape sequences must use the canonical routing form. Any other encoding could never match a request
+			// routing path (see stringsutil.NormalizeRoutingPath).
+			if i+2 >= len(path) {
+				return nil, false, 0, newPatternError("syntax", i, len(path), "invalid percent-encoding")
+			}
+			b, ok := stringsutil.DecodeHexPair(path[i+1], path[i+2])
+			if !ok {
+				return nil, false, 0, newPatternError("syntax", i, i+3, "invalid percent-encoding")
+			}
+			if stringsutil.IsUnreserved(b) {
+				return nil, false, 0, newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%c'", b))
+			}
+			hiUpper := stringsutil.UpperHex(path[i+1])
+			loUpper := stringsutil.UpperHex(path[i+2])
+			if path[i+1] != hiUpper || path[i+2] != loUpper {
+				return nil, false, 0, newPatternError("syntax", i, i+3, fmt.Sprintf("non-canonical percent-encoding, write '%%%c%c'", hiUpper, loUpper))
+			}
+			sb.WriteString(path[i : i+3])
+			staticSinceWild += 3
+			i += 3
 
 		default:
 			if isASCIIControl(c) {

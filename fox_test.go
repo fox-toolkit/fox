@@ -7,6 +7,7 @@ package fox
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -28,7 +29,7 @@ import (
 
 var (
 	emptyHandler   = HandlerFunc(func(c *Context) {})
-	pathHandler    = HandlerFunc(func(c *Context) { _ = c.String(200, c.Path()) })
+	pathHandler    = HandlerFunc(func(c *Context) { _ = c.String(200, c.Request().URL.Path) })
 	patternHandler = HandlerFunc(func(c *Context) { _ = c.String(200, c.Pattern()) })
 )
 
@@ -861,93 +862,11 @@ func TestRouter_ServeHTTP_Static(t *testing.T) {
 	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
 }
 
-func TestRouter_ServeHTTP_StaticSubRouter(t *testing.T) {
-	f := MustRouter()
-	sub := MustRouter()
-
-	for _, route := range staticRoutes {
-		require.NoError(t, onlyError(sub.Add([]string{route.method}, route.path, pathHandler)))
-	}
-
-	require.NoError(t, onlyError(f.Add(MethodAny, "/*{args}", Sub(sub))))
-
-	for _, route := range staticRoutes {
-		req := httptest.NewRequest(route.method, route.path, nil)
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		require.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, route.path, w.Body.String())
-
-	}
-
-	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
-	assert.Equal(t, iterutil.Len(sub.Iter().All()), sub.Len())
-}
-
-func TestRouter_ServeHTTP_StaticSubRouterWithAny(t *testing.T) {
-	f := MustRouter()
-	sub := MustRouter()
-
-	for _, route := range staticRoutes {
-		require.NoError(t, onlyError(sub.Add(MethodAny, route.path, pathHandler)))
-	}
-
-	require.NoError(t, onlyError(f.Add(MethodAny, "/*{args}", Sub(sub))))
-
-	for _, route := range staticRoutes {
-		req := httptest.NewRequest(route.method, route.path, nil)
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		require.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, route.path, w.Body.String())
-
-	}
-
-	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
-	assert.Equal(t, iterutil.Len(sub.Iter().All()), sub.Len())
-}
-
 func TestRouter_ServeHTTP_StaticHostname(t *testing.T) {
 	f, _ := NewRouter()
 
 	for _, route := range staticHostnames {
 		require.NoError(t, onlyError(f.Add([]string{route.method}, route.path+"/foo", patternHandler)))
-	}
-
-	t.Run("same case", func(t *testing.T) {
-		for _, route := range staticHostnames {
-			req, err := http.NewRequest(route.method, "/foo", nil)
-			require.NoError(t, err)
-			req.Host = route.path
-			w := httptest.NewRecorder()
-			f.ServeHTTP(w, req)
-			require.Equal(t, http.StatusOK, w.Code)
-			assert.Equal(t, route.path+"/foo", w.Body.String())
-		}
-	})
-
-	t.Run("case-insensitive", func(t *testing.T) {
-		for _, route := range staticHostnames {
-			req, err := http.NewRequest(route.method, "/foo", nil)
-			require.NoError(t, err)
-			req.Host = strings.ToUpper(route.path)
-			w := httptest.NewRecorder()
-			f.ServeHTTP(w, req)
-			require.Equal(t, http.StatusOK, w.Code)
-			assert.Equal(t, route.path+"/foo", w.Body.String())
-		}
-	})
-
-	assert.Equal(t, iterutil.Len(f.Iter().All()), f.Len())
-}
-
-func TestRouter_ServeHTTP_StaticHostnameSubRouter(t *testing.T) {
-	f := MustRouter()
-
-	for _, route := range staticHostnames {
-		sub := MustRouter()
-		require.NoError(t, onlyError(sub.Add([]string{route.method}, "/foo", patternHandler)))
-		require.NoError(t, onlyError(f.Add(MethodAny, route.path+"/*{args}", Sub(sub))))
 	}
 
 	t.Run("same case", func(t *testing.T) {
@@ -1078,7 +997,7 @@ func TestRouter_ServeHTTP_Params(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1090,8 +1009,8 @@ func TestRouter_ServeHTTP_Params(t *testing.T) {
 			ps, _ := url.PathUnescape(c.Param(key))
 			assert.Equal(t, value, ps)
 		}
-		assert.Equal(t, c.Path(), c.Pattern())
-		_ = c.String(200, c.Path())
+		assert.Equal(t, c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, c.Request().URL.Path)
 	}
 	for _, route := range githubAPI {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, route.path, h)))
@@ -1124,7 +1043,7 @@ func TestRouter_ServeHTTP_ParamsHostname(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1137,8 +1056,8 @@ func TestRouter_ServeHTTP_ParamsHostname(t *testing.T) {
 		}
 
 		host := strings.ToLower(netutil.StripHostPort(c.Host()))
-		assert.Equal(t, host+c.Path(), c.Pattern())
-		_ = c.String(200, host+c.Path())
+		assert.Equal(t, host+c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, host+c.Request().URL.Path)
 	}
 	for _, route := range wildcardHostnames {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, route.path+"/foo", h)))
@@ -1206,7 +1125,7 @@ func TestRouter_ServeHTTP_ParamsTxn(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1218,8 +1137,8 @@ func TestRouter_ServeHTTP_ParamsTxn(t *testing.T) {
 			ps, _ := url.PathUnescape(c.Param(key))
 			assert.Equal(t, value, ps)
 		}
-		assert.Equal(t, c.Path(), c.Pattern())
-		_ = c.String(200, c.Path())
+		assert.Equal(t, c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, c.Request().URL.Path)
 	}
 	require.NoError(t, r.Updates(func(txn *Txn) error {
 		for _, route := range githubAPI {
@@ -1243,7 +1162,7 @@ func TestRouter_ServeHTTP_ParamsWithDomain(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1256,8 +1175,8 @@ func TestRouter_ServeHTTP_ParamsWithDomain(t *testing.T) {
 			assert.Equal(t, value, ps)
 		}
 
-		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Path(), c.Pattern())
-		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Path())
+		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Request().URL.Path)
 	}
 	for _, route := range githubAPI {
 		require.NoError(t, onlyError(r.Add([]string{route.method}, "foo.{bar}.com"+route.path, h)))
@@ -1276,7 +1195,7 @@ func TestRouter_ServeHTTP_ParamsWithDomainTxn(t *testing.T) {
 	rx := regexp.MustCompile("({|\\+{)[A-z]+[}]")
 	r, _ := NewRouter()
 	h := func(c *Context) {
-		matches := rx.FindAllString(c.Path(), -1)
+		matches := rx.FindAllString(c.Request().URL.Path, -1)
 		for _, match := range matches {
 			var key string
 			if strings.HasPrefix(match, "+") {
@@ -1289,8 +1208,8 @@ func TestRouter_ServeHTTP_ParamsWithDomainTxn(t *testing.T) {
 			assert.Equal(t, value, ps)
 		}
 
-		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Path(), c.Pattern())
-		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Path())
+		assert.Equal(t, netutil.StripHostPort(c.Host())+c.Request().URL.Path, c.Pattern())
+		_ = c.String(200, netutil.StripHostPort(c.Host())+c.Request().URL.Path)
 	}
 	require.NoError(t, r.Updates(func(txn *Txn) error {
 		for _, route := range githubAPI {
@@ -1359,263 +1278,6 @@ func TestRouter_ServeHTTP_Handle(t *testing.T) {
 	t.Run("handle and update route with nil route", func(t *testing.T) {
 		assert.ErrorIs(t, f.AddRoute(nil), ErrInvalidRoute)
 		assert.ErrorIs(t, f.UpdateRoute(nil), ErrInvalidRoute)
-	})
-}
-
-func TestRouter_ServeHTTP_HandleSubRouter(t *testing.T) {
-	f := MustRouter()
-
-	t.Run("route with slash", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/", patternHandler)
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-		assert.NoError(t, onlyError(f.Add(MethodGet, "/v1/api/*{sub}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/v1/api", nil)
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusNotFound, w.Code)
-
-		req = httptest.NewRequest(http.MethodGet, "/v1/api/", nil)
-		w = httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, "/v1/api/", w.Body.String())
-
-		req = httptest.NewRequest(http.MethodGet, "/v1/api/users", nil)
-		w = httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, "/v1/api/users", w.Body.String())
-	})
-
-	t.Run("route with and without slash when inflight", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/", patternHandler)
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-		assert.NoError(t, onlyError(f.Add(MethodGet, "/v2/api*{sub}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/v2/api", nil)
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, "/v2/api/", w.Body.String())
-
-		req = httptest.NewRequest(http.MethodGet, "/v2/api/", nil)
-		w = httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, "/v2/api/", w.Body.String())
-
-		req = httptest.NewRequest(http.MethodGet, "/v2/api/users", nil)
-		w = httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, "/v2/api/users", w.Body.String())
-	})
-
-	t.Run("sub-router registered with static suffix", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/", patternHandler)
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-
-		fx := MustRouter()
-		assert.NoError(t, onlyError(fx.Add(MethodGet, "/api", Sub(sub))))
-		assert.NoError(t, onlyError(fx.Add(MethodGet, "/api/", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, "/api/", w.Body.String())
-
-		req = httptest.NewRequest(http.MethodGet, "/api/", nil)
-		w = httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, "/api/", w.Body.String())
-
-		req = httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		w = httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusNotFound, w.Code)
-	})
-
-	t.Run("sub-router with parent param and static suffix propagates params", func(t *testing.T) {
-		var paramSeen, patternSeen string
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/", func(c *Context) {
-			paramSeen = c.Param("ver")
-			patternSeen = c.Pattern()
-		})
-
-		fx := MustRouter()
-		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{ver}/admin", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "v1", paramSeen)
-		assert.Equal(t, "/api/{ver}/admin/", patternSeen)
-	})
-
-	t.Run("sub-router registered in non route handler", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-		fx := MustRouter(WithNoRouteHandler(Sub(sub)))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		w := httptest.NewRecorder()
-		assert.Panics(t, func() {
-			fx.ServeHTTP(w, req)
-		})
-	})
-
-	t.Run("path share a common prefix without slash", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "iusers/", patternHandler)
-
-		fx := MustRouter()
-		assert.NoError(t, onlyError(fx.Add(MethodGet, "/api*{any}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/apiusers/", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusNotFound, w.Code)
-	})
-
-	t.Run("sub-router registered with params", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-		sub.MustAdd(MethodGet, "/v1/users", patternHandler)
-
-		fx := MustRouter()
-		assert.NoError(t, onlyError(fx.Add(MethodGet, "/api/{param}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, "/api/users", w.Body.String())
-
-		req = httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
-		w = httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusNotFound, w.Code)
-	})
-
-	t.Run("sub-router registered with regex wildcard", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-
-		fx := MustRouter(AllowRegexpParam(true))
-		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/+{rest:[a-z]+}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "/api/users", w.Body.String())
-	})
-
-	t.Run("sub-router registered with regex param", func(t *testing.T) {
-		sub := MustRouter()
-		sub.MustAdd(MethodGet, "/users", patternHandler)
-
-		fx := MustRouter(AllowRegexpParam(true))
-		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{name:[a-z]+}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "/api/users", w.Body.String())
-	})
-
-	t.Run("sub-router used directly then via Sub preserves route.params", func(t *testing.T) {
-		sub := MustRouter()
-		subRoute, err := sub.Add(MethodGet, "/users/{id}", emptyHandler)
-		require.NoError(t, err)
-		originalParams := slices.Clone(subRoute.params)
-
-		req := httptest.NewRequest(http.MethodGet, "/users/42", nil)
-		w := httptest.NewRecorder()
-		sub.ServeHTTP(w, req)
-
-		fx := MustRouter()
-		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{tenant}/+{rest}", Sub(sub))))
-
-		req = httptest.NewRequest(http.MethodGet, "/api/acme/users/42", nil)
-		w = httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-
-		assert.Equal(t, originalParams, subRoute.params)
-	})
-
-	t.Run("sub-router no route handler sees clean context", func(t *testing.T) {
-		var pat, tenant string
-		var route *Route
-		noRoute := HandlerFunc(func(c *Context) {
-			pat = c.Pattern()
-			tenant = c.Param("tenant")
-			route = c.Route()
-			http.Error(c.Writer(), "x", http.StatusNotFound)
-		})
-
-		sub := MustRouter(WithNoRouteHandler(noRoute))
-		sub.MustAdd(MethodGet, "/known", emptyHandler)
-
-		fx := MustRouter()
-		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{tenant}/+{rest}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/acme/notfound", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-
-		assert.Equal(t, "", pat)
-		assert.Equal(t, "", tenant)
-		assert.Nil(t, route)
-	})
-
-	t.Run("sub-router no method handler sees clean context", func(t *testing.T) {
-		var pat, tenant string
-		noMethod := HandlerFunc(func(c *Context) {
-			pat = c.Pattern()
-			tenant = c.Param("tenant")
-			http.Error(c.Writer(), "x", http.StatusMethodNotAllowed)
-		})
-
-		sub := MustRouter(WithNoMethod(true), WithNoMethodHandler(noMethod))
-		sub.MustAdd(MethodGet, "/users", emptyHandler)
-
-		fx := MustRouter()
-		require.NoError(t, onlyError(fx.Add(MethodAny, "/api/{tenant}/+{rest}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodPost, "/api/acme/users", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-
-		assert.Equal(t, "", pat)
-		assert.Equal(t, "", tenant)
-	})
-
-	t.Run("sub-router redirect slash handler sees clean context", func(t *testing.T) {
-		var pat, tenant string
-		mw := WithMiddlewareFor(RedirectSlashHandler, func(next HandlerFunc) HandlerFunc {
-			return func(c *Context) {
-				pat = c.Pattern()
-				tenant = c.Param("tenant")
-				next(c)
-			}
-		})
-
-		sub := MustRouter(mw)
-		sub.MustAdd(MethodGet, "/users/", emptyHandler, WithHandleTrailingSlash(RedirectSlash))
-
-		fx := MustRouter()
-		require.NoError(t, onlyError(fx.Add(MethodGet, "/api/{tenant}/+{rest}", Sub(sub))))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/acme/users", nil)
-		w := httptest.NewRecorder()
-		fx.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusMovedPermanently, w.Code)
-		assert.Equal(t, "", pat)
-		assert.Equal(t, "", tenant)
 	})
 }
 
@@ -2770,28 +2432,6 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 					}
 				}
 			})
-
-			t.Run("with sub router", func(t *testing.T) {
-				f := MustRouter()
-
-				sub := MustRouter(WithHandleTrailingSlash(RedirectSlash))
-				for _, path := range tc.paths {
-					require.NoError(t, onlyError(sub.Add([]string{tc.method}, path, emptyHandler)))
-				}
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(tc.method, tc.req, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-				if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
-					assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
-					if tc.method == http.MethodGet {
-						assert.Equal(t, MIMETextHTMLCharsetUTF8, w.Header().Get(HeaderContentType))
-					}
-				}
-			})
 		})
 	}
 }
@@ -2944,38 +2584,6 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 					assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
 				}
 			})
-
-			t.Run("with sub router", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithHandleFixedPath(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
-				require.NoError(t, onlyError(sub.Add([]string{tc.method}, tc.path, emptyHandler)))
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(tc.method, tc.req, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-				if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
-					assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
-				}
-			})
-
-			t.Run("with sub router and any", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithHandleFixedPath(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
-				require.NoError(t, onlyError(sub.Add(MethodAny, tc.path, emptyHandler)))
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(tc.method, tc.req, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-				if w.Code == http.StatusPermanentRedirect || w.Code == http.StatusMovedPermanently {
-					assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
-				}
-			})
 		})
 	}
 }
@@ -3066,38 +2674,113 @@ func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
 				f.ServeHTTP(w, req)
 				assert.Equal(t, tc.wantCode, w.Code)
 			})
-
-			t.Run("with sub router", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithHandleFixedPath(RelaxedPath), WithHandleTrailingSlash(tc.slashMode))
-				require.NoError(t, onlyError(sub.Add(MethodGet, tc.path, func(c *Context) {
-					c.Writer().WriteHeader(tc.wantCode)
-				})))
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(http.MethodGet, tc.req, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-			})
-
-			t.Run("with sub router and any", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithHandleFixedPath(RelaxedPath), WithHandleTrailingSlash(tc.slashMode))
-				require.NoError(t, onlyError(sub.Add(MethodAny, tc.path, func(c *Context) {
-					c.Writer().WriteHeader(tc.wantCode)
-				})))
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(http.MethodGet, tc.req, nil)
-				req.Host = "example.com"
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-			})
 		})
 	}
+}
+
+func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
+	cases := []struct {
+		name        string
+		path        string
+		req         string
+		slashMode   TrailingSlashOption
+		fixedMode   FixedPathOption
+		wantPath    string
+		wantRawPath string
+	}{
+		{
+			name:      "trim trailing slash",
+			path:      "/foo",
+			req:       "/foo/",
+			slashMode: RelaxedSlash,
+			wantPath:  "/foo",
+		},
+		{
+			name:      "append trailing slash",
+			path:      "/foo/",
+			req:       "/foo",
+			slashMode: RelaxedSlash,
+			wantPath:  "/foo/",
+		},
+		{
+			name:      "clean consecutive slash",
+			path:      "/foo/bar",
+			req:       "/foo//bar",
+			fixedMode: RelaxedPath,
+			wantPath:  "/foo/bar",
+		},
+		{
+			name:      "clean encoded dot segments",
+			path:      "/foo/bar",
+			req:       "/baz/%2E%2E/foo/bar",
+			fixedMode: RelaxedPath,
+			wantPath:  "/foo/bar",
+		},
+		{
+			name:      "clean path and trim trailing slash",
+			path:      "/foo",
+			req:       "//foo/",
+			slashMode: RelaxedSlash,
+			fixedMode: RelaxedPath,
+			wantPath:  "/foo",
+		},
+		{
+			name:      "decode unreserved characters",
+			path:      "/foo",
+			req:       "/f%6Fo/",
+			slashMode: RelaxedSlash,
+			wantPath:  "/foo",
+		},
+		{
+			name:        "preserve encoded slash",
+			path:        "/x/{p}",
+			req:         "/x/a%2fb/",
+			slashMode:   RelaxedSlash,
+			wantPath:    "/x/a/b",
+			wantRawPath: "/x/a%2Fb",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := MustRouter(WithHandleFixedPath(tc.fixedMode), WithHandleTrailingSlash(tc.slashMode))
+
+			wantEscaped := tc.wantRawPath
+			if wantEscaped == "" {
+				wantEscaped = tc.wantPath
+			}
+
+			require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
+				assert.Equal(t, tc.wantPath, c.Request().URL.Path)
+				assert.Equal(t, tc.wantRawPath, c.Request().URL.RawPath)
+				assert.Equal(t, wantEscaped, c.Request().URL.EscapedPath())
+				assert.Equal(t, wantEscaped, c.RoutingPath())
+				c.Writer().WriteHeader(http.StatusOK)
+			})))
+
+			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+			originalPath, originalRawPath := req.URL.Path, req.URL.RawPath
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, tc.req, req.RequestURI)
+			assert.Equal(t, originalPath, req.URL.Path)
+			assert.Equal(t, originalRawPath, req.URL.RawPath)
+		})
+	}
+
+	t.Run("caller url untouched on panic", func(t *testing.T) {
+		f := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo", func(c *Context) {
+			panic("boom")
+		})))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo/", nil)
+		w := httptest.NewRecorder()
+		assert.Panics(t, func() { f.ServeHTTP(w, req) })
+		assert.Equal(t, "/foo/", req.URL.Path)
+		assert.Empty(t, req.URL.RawPath)
+	})
 }
 
 func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
@@ -3170,6 +2853,20 @@ func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 			req:          "/foo/baz%0D%0Aqux",
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/foo/baz%0D%0Aqux/",
+		},
+		{
+			name:         "encoded unreserved decoded in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/b%61z",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/baz/",
+		},
+		{
+			name:         "encoded tilde decoded in redirect",
+			path:         "/foo/{bar}/",
+			req:          "/foo/%7Euser",
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/~user/",
 		},
 	}
 
@@ -3373,25 +3070,6 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 					})))
 				}
 				req := httptest.NewRequest(http.MethodGet, tc.target, nil)
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, http.StatusOK, w.Code)
-			})
-
-			t.Run("with sub router", func(t *testing.T) {
-				f := MustRouter()
-				sub := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
-				for _, rte := range tc.routes {
-					require.NoError(t, onlyError(sub.Add(MethodGet, rte, func(c *Context) {
-						assert.Equal(t, "example.com"+tc.wantPath, c.Pattern())
-						var params Params = slices.Collect(c.Params())
-						assert.Equal(t, tc.wantParams, params)
-					})))
-				}
-				require.NoError(t, onlyError(f.Add(MethodAny, "example.com/*{any}", Sub(sub))))
-
-				req := httptest.NewRequest(http.MethodGet, tc.target, nil)
-				req.Host = "example.com"
 				w := httptest.NewRecorder()
 				f.ServeHTTP(w, req)
 				assert.Equal(t, http.StatusOK, w.Code)
@@ -3667,6 +3345,9 @@ func TestRouter_Has(t *testing.T) {
 		"/john/doe/",
 		"/foo/*{name}",
 		"/foo/uid_*{id}",
+		"/a%2Fb",
+		"/glob/*0{id}",
+		"/glob/+a{id}",
 	}
 
 	f, _ := NewRouter(AllowRegexpParam(true))
@@ -3764,6 +3445,37 @@ func TestRouter_Has(t *testing.T) {
 		{
 			name: "no match mid route params",
 			path: "/users/uid_123",
+		},
+		{
+			name: "strict match encoded route",
+			path: "/a%2Fb",
+			want: true,
+		},
+		{
+			name: "no match lowercase hex",
+			path: "/a%2fb",
+		},
+		{
+			name: "no match malformed escape",
+			path: "/a%2%46b",
+		},
+		{
+			name: "strict match literal star before brace segment",
+			path: "/glob/*0{id}",
+			want: true,
+		},
+		{
+			name: "no match literal star before brace segment",
+			path: "/glob/*1{id}",
+		},
+		{
+			name: "strict match literal plus before brace segment",
+			path: "/glob/+a{id}",
+			want: true,
+		},
+		{
+			name: "no match literal plus before brace segment",
+			path: "/glob/+b{id}",
 		},
 	}
 
@@ -4067,6 +3779,208 @@ func TestRouter_ServeHTTP_EncodedPath(t *testing.T) {
 	assert.Equal(t, encodedPath, w.Body.String())
 }
 
+func TestRouter_ServeHTTP_UnreservedDecoding(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		routes      []string
+		target      string
+		wantCode    int
+		wantPattern string
+		wantParams  Params
+	}{
+		{
+			name:        "encoded request matches decoded route",
+			routes:      []string{"/users/john"},
+			target:      "/users/j%6Fhn",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/john",
+		},
+		{
+			name:        "raw utf8 request matches encoded route",
+			routes:      []string{"/caf%C3%A9"},
+			target:      "https://example.com/café",
+			wantCode:    http.StatusOK,
+			wantPattern: "/caf%C3%A9",
+		},
+		{
+			name:        "param captures decoded unreserved",
+			routes:      []string{"/users/{id}"},
+			target:      "/users/j%6Fhn",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/{id}",
+			wantParams:  Params{{Key: "id", Value: "john"}},
+		},
+		{
+			name:        "param keeps reserved encoded",
+			routes:      []string{"/users/{id}"},
+			target:      "/users/j%C3%A9r%C3%B4me",
+			wantCode:    http.StatusOK,
+			wantPattern: "/users/{id}",
+			wantParams:  Params{{Key: "id", Value: "j%C3%A9r%C3%B4me"}},
+		},
+		{
+			name:        "wildcard captures mixed decoded and encoded",
+			routes:      []string{"/files/+{p}"},
+			target:      "/files/a%2Fb/c%61t",
+			wantCode:    http.StatusOK,
+			wantPattern: "/files/+{p}",
+			wantParams:  Params{{Key: "p", Value: "a%2Fb/cat"}},
+		},
+		{
+			name:        "regex evaluates decoded segment",
+			routes:      []string{"/n/{d:[0-9]+}"},
+			target:      "/n/%31%32",
+			wantCode:    http.StatusOK,
+			wantPattern: "/n/{d:[0-9]+}",
+			wantParams:  Params{{Key: "d", Value: "12"}},
+		},
+		{
+			name:     "encoded slash stays distinct",
+			routes:   []string{"/a/b"},
+			target:   "/a%2Fb",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:        "literal plus matches raw plus",
+			routes:      []string{"/emails/a+b"},
+			target:      "/emails/a+b",
+			wantCode:    http.StatusOK,
+			wantPattern: "/emails/a+b",
+		},
+		{
+			name:     "encoded plus does not match literal plus",
+			routes:   []string{"/emails/a+b"},
+			target:   "/emails/a%2Bb",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:        "encoded plus route matches encoded plus request",
+			routes:      []string{"/emails/a%2Bb"},
+			target:      "/emails/a%2Bb",
+			wantCode:    http.StatusOK,
+			wantPattern: "/emails/a%2Bb",
+		},
+		{
+			name:        "literal star matches raw star",
+			routes:      []string{"/glob/*"},
+			target:      "/glob/*",
+			wantCode:    http.StatusOK,
+			wantPattern: "/glob/*",
+		},
+		{
+			name:     "raw star does not match encoded star route",
+			routes:   []string{"/star/%2A"},
+			target:   "/star/*",
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name:        "encoded brace route matches raw brace request",
+			routes:      []string{"/brace/%7Bid%7D"},
+			target:      "/brace/{id}",
+			wantCode:    http.StatusOK,
+			wantPattern: "/brace/%7Bid%7D",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := NewRouter(AllowRegexpParam(true))
+			require.NoError(t, err)
+
+			var gotParams Params
+			h := func(c *Context) {
+				gotParams = slices.AppendSeq(make(Params, 0, c.Route().ParamsLen()), c.Params())
+				_, _ = io.WriteString(c.Writer(), c.Pattern())
+			}
+			for _, rte := range tc.routes {
+				require.NoError(t, onlyError(f.Add(MethodGet, rte, h)))
+			}
+
+			req := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.wantCode, w.Code)
+			if tc.wantCode == http.StatusOK {
+				assert.Equal(t, tc.wantPattern, w.Body.String())
+				if tc.wantParams != nil {
+					assert.Equal(t, tc.wantParams, gotParams)
+				}
+			}
+		})
+	}
+}
+
+func TestRouter_NonCanonicalPatternRejected(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add", func(t *testing.T) {
+		f, _ := NewRouter()
+		var pe *PatternError
+		_, err := f.Add(MethodGet, "/users/j%6Fhn", emptyHandler)
+		require.ErrorAs(t, err, &pe)
+		_, err = f.Add(MethodGet, "/users/john/%7bid%7d", emptyHandler)
+		require.ErrorAs(t, err, &pe)
+	})
+
+	t.Run("update and delete", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/users/john", emptyHandler)))
+		var pe *PatternError
+		_, err := f.Update(MethodGet, "/users/j%6Fhn", emptyHandler)
+		require.ErrorAs(t, err, &pe)
+		_, err = f.Delete(MethodGet, "/users/j%6Fhn")
+		require.ErrorAs(t, err, &pe)
+		assert.Equal(t, 1, f.Len())
+	})
+}
+
+func TestRouter_ServeHTTP_EncodedDotSegments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("strict path no match", func(t *testing.T) {
+		f, _ := NewRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("strict path param captures decoded dots", func(t *testing.T) {
+		f, _ := NewRouter()
+		var got string
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/{x}/bar", func(c *Context) {
+			got = c.Param("x")
+		})))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "..", got)
+	})
+
+	t.Run("relaxed path collapses encoded dots", func(t *testing.T) {
+		f, _ := NewRouter(WithHandleFixedPath(RelaxedPath))
+		var pattern string
+		require.NoError(t, onlyError(f.Add(MethodGet, "/bar", func(c *Context) {
+			pattern = c.Pattern()
+		})))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "/bar", pattern)
+	})
+
+	t.Run("redirect path collapses encoded dots", func(t *testing.T) {
+		f, _ := NewRouter(WithHandleFixedPath(RedirectPath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/bar", w.Header().Get(HeaderLocation))
+	})
+}
+
 func FuzzRouter_Add(f *testing.F) {
 	seeds := []string{
 		// Empty / slashes
@@ -4107,6 +4021,11 @@ func FuzzRouter_Add(f *testing.F) {
 		"/+{a}/+{b}", "/*{a}*{b}", "/+{a}+{b}",
 		// Optional not as suffix (invalid per spec)
 		"/*{path}/foo",
+		// Percent-encoding: unreserved decoded, reserved kept, invalid rejected
+		"/a%61b", "/foo%2Fbar", "/caf%C3%A9", "/%2E%2E/", "/100%", "/%zz", "/%2",
+		"/x%61/{id}", "/{p:[%41]+}",
+		// Literal '+' and '*' in path
+		"/emails/a+b", "/a+", "/glob/*", "/a*b", "/a*{x}", "/a+{x}",
 	}
 	for _, s := range seeds {
 		f.Add(s)
@@ -4165,6 +4084,12 @@ func FuzzRouter_AddDelete(f *testing.F) {
 		"_srv.example.com/\n_foo.example.com/bar",
 		// Mix hostname + path (mode switching on delete)
 		"example.com/users\n/fallback\n/api/users",
+		// Percent-encoding (non-canonical escapes rejected)
+		"/users/john\n/users/j%6Fhn",
+		"/a%61\n/ab\n/a%2Fb",
+		"/%2E%2E/\n/100%\n/%zz",
+		// Literal '+' and '*' in path
+		"/emails/a+b\n/glob/*\n/a+{x}",
 	}
 	for _, s := range seeds {
 		f.Add(s)

@@ -921,10 +921,11 @@ func (n *node) searchName(key string) (matched *node) {
 // parseBraceSegment extracts the node key from a param or wildcard segment in a route pattern.
 // It returns the index of the closing brace and the corresponding node key used for tree lookups:
 //   - For params {name}: returns (end, "?")
-//   - For wildcards *{name}: returns (end, "*")
+//   - For wildcards *{name} or +{name}: returns (end, "*")
 //   - For params with regex {name:pattern}: returns (end, "pattern")
 //   - For wildcards with regex *{name:pattern}: returns (end, "pattern")
-//   - For invalid/malformed segments: returns (0, "") to signal early exit
+//   - For literal '*' or '+' (not followed by '{') and invalid/malformed segments:
+//     returns (0, "") to signal static handling
 //
 // This is a lightweight parser that does not fully validate the segment. It assumes the caller
 // will verify that the retrieved route's pattern matches the search pattern after tree lookup.
@@ -935,8 +936,11 @@ func parseBraceSegment(pattern string) (int, string) {
 	}
 
 	key := "?"
-	// TODO this is garbage, I don't like it at all
-	if strings.HasPrefix(pattern, "*{") || strings.HasPrefix(pattern, "+{") {
+	if pattern[0] == starDelim || pattern[0] == plusDelim {
+		if length < 2 || pattern[1] != bracketDelim {
+			// Literal '*' or '+': the wildcard syntax requires an immediate '{'.
+			return 0, ""
+		}
 		key = "*"
 	}
 

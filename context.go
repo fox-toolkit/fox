@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strings"
 
 	"github.com/fox-toolkit/fox/internal/bytesconv"
 	"github.com/fox-toolkit/fox/internal/netutil"
@@ -44,14 +43,12 @@ type RequestContext interface {
 	ClientIP() (*net.IPAddr, error)
 	// Method returns the request method.
 	Method() string
-	// Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
-	// For the canonical encoded form used by the router, prefer [RequestContext.EscapedPath].
-	Path() string
-	// EscapedPath returns the canonical encoded path that the router uses for matching.
-	// It is equivalent to [url.URL.EscapedPath] with hex sequences normalized to uppercase
-	// (e.g. %2f becomes %2F). Use this when the form must match exactly what the router
-	// routed on, such as when constructing redirect targets, cache keys, or routing logs.
-	EscapedPath() string
+	// RoutingPath returns the canonical path that the router uses for matching. It is equivalent
+	// to [url.URL.EscapedPath] with percent-encoded RFC 3986 unreserved characters (A-Z a-z 0-9
+	// - . _ ~) decoded and the remaining hex sequences normalized to uppercase (e.g. %2f becomes
+	// %2F). A typical use is when you need the exact path the router matched on, for example
+	// as a cache key.
+	RoutingPath() string
 	// Host returns the request host.
 	Host() string
 	// QueryParams parses the [http.Request] raw query and returns the corresponding values. The result is cached after
@@ -71,8 +68,6 @@ type Context struct {
 	w             ResponseWriter
 	req           *http.Request
 	params        *[]string
-	paramsKeys    *[]string
-	subPatterns   *[]string
 	skipStack     *skipStack
 	route         *Route
 	tree          *iTree  // no reset
@@ -94,8 +89,6 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.cachedQueries = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
-	*c.paramsKeys = (*c.paramsKeys)[:0]
-	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
 func (c *Context) resetNil() {
@@ -104,8 +97,6 @@ func (c *Context) resetNil() {
 	c.cachedQueries = nil
 	c.route = nil
 	*c.params = (*c.params)[:0]
-	*c.paramsKeys = (*c.paramsKeys)[:0]
-	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
 // resetWithRequest resets the [Context] to its initial state, with the provided [http.Request]. This is used
@@ -126,8 +117,6 @@ func (c *Context) resetWithWriter(w ResponseWriter, r *http.Request) {
 	c.cachedQueries = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
-	*c.paramsKeys = (*c.paramsKeys)[:0]
-	*c.subPatterns = (*c.subPatterns)[:0]
 }
 
 // Request returns the [http.Request].
@@ -189,9 +178,8 @@ func (c *Context) ClientIP() (*net.IPAddr, error) {
 // Params returns an iterator over the matched wildcard parameters for the current route.
 func (c *Context) Params() iter.Seq[Param] {
 	return func(yield func(Param) bool) {
-		keys := c.keys()
 		for i, p := range *c.params {
-			if !yield(Param{Key: keys[i], Value: p}) {
+			if !yield(Param{Key: c.route.params[i], Value: p}) {
 				return
 			}
 		}
@@ -200,23 +188,12 @@ func (c *Context) Params() iter.Seq[Param] {
 
 // Param retrieve a matching wildcard segment by name.
 func (c *Context) Param(name string) string {
-	keys := c.keys()
 	for i, p := range *c.params {
-		if keys[i] == name {
+		if c.route.params[i] == name {
 			return p
 		}
 	}
 	return ""
-}
-
-func (c *Context) keys() []string {
-	if len(*c.paramsKeys) > 0 {
-		return *c.paramsKeys
-	}
-	if c.route != nil {
-		return c.route.params
-	}
-	return nil
 }
 
 // Method returns the request method.
@@ -224,20 +201,12 @@ func (c *Context) Method() string {
 	return c.req.Method
 }
 
-// Path returns the request [url.URL.RawPath] if not empty, or fallback to the [url.URL.Path].
-// For the canonical encoded form used by the router, prefer [Context.EscapedPath].
-func (c *Context) Path() string {
-	if len(c.req.URL.RawPath) > 0 {
-		return c.req.URL.RawPath
-	}
-	return c.req.URL.Path
-}
-
-// EscapedPath returns the canonical encoded path that the router uses for matching.
-// It is equivalent to [url.URL.EscapedPath] with hex sequences normalized to uppercase
-// (e.g. %2f becomes %2F). Use this when the form must match exactly what the router
-// routed on, such as when constructing redirect targets, cache keys, or routing logs.
-func (c *Context) EscapedPath() string {
+// RoutingPath returns the canonical path that the router uses for matching. It is equivalent
+// to [url.URL.EscapedPath] with percent-encoded RFC 3986 unreserved characters (A-Z a-z 0-9
+// - . _ ~) decoded and the remaining hex sequences normalized to uppercase (e.g. %2f becomes
+// %2F). A typical use is when you need the exact path the router matched on, for example
+// as a cache key.
+func (c *Context) RoutingPath() string {
 	return routingPath(c.req)
 }
 
@@ -275,20 +244,7 @@ func (c *Context) Header(key string) string {
 
 // Pattern returns the registered route pattern or an empty string if the handler is called in a scope other than [RouteHandler].
 func (c *Context) Pattern() string {
-	switch len(*c.subPatterns) {
-	case 0:
-		return c.pattern
-	case 1:
-		return (*c.subPatterns)[0] + c.pattern
-	}
-
-	var sb strings.Builder
-	sb.Grow(len(c.pattern) + sumLen(*c.subPatterns))
-	for _, p := range *c.subPatterns {
-		sb.WriteString(p)
-	}
-	sb.WriteString(c.pattern)
-	return sb.String()
+	return c.pattern
 }
 
 // Route returns the registered [Route] or nil if the handler is called in a scope other than [RouteHandler].
@@ -342,17 +298,9 @@ func (c *Context) Clone() *Context {
 	cp.rec.ResponseWriter = noopWriter{c.rec.Header().Clone()}
 	cp.w = noUnwrap{&cp.rec}
 
-	subPatterns := make([]string, len(*c.subPatterns))
-	copy(subPatterns, *c.subPatterns)
-	cp.subPatterns = &subPatterns
-
 	params := make([]string, len(*c.params))
 	copy(params, *c.params)
 	cp.params = &params
-
-	keys := make([]string, len(*c.paramsKeys))
-	copy(keys, *c.paramsKeys)
-	cp.paramsKeys = &keys
 
 	return &cp
 }
@@ -371,8 +319,6 @@ func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
 	cp.pattern = c.pattern
 	cp.cachedQueries = nil // For safety, in case r is a different request than c.req
 
-	copyWithResize(cp.subPatterns, c.subPatterns)
-	copyWithResize(cp.paramsKeys, c.paramsKeys)
 	copyWithResize(cp.params, c.params)
 
 	return cp
@@ -425,8 +371,7 @@ func (s onlyRequestContext) Request() *http.Request         { return s.c.Request
 func (s onlyRequestContext) RemoteIP() *net.IPAddr          { return s.c.RemoteIP() }
 func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) { return s.c.ClientIP() }
 func (s onlyRequestContext) Method() string                 { return s.c.Method() }
-func (s onlyRequestContext) Path() string                   { return s.c.Path() }
-func (s onlyRequestContext) EscapedPath() string            { return s.c.EscapedPath() }
+func (s onlyRequestContext) RoutingPath() string            { return s.c.RoutingPath() }
 func (s onlyRequestContext) Host() string                   { return s.c.Host() }
 func (s onlyRequestContext) QueryParams() url.Values        { return s.c.QueryParams() }
 func (s onlyRequestContext) QueryParam(name string) string  { return s.c.QueryParam(name) }
@@ -512,12 +457,4 @@ func (mw wrapM) handle(c *Context) {
 		defer cc.Close()
 		mw.next(cc)
 	})).ServeHTTP(flusherWriter{c.Writer()}, r)
-}
-
-func sumLen(s []string) int {
-	var n int
-	for _, v := range s {
-		n += len(v)
-	}
-	return n
 }
