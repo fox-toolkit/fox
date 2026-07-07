@@ -103,21 +103,15 @@ func UpperHex(c byte) byte {
 // is returned unchanged, without allocation, when already canonical.
 func NormalizeRoutingPath(s string) string {
 	var buf strings.Builder
+	start := 0 // start of the pending run copied as-is from s
 	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c != '%' || i+2 >= len(s) {
-			if buf.Len() > 0 {
-				buf.WriteByte(c)
-			}
+		if s[i] != '%' || i+2 >= len(s) {
 			continue
 		}
 		b, ok := DecodeHexPair(s[i+1], s[i+2])
 		if !ok {
-			// Malformed escape, copy the remainder as-is and stop. A dangling
+			// Malformed escape, the remainder is kept as-is by the final flush. A dangling
 			// '%' must not recombine with a following escape into a valid sequence.
-			if buf.Len() > 0 {
-				buf.WriteString(s[i:])
-			}
 			break
 		}
 		hiUpper := UpperHex(s[i+1])
@@ -126,28 +120,25 @@ func NormalizeRoutingPath(s string) string {
 		case IsUnreserved(b):
 			if buf.Len() == 0 {
 				buf.Grow(len(s))
-				buf.WriteString(s[:i])
 			}
+			buf.WriteString(s[start:i])
 			buf.WriteByte(b)
+			start = i + 3
 		case s[i+1] != hiUpper || s[i+2] != loUpper:
 			if buf.Len() == 0 {
 				buf.Grow(len(s))
-				buf.WriteString(s[:i])
 			}
+			buf.WriteString(s[start:i])
 			buf.WriteByte('%')
 			buf.WriteByte(hiUpper)
 			buf.WriteByte(loUpper)
-		default:
-			if buf.Len() > 0 {
-				buf.WriteByte('%')
-				buf.WriteByte(hiUpper)
-				buf.WriteByte(loUpper)
-			}
+			start = i + 3
 		}
 		i += 2
 	}
 	if buf.Len() == 0 {
 		return s
 	}
+	buf.WriteString(s[start:])
 	return buf.String()
 }
