@@ -456,6 +456,11 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 	if len(rte.matchers) == 0 && rte.priority > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidRoute, "priority requires matchers")
 	}
+	// A trailing slash redirect on a path starting with "//" would produce a protocol-relative
+	// Location that browsers resolve to another host.
+	if rte.handleSlash == RedirectSlash && strings.HasPrefix(pat.str[pat.endHost:], "//") {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidRoute, "unsafe RedirectSlash on path starting with '//'")
+	}
 
 	rte.priority = cmp.Or(rte.priority, uint(len(rte.matchers)))
 	rte.hself, rte.hall = applyRouteMiddleware(append(fox.mws, rte.mws...), handler)
