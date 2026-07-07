@@ -422,12 +422,11 @@ type wrapM struct {
 }
 
 func (mw wrapM) handle(c *Context) {
-	req := c.Request()
-	r := req
+	r := c.Request()
 	if route := c.Route(); route != nil && route.ParamsLen() > 0 {
 		params := slices.AppendSeq(make(Params, 0, route.ParamsLen()), c.Params())
-		ctx := context.WithValue(req.Context(), paramsKey, params)
-		r = req.WithContext(ctx)
+		ctx := context.WithValue(r.Context(), paramsKey, params)
+		r = r.WithContext(ctx)
 	}
 
 	mw.m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

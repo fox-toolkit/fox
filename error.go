@@ -118,16 +118,8 @@ func (e *PatternError) Error() string {
 
 		start := min(max(e.Start, 0), len(e.Pattern))
 		end := min(max(e.End, start), len(e.Pattern))
-		for i := 0; i < utf8.RuneCountInString(e.Pattern[:start]); i++ {
-			sb.WriteByte(' ')
-		}
-		n := utf8.RuneCountInString(e.Pattern[start:end])
-		if n <= 0 {
-			n = 1
-		}
-		for i := 0; i < n; i++ {
-			sb.WriteByte('^')
-		}
+		sb.WriteString(strings.Repeat(" ", utf8.RuneCountInString(e.Pattern[:start])))
+		sb.WriteString(strings.Repeat("^", max(utf8.RuneCountInString(e.Pattern[start:end]), 1)))
 	}
 	return sb.String()
 }
