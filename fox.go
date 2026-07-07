@@ -928,16 +928,21 @@ func serveRewritten(c *Context, escaped string) {
 		return
 	}
 
-	r2 := new(http.Request)
-	*r2 = *c.req
-	r2.URL = new(url.URL)
-	*r2.URL = *c.req.URL
-	r2.URL.Path = p
-	r2.URL.RawPath = ""
-	if r2.URL.EscapedPath() != escaped {
-		r2.URL.RawPath = escaped
+	type requestCopy struct {
+		req http.Request
+		u   url.URL
 	}
-	c.req = r2
+
+	cp := new(requestCopy)
+	cp.req = *c.req
+	cp.u = *c.req.URL
+	cp.req.URL = &cp.u
+	cp.u.Path = p
+	cp.u.RawPath = ""
+	if cp.u.EscapedPath() != escaped {
+		cp.u.RawPath = escaped
+	}
+	c.req = &cp.req
 
 	c.route.hall(c)
 }
