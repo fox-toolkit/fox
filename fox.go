@@ -843,7 +843,7 @@ func redirect(w http.ResponseWriter, r *http.Request, url string, code int) {
 	_, hadCT := h[HeaderContentType]
 
 	h.Set(HeaderLocation, hexEscapeNonASCII(url))
-	if !hadCT && r.Method == http.MethodGet {
+	if !hadCT && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 		h.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	}
 	w.WriteHeader(code)
