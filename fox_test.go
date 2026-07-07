@@ -2465,6 +2465,14 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/a/.b/",
 		},
+		{
+			name:         "hostname tsr wins over path-only direct match",
+			paths:        []string{"ex.com/foo/", "/foo"},
+			req:          "http://ex.com/foo",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/",
+		},
 	}
 
 	for _, tc := range cases {
@@ -3204,6 +3212,42 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 				},
 			},
 			wantPath: "/{a}/foo/*{any}",
+		},
+		{
+			name:   "tsr with infix wildcard",
+			routes: []string{"/+{args}/"},
+			target: "/a/b/c",
+			wantParams: Params{
+				{
+					Key:   "args",
+					Value: "a/b/c",
+				},
+			},
+			wantPath: "/+{args}/",
+		},
+		{
+			name:   "tsr with infix wildcard after param backtrack",
+			routes: []string{"/+{args}/", "/{a}/b"},
+			target: "/x/c",
+			wantParams: Params{
+				{
+					Key:   "args",
+					Value: "x/c",
+				},
+			},
+			wantPath: "/+{args}/",
+		},
+		{
+			name:   "no tsr when a suffix catch-all direct matches",
+			routes: []string{"/+{args}/", "/+{args}"},
+			target: "/a/b/c",
+			wantParams: Params{
+				{
+					Key:   "args",
+					Value: "a/b/c",
+				},
+			},
+			wantPath: "/+{args}",
 		},
 	}
 

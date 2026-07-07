@@ -2906,6 +2906,20 @@ func Test_iTree_lookup_Overlapping(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "suffix regex catch-all capture includes the trailing slash",
+			path: "/abc/",
+			routes: []string{
+				"/+{w:[a-z/]+}",
+			},
+			wantMatch: "/+{w:[a-z/]+}",
+			wantParams: Params{
+				{
+					Key:   "w",
+					Value: "abc/",
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -4568,11 +4582,49 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 			want:     true,
 			wantPath: "/foo//bar",
 		},
+		{
+			name:     "tsr on static route wins over direct match on lower priority param route",
+			paths:    []string{"/foo", "/{a}/"},
+			key:      "/foo/",
+			want:     true,
+			wantPath: "/foo",
+		},
+		{
+			name:     "tsr on static route wins over direct match on lower priority param route reversed",
+			paths:    []string{"/foo/", "/{a}"},
+			key:      "/foo",
+			want:     true,
+			wantPath: "/foo/",
+		},
+		{
+			name:     "match infix wildcard with added trailing slash",
+			paths:    []string{"/+{a}/"},
+			key:      "/x/y",
+			want:     true,
+			wantPath: "/+{a}/",
+		},
+		{
+			name:  "no tsr when a suffix catch-all direct matches",
+			paths: []string{"/+{a}/", "/+{a}"},
+			key:   "/x/y",
+		},
+		{
+			name:     "match regex param with extra trailing slash",
+			paths:    []string{"/{p:[a-z]+}"},
+			key:      "/abc/",
+			want:     true,
+			wantPath: "/{p:[a-z]+}",
+		},
+		{
+			name:  "no tsr for suffix regex catch-all rejecting the full capture",
+			paths: []string{"/+{w:[a-z]+}"},
+			key:   "/abc/",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
 			for _, path := range tc.paths {
 				require.NoError(t, onlyError(f.Add(MethodGet, path, emptyHandler)))
 			}
