@@ -5,6 +5,7 @@
 package stringsutil
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -191,6 +192,21 @@ func TestNormalizeRoutingPath(t *testing.T) {
 			got := NormalizeRoutingPath(tc.in)
 			assert.Equal(t, tc.want, got)
 		})
+	}
+}
+
+// TestIsRoutableRaw_DifferentialNetURL pins the routable-raw byte set to net/url:
+// a byte is live raw exactly when a wire request-target can carry it unencoded,
+// i.e. when EscapedPath returns the raw path unchanged.
+func TestIsRoutableRaw_DifferentialNetURL(t *testing.T) {
+	for b := 0; b <= 0xFF; b++ {
+		c := byte(b)
+		raw := "/a" + string([]byte{c}) + "b"
+		wire := false
+		if u, err := url.ParseRequestURI(raw); err == nil && u.EscapedPath() == raw {
+			wire = true
+		}
+		assert.Equal(t, wire, IsRoutableRaw(c), "byte 0x%02X (%q)", b, string(c))
 	}
 }
 

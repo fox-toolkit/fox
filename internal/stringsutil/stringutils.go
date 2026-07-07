@@ -61,6 +61,18 @@ func IsUnreserved(b byte) bool {
 		b == '-' || b == '.' || b == '_' || b == '~'
 }
 
+// IsRoutableRaw reports whether b can appear raw (outside an escape sequence) in a
+// routing path, i.e. whether [NormalizeRoutingPath] applied to a request's escaped path
+// can emit it. Derived from net/url path escaping and pinned by a differential test.
+func IsRoutableRaw(b byte) bool {
+	switch b {
+	case '$', '&', '+', ',', '/', ':', ';', '=', '@', // never escaped by net/url in a path
+		'!', '\'', '(', ')', '*', '[', ']': // kept raw when present on the wire
+		return true
+	}
+	return IsUnreserved(b)
+}
+
 // DecodeHexPair decodes two ASCII hexadecimal digits into a byte. It returns
 // false if either character is not a hexadecimal digit.
 func DecodeHexPair(hi, lo byte) (byte, bool) {
