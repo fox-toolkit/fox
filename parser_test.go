@@ -1264,12 +1264,10 @@ func TestPatternError_PatternField(t *testing.T) {
 	f := MustRouter()
 	var pe *PatternError
 
-	// Validation errors reference the pattern as given.
 	_, _, err := f.parsePattern("/foo/%zz")
 	require.ErrorAs(t, err, &pe)
 	assert.Equal(t, "/foo/%zz", pe.Pattern)
 
-	// Parse errors too.
 	_, _, err = f.parsePattern("/foo/../bar")
 	require.ErrorAs(t, err, &pe)
 	assert.Equal(t, "/foo/../bar", pe.Pattern)
@@ -1692,7 +1690,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  7,
 			wantEnd:    8,
-			wantMsg:    "query delimiter, patterns match the path only",
+			wantMsg:    "illegal query delimiter in patterns",
 		},
 		{
 			name:       "path fragment delimiter rejected",
@@ -1701,7 +1699,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    5,
-			wantMsg:    "fragment delimiter, patterns match the path only",
+			wantMsg:    "illegal fragment delimiter in patterns",
 		},
 		{
 			name:       "path stray closing brace rejected",
@@ -1719,7 +1717,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    7,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path dot segment single dot end",
@@ -1728,7 +1726,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    6,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path dot segment double dot mid",
@@ -1737,7 +1735,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    8,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path dot segment double dot end",
@@ -1746,7 +1744,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  4,
 			wantEnd:    7,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path root single dot",
@@ -1755,7 +1753,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  0,
 			wantEnd:    2,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "path root double dot",
@@ -1764,7 +1762,7 @@ func TestPatternError_Position(t *testing.T) {
 			wantReason: "syntax",
 			wantStart:  0,
 			wantEnd:    3,
-			wantMsg:    "dot segment",
+			wantMsg:    "unsafe dot segment",
 		},
 		{
 			name:       "unbalanced braces",
@@ -1912,6 +1910,47 @@ func TestPatternError_Position(t *testing.T) {
 			assert.Contains(t, pe.Error(), tc.wantMsg)
 		})
 	}
+}
+
+func TestPatternError_PointerLine(t *testing.T) {
+	t.Run("multi-byte rune gets a single caret", func(t *testing.T) {
+		f := MustRouter()
+		_, _, err := f.parsePattern("/café")
+		require.Error(t, err)
+		var pe *PatternError
+		require.ErrorAs(t, err, &pe)
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      /café", lines[1])
+		assert.Equal(t, "          ^", lines[2])
+	})
+
+	t.Run("ascii span keeps one caret per character", func(t *testing.T) {
+		f := MustRouter()
+		_, _, err := f.parsePattern("/a/./b")
+		require.Error(t, err)
+		var pe *PatternError
+		require.ErrorAs(t, err, &pe)
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      /a/./b", lines[1])
+		assert.Equal(t, "        ^^^", lines[2])
+	})
+
+	t.Run("multi-byte prefix keeps the caret aligned", func(t *testing.T) {
+		pe := &PatternError{Pattern: "/héllo wörld", Reason: "syntax", Start: 7, End: 8}
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      /héllo wörld", lines[1])
+		assert.Equal(t, "            ^", lines[2])
+	})
+
+	t.Run("out of range offsets clamp without panic", func(t *testing.T) {
+		pe := &PatternError{Pattern: "/a", Reason: "syntax", Start: -1, End: 10}
+		lines := strings.Split(pe.Error(), "\n")
+		require.Len(t, lines, 3)
+		assert.Equal(t, "      ^^", lines[2])
+	})
 }
 
 func TestPatternError_Unwrap(t *testing.T) {
