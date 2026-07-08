@@ -35,7 +35,9 @@ suffix and infix catch-all, regexp constraints, hostname matching, method and me
 **Trailing slash handling:** Automatically handle trailing slash inconsistencies by either ignoring them, redirecting to 
 the canonical path, or enforcing strict matching based on your needs.
 
-**Path correction:** Automatically handle malformed paths with extra slashes or dots by either serving the cleaned path directly or redirecting to the canonical form.
+**Path normalization:** Merge consecutive slashes and collapse dot segments, either before matching
+or as a fallback that serves or redirects to the corrected path. Paths escaping above the root are
+always rejected.
 
 **Automatic OPTIONS replies:** Fox has built-in native support for [OPTIONS requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS).
 
@@ -263,6 +265,10 @@ Fox matches requests against a canonical routing path, equivalent to `url.URL.Es
 [unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) decoded
 and the remaining hex sequences normalized to uppercase (e.g. `%2f` becomes `%2F`). All other escape sequences stay
 encoded and distinct from their decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths.
+
+By default, consecutive slashes and dot segments are matched as-is. `fox.WithMergeSlashes` and
+`fox.WithCollapseDotSegments` normalize them before matching (`NormalizePath`) or correct them after
+a failed lookup (`RelaxedPath`, `RedirectPath`).
 
 #### Priority rules
 
@@ -515,7 +521,7 @@ func main() {
 
 Additionally, `fox.WithMiddlewareFor` option provide a more fine-grained control over where a middleware is applied, such as
 only for 404 or 405 handlers. Possible scopes include `fox.RouteHandler` (regular routes), `fox.NoRouteHandler`, `fox.NoMethodHandler`, 
-`fox.RedirectSlashHandler`, `fox.RedirectPathHandler`, `fox.OptionsHandler` and any combination of these.
+`fox.RedirectSlashHandler`, `fox.RedirectPathHandler`, `fox.RejectPathHandler`, `fox.OptionsHandler` and any combination of these.
 
 ````go
 f  := fox.MustRouter(

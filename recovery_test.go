@@ -103,9 +103,10 @@ func TestRecoveryWithFunc_OtherScope(t *testing.T) {
 
 	f, _ := NewRouter(
 		WithHandleTrailingSlash(RedirectSlash),
-		WithHandleFixedPath(RedirectPath),
+		WithMergeSlashes(RedirectPath),
+		WithCollapseDotSegments(RedirectPath),
 		WithMiddleware(m),
-		WithMiddlewareFor(RedirectSlashHandler|RedirectPathHandler, panicMiddleware),
+		WithMiddlewareFor(RedirectSlashHandler|RedirectPathHandler|RejectPathHandler, panicMiddleware),
 		WithNoRouteHandler(func(c *Context) {
 			panic(errMsg)
 		}),
@@ -158,6 +159,17 @@ func TestRecoveryWithFunc_OtherScope(t *testing.T) {
 		assert.Equal(t, errMsg, w.Body.String())
 		assert.Equal(t, woBuf.Len(), 0)
 		assert.NotEqual(t, weBuf.Len(), 0)
+	})
+	t.Run("reject path", func(t *testing.T) {
+		reset()
+		req := httptest.NewRequest(http.MethodGet, "/../foo", nil)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, errMsg, w.Body.String())
+		assert.Equal(t, woBuf.Len(), 0)
+		assert.NotEqual(t, weBuf.Len(), 0)
+		assert.Contains(t, weBuf.String(), "RejectPathHandler")
 	})
 	t.Run("option handler", func(t *testing.T) {
 		reset()

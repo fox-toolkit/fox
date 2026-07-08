@@ -1,128 +1,129 @@
-// Copyright 2013 Julien Schmidt. All rights reserved.
-// Based on the path package, Copyright 2009 The Go Authors.
-// Mount of this source code is governed by a BSD-style license that can be found
-// at https://github.com/julienschmidt/httprouter/blob/master/LICENSE.
+// Copyright 2022 Sylvain Müller. All rights reserved.
+// Mount of this source code is governed by a Apache-2.0 license that can be found
+// at https://github.com/fox-toolkit/fox/blob/master/LICENSE.txt.
 
 package fox
 
-import "strings"
+import (
+	"bytes"
+	"strings"
+)
 
-// CleanPath is the URL version of [path.Clean], it returns a canonical URL path
-// for p, eliminating . and .. elements.
-//
-// The following rules are applied iteratively until no further processing can
-// be done:
-//  1. Replace multiple slashes with a single slash.
-//  2. Eliminate each . path name element (the current directory).
-//  3. Eliminate each inner .. path name element (the parent directory)
-//     along with the non-.. element that precedes it.
-//  4. Eliminate .. elements that begin a rooted path:
-//     that is, replace "/.." by "/" at the beginning of a path.
-//
-// If the result of this process is an empty string, "/" is returned
-func CleanPath(p string) string {
-	const stackBufSize = 128
+const stackBufSize = 128
 
-	// Turn empty string into "/"
-	if p == "" {
-		return "/"
+// MergeSlashes merges consecutive slashes in path into a single slash. Only raw slashes
+// are merged, an encoded %2F is left untouched.
+func MergeSlashes(path string) string {
+	i := strings.Index(path, "//")
+	if i < 0 {
+		return path
 	}
 
-	// Reasonably sized buffer on stack to avoid allocations in the common case.
-	// If a larger buffer is required, it gets allocated dynamically.
 	buf := make([]byte, 0, stackBufSize)
-
-	n := len(p)
-
-	// Invariants:
-	//      reading from path; r is index of next byte to process.
-	//      writing to buf; w is index of next byte to write.
-
-	// path must start with '/'
-	r := 1
-	w := 1
-
-	if p[0] != '/' {
-		r = 0
-
-		if n+1 > stackBufSize {
-			buf = make([]byte, n+1)
-		} else {
-			buf = buf[:n+1]
+	w := i + 1
+	for j := i + 1; j < len(path); j++ {
+		if path[j] == '/' && path[j-1] == '/' {
+			continue
 		}
-		buf[0] = '/'
+		bufApp(&buf, path, w, path[j])
+		w++
+	}
+	if len(buf) == 0 {
+		return path[:w]
+	}
+	return string(buf[:w])
+}
+
+// CollapseDotSegments removes "." and ".." path segments as defined by RFC 3986 section 5.2.4.
+// Unlike [path.Clean], consecutive slashes are preserved and delimit empty segments that a ".."
+// may consume. It returns ok=false when a ".." segment would escape above the root.
+func CollapseDotSegments(path string) (_ string, ok bool) {
+	i := dotSegmentIndex(path)
+	if i < 0 {
+		return path, true
 	}
 
-	trailing := n > 1 && p[n-1] == '/'
-
-	// A bit more clunky without a 'lazybuf' like the path package, but the loop
-	// gets completely inlined (bufApp calls).
-	// So in contrast to the path package this loop has no expensive function
-	// calls (except make, if needed).
+	n := len(path)
+	buf := make([]byte, 0, stackBufSize)
+	r, w := i, i
 
 	for r < n {
 		switch {
-		case p[r] == '/':
-			// empty path element, trailing slash is added after the end
+		case path[r] == '.' && r+1 == n:
+			// "." at end, only reachable for non-rooted input.
 			r++
-
-		case p[r] == '.' && r+1 == n:
-			trailing = true
-			r++
-
-		case p[r] == '.' && p[r+1] == '/':
-			// . element
+		case path[r] == '.' && path[r+1] == '/':
+			// "./" prefix, only reachable for non-rooted input.
 			r += 2
-
-		case p[r] == '.' && p[r+1] == '.' && (r+2 == n || p[r+2] == '/'):
-			// .. element: remove to last /
-			r += 3
-
-			if w > 1 {
-				// can backtrack
-				w--
-
-				if len(buf) == 0 {
-					for w > 1 && p[w] != '/' {
-						w--
-					}
-				} else {
-					for w > 1 && buf[w] != '/' {
-						w--
-					}
-				}
-			}
-
-		default:
-			// Real path element.
-			// Add slash if needed
-			if w > 1 {
-				bufApp(&buf, p, w, '/')
+		case path[r] == '.' && path[r+1] == '.' && (r+2 == n || path[r+2] == '/'):
+			// ".." or "../" prefix references above the root.
+			return "", false
+		case path[r] == '/' && r+1 < n && path[r+1] == '.' && (r+2 == n || path[r+2] == '/'):
+			// "/." at end leaves a trailing slash, "/./" is dropped.
+			if r+2 == n {
+				bufApp(&buf, path, w, '/')
 				w++
 			}
-
-			// Copy element
-			for r < n && p[r] != '/' {
-				bufApp(&buf, p, w, p[r])
+			r += 2
+		case path[r] == '/' && r+2 < n && path[r+1] == '.' && path[r+2] == '.' && (r+3 == n || path[r+3] == '/'):
+			// "/.." at end or "/../": pop the last segment, empty segments included.
+			if w == 0 {
+				return "", false
+			}
+			var i int
+			if len(buf) == 0 {
+				i = strings.LastIndexByte(path[:w], '/')
+			} else {
+				i = bytes.LastIndexByte(buf[:w], '/')
+			}
+			if i < 0 {
+				i = 0
+			}
+			w = i
+			if r+3 == n {
+				// A trailing dot segment leaves a trailing slash.
+				bufApp(&buf, path, w, '/')
+				w++
+			}
+			r += 3
+		default:
+			// Move the segment, including its leading slash, to the output.
+			if path[r] == '/' {
+				bufApp(&buf, path, w, '/')
+				w++
+				r++
+			}
+			for r < n && path[r] != '/' {
+				bufApp(&buf, path, w, path[r])
 				w++
 				r++
 			}
 		}
 	}
 
-	// Re-append trailing slash
-	if trailing && w > 1 {
-		bufApp(&buf, p, w, '/')
-		w++
-	}
-
-	// If the original string was not modified (or only shortened at the end),
-	// return the respective substring of the original string.
-	// Otherwise return a new string from the buffer.
 	if len(buf) == 0 {
-		return p[:w]
+		return path[:w], true
 	}
-	return string(buf[:w])
+	return string(buf[:w]), true
+}
+
+// hasEmptyOrDotSegment reports whether the path contains consecutive slashes or a dot segment,
+// in other words whether MergeSlashes or CollapseDotSegments would modify it. A single pass
+// keyed on slashes is cheaper than scanning twice on typical short paths.
+func hasEmptyOrDotSegment(path string) bool {
+	for i := 0; i+1 < len(path); i++ {
+		if path[i] != '/' {
+			continue
+		}
+		c := path[i+1]
+		if c == '/' {
+			return true
+		}
+		if c == '.' && (i+2 == len(path) || path[i+2] == '/' || (path[i+2] == '.' && (i+3 == len(path) || path[i+3] == '/'))) {
+			return true
+		}
+	}
+	return false
 }
 
 // Internal helper to lazily create a buffer if necessary.
@@ -175,23 +176,29 @@ func fixTrailingSlash(path string) string {
 	return path + "/"
 }
 
-// hasDotSegment reports whether the path contains a "." or ".." path element.
-func hasDotSegment(path string) bool {
+// dotSegmentIndex returns the position where the first "." or ".." path element starts,
+// including its leading slash if any, or -1 if the path contains none.
+func dotSegmentIndex(path string) int {
 	for i := 0; ; i++ {
 		j := strings.IndexByte(path[i:], '.')
 		if j < 0 {
-			return false
+			return -1
 		}
 		i += j
 		if i == 0 || path[i-1] == '/' {
 			// "." segment: "/." at end or "/./"
 			if i+1 == len(path) || path[i+1] == '/' {
-				return true
+				return max(i-1, 0)
 			}
 			// ".." segment: "/.." at end or "/../"
 			if path[i+1] == '.' && (i+2 == len(path) || path[i+2] == '/') {
-				return true
+				return max(i-1, 0)
 			}
 		}
 	}
+}
+
+// hasDotSegment reports whether the path contains a "." or ".." path element.
+func hasDotSegment(path string) bool {
+	return dotSegmentIndex(path) >= 0
 }

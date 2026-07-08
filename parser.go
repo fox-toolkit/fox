@@ -327,6 +327,9 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 				_, size := utf8.DecodeRuneInString(path[i:])
 				return nil, false, 0, newPatternError("syntax", i, i+size, "character requires percent-encoding")
 			}
+			if c == '/' && i > 0 && path[i-1] == '/' && fox.mergeSlash == NormalizePath {
+				return nil, false, 0, newPatternError("syntax", i-1, i+1, "consecutive '/' unreachable, slashes are merged before matching")
+			}
 			if c == '.' && i > 0 && path[i-1] == '/' {
 				next := i + 1
 				if next >= len(path) || path[next] == '/' {

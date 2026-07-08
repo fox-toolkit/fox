@@ -75,6 +75,40 @@ type Context struct {
 	cachedQueries url.Values
 	rec           recorder
 	scope         HandlerScope
+	reqOwned      bool
+}
+
+// rewriteRequest sets the request URL to the escaped routing path, so downstream handlers
+// (e.g. reverse proxies) see the path the router matched on. The first rewrite create a
+// shallow copy so the caller's request is never mutated. Further rewrites update the owned
+// copy in place.
+func (c *Context) rewriteRequest(escaped string) {
+	p, err := url.PathUnescape(escaped)
+	if err != nil {
+		// Unreachable, escaped derives from a URL already parsed by net/http.
+		return
+	}
+
+	type requestCopy struct {
+		req http.Request
+		u   url.URL
+	}
+
+	if !c.reqOwned {
+		cp := new(requestCopy)
+		cp.req = *c.req
+		cp.u = *c.req.URL
+		cp.req.URL = &cp.u
+		c.req = &cp.req
+		c.reqOwned = true
+	}
+
+	u := c.req.URL
+	u.Path = p
+	u.RawPath = ""
+	if u.EscapedPath() != escaped {
+		u.RawPath = escaped
+	}
 }
 
 // reset resets the [Context] to its initial state, attaching the provided [http.ResponseWriter] and [http.Request].
@@ -87,6 +121,7 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.w = &c.rec
 	c.cachedQueries = nil
 	c.scope = RouteHandler
+	c.reqOwned = false
 	*c.params = (*c.params)[:0]
 }
 
@@ -95,6 +130,7 @@ func (c *Context) resetNil() {
 	c.w = nil
 	c.cachedQueries = nil
 	c.route = nil
+	c.reqOwned = false
 	*c.params = (*c.params)[:0]
 }
 
@@ -115,6 +151,7 @@ func (c *Context) resetWithWriter(w ResponseWriter, r *http.Request) {
 	c.w = w
 	c.cachedQueries = nil
 	c.scope = RouteHandler
+	c.reqOwned = false
 	*c.params = (*c.params)[:0]
 }
 
@@ -127,6 +164,7 @@ func (c *Context) Request() *http.Request {
 func (c *Context) SetRequest(r *http.Request) {
 	c.cachedQueries = nil // In case r is a different request than c.req
 	c.req = r
+	c.reqOwned = false // r belongs to the caller and must not be mutated in place.
 }
 
 // Writer returns the [ResponseWriter].
@@ -318,6 +356,7 @@ func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
 	cp.route = c.route
 	cp.scope = c.scope
 	cp.cachedQueries = nil // For safety, in case r is a different request than c.req
+	cp.reqOwned = false    // r belongs to the caller and must not be mutated in place.
 
 	copyWithResize(cp.params, c.params)
 

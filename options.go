@@ -22,14 +22,15 @@ const (
 	slashOptionSentinel
 )
 
-type FixedPathOption uint8
+type NormalizeOption uint8
 
 const (
-	StrictPath FixedPathOption = iota
+	StrictPath NormalizeOption = iota
+	NormalizePath
 	RelaxedPath
 	RedirectPath
 
-	pathOptionSentinel
+	normalizeOptionSentinel
 )
 
 type GlobalOption interface {
@@ -141,24 +142,67 @@ func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
 	})
 }
 
-// WithHandleFixedPath configures how the router handles non-canonical request paths containing
-// extraneous elements like double slashes, dots, or parent directory references.
+// WithMergeSlashes configures how the router handles consecutive slashes in request paths.
 //
-// Available path handling modes:
-//   - StrictPath: No path cleaning is performed. Routes are matched only as requested (disables this feature).
-//   - RelaxedPath: After normal lookup fails, tries matching with a cleaned path. If found, serves the handler directly.
-//   - RedirectPath: After normal lookup fails, tries matching with a cleaned path. If found, redirects to the clean path.
+// Available modes:
+//   - StrictPath: Consecutive slashes are matched as-is (default).
+//   - NormalizePath: Slashes are merged before lookup.
+//   - RelaxedPath: After normal lookup fails, retries with slashes merged and serves the handler directly.
+//   - RedirectPath: After normal lookup fails, retries with slashes merged and redirects to the merged path.
 //
 // Redirects use the canonical path that the router routed on (see [Context.RoutingPath]).
 //
-// This option applies globally to all routes and cannot be configured per-route. See [CleanPath] for details on how
-// paths are cleaned.
-func WithHandleFixedPath(opt FixedPathOption) GlobalOption {
+// Only raw slashes are merged, an encoded %2F never matches a slash (see [MergeSlashes]). If this option
+// and [WithCollapseDotSegments] both use a fallback mode (RelaxedPath or RedirectPath), the modes must match.
+//
+// This option applies globally to all routes and cannot be configured per-route.
+func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
-		if opt >= pathOptionSentinel {
-			return fmt.Errorf("%w: invalid fixed path option", ErrInvalidConfig)
+		if opt >= normalizeOptionSentinel {
+			return fmt.Errorf("%w: invalid merge slashes option", ErrInvalidConfig)
 		}
-		s.router.handlePath = opt
+		s.router.mergeSlash = opt
+		return nil
+	})
+}
+
+// WithCollapseDotSegments configures how the router handles "." and ".." segments in request paths.
+// Dot segments are removed as defined by RFC 3986 (see [CollapseDotSegments]) and a path escaping above
+// the root is always rejected with a 400 response, whatever the mode (see [WithRejectPathHandler]).
+//
+// Available modes:
+//   - StrictPath: Dot segments are matched as-is (default).
+//   - NormalizePath: Dot segments are collapsed before lookup. This is the only mode guaranteeing that
+//     no traversal sequence reaches a handler, since fallback modes never fire when a wildcard matches
+//     the raw path.
+//   - RelaxedPath: After normal lookup fails, retries with dot segments collapsed and serves the handler directly.
+//   - RedirectPath: After normal lookup fails, retries with dot segments collapsed and redirects to the collapsed path.
+//
+// Redirects use the canonical path that the router routed on (see [Context.RoutingPath]).
+//
+// If this option and [WithMergeSlashes] both use a fallback mode (RelaxedPath or RedirectPath), the
+// modes must match.
+//
+// This option applies globally to all routes and cannot be configured per-route.
+func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		if opt >= normalizeOptionSentinel {
+			return fmt.Errorf("%w: invalid collapse dot segments option", ErrInvalidConfig)
+		}
+		s.router.collapseDots = opt
+		return nil
+	})
+}
+
+// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the
+// request, e.g. a ".." segment escaping above the root with [WithCollapseDotSegments] enabled.
+// By default, the [DefaultRejectPathHandler] replies with a 400 Bad Request.
+func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		if handler == nil {
+			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
+		}
+		s.router.pathReject = handler
 		return nil
 	})
 }
@@ -235,8 +279,8 @@ func WithMiddleware(m ...MiddlewareFunc) interface {
 // WithMiddlewareFor attaches middleware to the router for a specified scope. Middlewares provided will be chained
 // in the order they were added. The scope parameter determines which types of handlers the middleware will be applied to.
 // Possible scopes include [RouteHandler] (regular routes), [NoRouteHandler], [NoMethodHandler], [RedirectSlashHandler],
-// [RedirectPathHandler], [OptionsHandler], and any combination of these. Use this option when you need fine-grained control
-// over where the middleware is applied.
+// [RedirectPathHandler], [RejectPathHandler], [OptionsHandler], and any combination of these. Use this option when you
+// need fine-grained control over where the middleware is applied.
 func WithMiddlewareFor(scope HandlerScope, m ...MiddlewareFunc) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		for i := range m {
@@ -514,7 +558,8 @@ func WithPrettyLogs() GlobalOption {
 //   - Enables 405 Method Not Allowed responses ([WithNoMethod])
 //   - Enables regular expression support in route parameters ([AllowRegexpParam])
 //   - Enables redirect-based path correction for trailing slashes ([WithHandleTrailingSlash] with [RedirectSlash])
-//   - Enables redirect-based path correction for non-canonical paths ([WithHandleFixedPath] with [RedirectPath])
+//   - Enables redirect-based path correction for non-canonical paths ([WithMergeSlashes] and
+//     [WithCollapseDotSegments] with [RedirectPath])
 //
 // For development, consider combining this with [WithPrettyLogs] to add debugging middleware.
 func DefaultOptions() GlobalOption {
@@ -522,7 +567,8 @@ func DefaultOptions() GlobalOption {
 		s.router.handleOPTIONS = true
 		s.router.handleMethodNotAllowed = true
 		s.router.allowRegexp = true
-		s.router.handlePath = RedirectPath
+		s.router.mergeSlash = RedirectPath
+		s.router.collapseDots = RedirectPath
 		s.router.handleSlash = RedirectSlash
 		return nil
 	})
