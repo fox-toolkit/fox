@@ -628,6 +628,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	path := c.RoutingPath()
 
+	orig := r
 	rewritten := false
 	if fox.hasNormalize {
 		normalized, ok := fox.normalizeRoutingPath(path)
@@ -649,6 +650,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !tsr && n != nil {
 		c.route = n.routes[idx]
 		r.Pattern = c.route.pattern.str
+		orig.Pattern = r.Pattern
 		c.route.hall(c)
 		return
 	}
@@ -659,6 +661,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
 				r.Pattern = route.pattern.str
+				orig.Pattern = r.Pattern
 				c.req = rewriteRequest(r, fixTrailingSlash(path), rewritten)
 				c.route.hall(c)
 				return
@@ -670,6 +673,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				*c.params = (*c.params)[:0]
 				c.route = nil
 				r.Pattern = ""
+				orig.Pattern = ""
 				c.scope = RedirectSlashHandler
 				fox.tsrRedirect(c)
 				return
@@ -682,6 +686,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				*c.params = (*c.params)[:0]
 				c.route = nil
 				r.Pattern = ""
+				orig.Pattern = ""
 				c.scope = RejectPathHandler
 				fox.pathReject(c)
 				return
@@ -695,6 +700,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					if idx, n, tsr := tree.lookup(r.Method, r.Host, fallbackPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
 						c.route = n.routes[idx]
 						r.Pattern = c.route.pattern.str
+						orig.Pattern = r.Pattern
 						if tsr {
 							fallbackPath = fixTrailingSlash(fallbackPath)
 						}
@@ -705,11 +711,12 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				case RedirectPath:
 					// A "." or ".." path element in the Location may be resolved by the client,
 					// redirecting to a different path.
-					if !hasDotSegment(fallbackPath) {
+					if fox.collapseDots >= RelaxedPath || !hasDotSegment(fallbackPath) {
 						if idx, n, tsr := tree.lookup(r.Method, r.Host, fallbackPath, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
 							*c.params = (*c.params)[:0]
 							c.route = nil
 							r.Pattern = ""
+							orig.Pattern = ""
 							c.scope = RedirectPathHandler
 							fox.pathRedirect(c)
 							return
@@ -724,6 +731,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	*c.params = (*c.params)[:0]
 	c.route = nil
 	r.Pattern = ""
+	orig.Pattern = ""
 
 	isOPTIONS := r.Method == http.MethodOptions
 

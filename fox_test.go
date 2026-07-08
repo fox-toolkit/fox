@@ -4805,6 +4805,7 @@ func TestRouter_NormalizePathMergeSlashes(t *testing.T) {
 		f.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "//foo///bar", req.URL.Path)
+		assert.Equal(t, "/foo/bar", req.Pattern)
 	})
 
 	t.Run("wildcard captures merged path", func(t *testing.T) {
@@ -5071,6 +5072,8 @@ func TestRouter_NormalizeRewriteReuseOwnedCopy(t *testing.T) {
 	assert.NotSame(t, req, seen)
 	assert.Equal(t, "/foo/bar", seen.URL.Path)
 	assert.Equal(t, "/foo//bar/", req.URL.Path)
+	assert.Equal(t, "/foo/bar", seen.Pattern)
+	assert.Equal(t, "/foo/bar", req.Pattern)
 }
 
 func FuzzRouter_ServeHTTP_NormalizeSecurity(f *testing.F) {
