@@ -142,6 +142,19 @@ func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
 	})
 }
 
+// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the
+// request, e.g. a ".." segment escaping above the root with [WithCollapseDotSegments] enabled.
+// By default, the [DefaultRejectPathHandler] replies with a 400 Bad Request.
+func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		if handler == nil {
+			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
+		}
+		s.router.pathReject = handler
+		return nil
+	})
+}
+
 // WithMergeSlashes configures how the router handles consecutive slashes in request paths.
 //
 // Available modes:
@@ -190,19 +203,6 @@ func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 			return fmt.Errorf("%w: invalid collapse dot segments option", ErrInvalidConfig)
 		}
 		s.router.collapseDots = opt
-		return nil
-	})
-}
-
-// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the
-// request, e.g. a ".." segment escaping above the root with [WithCollapseDotSegments] enabled.
-// By default, the [DefaultRejectPathHandler] replies with a 400 Bad Request.
-func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
-	return optionFunc(func(s sealedOption) error {
-		if handler == nil {
-			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
-		}
-		s.router.pathReject = handler
 		return nil
 	})
 }
