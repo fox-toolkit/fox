@@ -178,6 +178,9 @@ func TestNormalizeRawPath(t *testing.T) {
 		{"path too short", "/abc", "/ab", "", false, false},
 		{"empty path", "/a", "", "", false, false},
 		{"mismatch before malformed escape", "/a%zz", "/b%zz", "", false, false},
+		{"frozen tail mismatch", "/a%zz/anything/here", "/admin/secret", "", false, false},
+		{"frozen tail not mirrored by path", "/a%zz", "/a", "", false, false},
+		{"frozen tail after decoded escape mismatch", "/%61%zz/x", "/a%zz/y", "", false, false},
 	}
 
 	for _, tc := range cases {

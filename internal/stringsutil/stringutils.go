@@ -110,15 +110,11 @@ func UpperHex(c byte) byte {
 
 const upperhex = "0123456789ABCDEF"
 
-// NormalizeRawPath returns the canonical routing form of the escaped path raw, verifying that
-// raw is an encoding of the decoded path (see [url.URL.RawPath]): percent-encoded unreserved
-// characters (see [IsUnreserved]) are decoded, the remaining hex sequences are normalized to
-// uppercase and bytes that cannot appear raw in a routing path (see [IsRoutableRaw]) are
-// percent-encoded in place. The path is kept as-is from the first malformed escape and the
-// input is returned unchanged, without allocation, when already canonical.
-// It reports whether raw is well-formed (no malformed escape, no non-routable raw byte) and
-// whether raw is an encoding of path; when consistent is false, norm is empty and the routing
-// path must be derived from path instead.
+// NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
+// are decoded, hex is uppercased, bytes that cannot appear raw (see [IsRoutableRaw]) are
+// percent-encoded in place and the path is kept as-is from the first malformed escape.
+// It reports whether raw is well-formed and whether it is an encoding of the decoded path.
+// When consistent is false, the routing path must be derived from path instead.
 func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent bool) {
 	var buf strings.Builder
 	wellFormed = true
@@ -184,8 +180,13 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 		}
 		i++
 	}
-	// A frozen tail commits to raw, the remainder is not checked against path.
-	if !frozen && j != len(path) {
+	// The frozen remainder cannot be decoded, raw stays authoritative only when
+	// path mirrors it byte for byte.
+	if frozen {
+		if raw[i:] != path[j:] {
+			return "", false, false
+		}
+	} else if j != len(path) {
 		return "", false, false
 	}
 	if buf.Len() == 0 {
