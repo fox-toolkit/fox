@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"regexp"
 	"slices"
@@ -627,6 +628,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	path := c.RoutingPath()
 
+	rewritten := false
 	if fox.hasNormalize {
 		normalized, ok := fox.normalizeRoutingPath(path)
 		if !ok {
@@ -637,8 +639,9 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(normalized) != len(path) {
 			path = normalized
-			c.rewriteRequest(normalized)
-			r = c.req
+			r = rewriteRequest(r, normalized, false)
+			c.req = r
+			rewritten = true
 		}
 	}
 
@@ -656,7 +659,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.handleSlash == RelaxedSlash {
 				c.route = route
 				r.Pattern = route.pattern.str
-				c.rewriteRequest(fixTrailingSlash(path))
+				c.req = rewriteRequest(r, fixTrailingSlash(path), rewritten)
 				c.route.hall(c)
 				return
 			}
@@ -695,7 +698,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						if tsr {
 							fallbackPath = fixTrailingSlash(fallbackPath)
 						}
-						c.rewriteRequest(fallbackPath)
+						c.req = rewriteRequest(r, fallbackPath, rewritten)
 						c.route.hall(c)
 						return
 					}
@@ -999,6 +1002,37 @@ func internalPathRedirectHandler(c *Context) {
 	}
 
 	redirect(c.Writer(), req, fallbackPath, code)
+}
+
+// rewriteRequest returns a request whose URL is set to the escaped routing path, so downstream
+// handlers (e.g. reverse proxies) see the path the router matched on. Unless owned, the request
+// is shallow copied so the caller's request is never mutated.
+func rewriteRequest(r *http.Request, escaped string, owned bool) *http.Request {
+	p, err := url.PathUnescape(escaped)
+	if err != nil {
+		// Unreachable, escaped derives from a URL already parsed by net/http.
+		return r
+	}
+
+	if !owned {
+		type requestCopy struct {
+			req http.Request
+			u   url.URL
+		}
+		cp := new(requestCopy)
+		cp.req = *r
+		cp.u = *r.URL
+		cp.req.URL = &cp.u
+		r = &cp.req
+	}
+
+	u := r.URL
+	u.Path = p
+	u.RawPath = ""
+	if u.EscapedPath() != escaped {
+		u.RawPath = escaped
+	}
+	return r
 }
 
 func routingPath(r *http.Request) string {
