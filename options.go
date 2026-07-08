@@ -181,7 +181,7 @@ func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 
 // WithCollapseDotSegments configures how the router handles "." and ".." segments in request paths.
 // Dot segments are removed as defined by RFC 3986 (see [CollapseDotSegments]) and a path escaping above
-// the root is always rejected with a 400 response, whatever the mode (see [WithRejectPathHandler]).
+// the root is always rejected with a 400 response, when enabled (see [WithRejectPathHandler]).
 //
 // Available modes:
 //   - StrictPath: Dot segments are matched as-is (default).

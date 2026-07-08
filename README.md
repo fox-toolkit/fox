@@ -36,8 +36,7 @@ suffix and infix catch-all, regexp constraints, hostname matching, method and me
 the canonical path, or enforcing strict matching based on your needs.
 
 **Path normalization:** Merge consecutive slashes and collapse dot segments, either before matching
-or as a fallback that serves or redirects to the corrected path. Paths escaping above the root are
-always rejected.
+or as a fallback that serves or redirects to the corrected path.
 
 **Automatic OPTIONS replies:** Fox has built-in native support for [OPTIONS requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS).
 
@@ -261,14 +260,13 @@ nor the 253-character limit for the full hostname. Internationalized domain name
 
 #### Path encoding
 
-Fox matches requests against a canonical routing path, equivalent to `url.URL.EscapedPath()` with percent-encoded
-[unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) decoded
-and the remaining hex sequences normalized to uppercase (e.g. `%2f` becomes `%2F`). All other escape sequences stay
-encoded and distinct from their decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths.
-
-By default, consecutive slashes and dot segments are matched as-is. `fox.WithMergeSlashes` and
-`fox.WithCollapseDotSegments` normalize them before matching (`NormalizePath`) or correct them after
-a failed lookup (`RelaxedPath`, `RedirectPath`).
+Fox matches requests against a canonical routing path. Percent-encoded
+[unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) are
+decoded, while every other escape sequence stays encoded, normalized to uppercase hex (`%2f` becomes `%2F`) and
+distinct from its decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths. Bytes that can never
+appear raw in a path, like `é` or `{`, are percent-encoded in place and the request is rewritten so handlers and
+reverse proxies see exactly the path the router matched on. Use `fox.WithStrictPathEncoding` to reject such
+requests with a 400 response instead.
 
 #### Priority rules
 
