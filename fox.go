@@ -104,6 +104,7 @@ type Router struct {
 	noMethod               HandlerFunc
 	tsrRedirect            HandlerFunc
 	pathRedirect           HandlerFunc
+	pathRejectBase         HandlerFunc
 	pathReject             HandlerFunc
 	autoOPTIONS            HandlerFunc
 	tree                   atomic.Pointer[iTree]
@@ -130,7 +131,7 @@ func initRouter() *Router {
 	r.autoOPTIONS = DefaultOptionsHandler
 	r.tsrRedirect = internalTrailingSlashHandler
 	r.pathRedirect = internalPathRedirectHandler
-	r.pathReject = DefaultRejectPathHandler
+	r.pathRejectBase = DefaultRejectPathHandler
 	r.clientip = noClientIPResolver{}
 	r.maxParams = math.MaxUint8
 	r.maxParamKeyBytes = math.MaxUint8
@@ -195,7 +196,7 @@ func NewRouter(opts ...GlobalOption) (*Router, error) {
 	router.noMethod = applyMiddleware(NoMethodHandler, router.mws, router.noMethod)
 	router.tsrRedirect = applyMiddleware(RedirectSlashHandler, router.mws, router.tsrRedirect)
 	router.pathRedirect = applyMiddleware(RedirectPathHandler, router.mws, router.pathRedirect)
-	router.pathReject = applyMiddleware(RejectPathHandler, router.mws, router.pathReject)
+	router.pathReject = applyMiddleware(RejectPathHandler, router.mws, router.pathRejectBase)
 	router.autoOPTIONS = applyMiddleware(OptionsHandler, router.mws, router.autoOPTIONS)
 
 	router.tree.Store(router.newTree())
@@ -1021,7 +1022,8 @@ func internalPathRedirectHandler(c *Context) {
 
 	fallbackPath, ok := c.fox.fallbackRoutingPath(c.RoutingPath())
 	if !ok {
-		http.Error(c.Writer(), http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		c.scope = RejectPathHandler
+		c.fox.pathRejectBase(c)
 		return
 	}
 	fallbackPath = escapeLeadingSlashes(fallbackPath)

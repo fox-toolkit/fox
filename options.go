@@ -150,7 +150,7 @@ func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 		if handler == nil {
 			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
 		}
-		s.router.pathReject = handler
+		s.router.pathRejectBase = handler
 		return nil
 	})
 }
