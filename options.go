@@ -207,6 +207,17 @@ func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 	})
 }
 
+// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) requests whose
+// escaped path is not a valid encoding. When disabled, the path is matched as-is from the first malformed
+// escape and non-routable bytes are percent-encoded in place (see [Context.RoutingPath]).
+// This option is disabled by default and applies globally to all routes.
+func WithStrictPathEncoding(enable bool) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		s.router.strictPathEncoding = enable
+		return nil
+	})
+}
+
 // WithMaxRouteParams set the maximum number of parameters allowed in a route. The default max is math.MaxUint8.
 // Routes exceeding this limit will fail with a [*PatternError].
 func WithMaxRouteParams(max uint16) GlobalOption {
