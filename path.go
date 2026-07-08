@@ -14,7 +14,13 @@ const stackBufSize = 128
 // MergeSlashes merges consecutive slashes in path into a single slash. Only raw slashes
 // are merged, an encoded %2F is left untouched.
 func MergeSlashes(path string) string {
-	i := strings.Index(path, "//")
+	i := -1
+	for j := 1; j < len(path); j++ {
+		if path[j] == '/' && path[j-1] == '/' {
+			i = j - 1
+			break
+		}
+	}
 	if i < 0 {
 		return path
 	}
@@ -105,25 +111,6 @@ func CollapseDotSegments(path string) (_ string, ok bool) {
 		return path[:w], true
 	}
 	return string(buf[:w]), true
-}
-
-// hasEmptyOrDotSegment reports whether the path contains consecutive slashes or a dot segment,
-// in other words whether MergeSlashes or CollapseDotSegments would modify it. A single pass
-// keyed on slashes is cheaper than scanning twice on typical short paths.
-func hasEmptyOrDotSegment(path string) bool {
-	for i := 0; i+1 < len(path); i++ {
-		if path[i] != '/' {
-			continue
-		}
-		c := path[i+1]
-		if c == '/' {
-			return true
-		}
-		if c == '.' && (i+2 == len(path) || path[i+2] == '/' || (path[i+2] == '.' && (i+3 == len(path) || path[i+3] == '/'))) {
-			return true
-		}
-	}
-	return false
 }
 
 // Internal helper to lazily create a buffer if necessary.

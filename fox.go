@@ -630,6 +630,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if fox.hasNormalize {
 		normalized, ok := fox.normalizeRoutingPath(path)
 		if !ok {
+			c.route = nil
 			c.scope = RejectPathHandler
 			fox.pathReject(c)
 			return
@@ -873,31 +874,24 @@ func DefaultRejectPathHandler(c *Context) {
 // when the path must be rejected.
 func (fox *Router) normalizeRoutingPath(path string) (string, bool) {
 	if fox.mergeSlash == NormalizePath {
-		if fox.collapseDots == NormalizePath {
-			// One scan when the path is already clean, sequential passes otherwise.
-			if !hasEmptyOrDotSegment(path) {
-				return path, true
-			}
-			return CollapseDotSegments(MergeSlashes(path))
-		}
-		return MergeSlashes(path), true
+		path = MergeSlashes(path)
 	}
-	return CollapseDotSegments(path)
+	if fox.collapseDots == NormalizePath {
+		return CollapseDotSegments(path)
+	}
+	return path, true
 }
 
 // fallbackRoutingPath applies the fallback (RelaxedPath or RedirectPath) operations to path.
 // It returns ok=false when the path must be rejected.
 func (fox *Router) fallbackRoutingPath(path string) (string, bool) {
 	if fox.mergeSlash >= RelaxedPath {
-		if fox.collapseDots >= RelaxedPath {
-			if !hasEmptyOrDotSegment(path) {
-				return path, true
-			}
-			return CollapseDotSegments(MergeSlashes(path))
-		}
-		return MergeSlashes(path), true
+		path = MergeSlashes(path)
 	}
-	return CollapseDotSegments(path)
+	if fox.collapseDots >= RelaxedPath {
+		return CollapseDotSegments(path)
+	}
+	return path, true
 }
 
 func internalTrailingSlashHandler(c *Context) {
@@ -994,7 +988,11 @@ func internalPathRedirectHandler(c *Context) {
 		code = http.StatusPermanentRedirect
 	}
 
-	fallbackPath, _ := c.fox.fallbackRoutingPath(c.RoutingPath())
+	fallbackPath, ok := c.fox.fallbackRoutingPath(c.RoutingPath())
+	if !ok {
+		http.Error(c.Writer(), http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
 	fallbackPath = escapeLeadingSlashes(fallbackPath)
 	if q := req.URL.RawQuery; q != "" {
 		fallbackPath += "?" + q

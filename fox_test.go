@@ -4966,6 +4966,24 @@ func TestRouter_NormalizeMixedTiming(t *testing.T) {
 	})
 }
 
+func TestRouter_NormalizeRedirectMutatedRequestRejected(t *testing.T) {
+	f := MustRouter(
+		WithCollapseDotSegments(RedirectPath),
+		WithMiddlewareFor(RedirectPathHandler, func(next HandlerFunc) HandlerFunc {
+			return func(c *Context) {
+				c.SetRequest(httptest.NewRequest(http.MethodGet, "/../x", nil))
+				next(c)
+			}
+		}),
+	)
+	require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/../bar", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Empty(t, w.Header().Get(HeaderLocation))
+}
+
 func TestRouter_NormalizeFallbackRejectAboveRoot(t *testing.T) {
 	for _, opt := range []NormalizeOption{RelaxedPath, RedirectPath} {
 		f := MustRouter(WithCollapseDotSegments(opt))

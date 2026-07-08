@@ -254,21 +254,3 @@ func FuzzMergeSlashes(f *testing.F) {
 		}
 	})
 }
-
-func FuzzHasEmptyOrDotSegment(f *testing.F) {
-	for _, tc := range collapseDotSegmentsTests {
-		f.Add(tc.path)
-	}
-	for _, tc := range mergeSlashesTests {
-		f.Add(tc.path)
-	}
-
-	f.Fuzz(func(t *testing.T, path string) {
-		if !strings.HasPrefix(path, "/") {
-			t.Skip()
-		}
-		composed, ok := CollapseDotSegments(MergeSlashes(path))
-		changed := !ok || composed != path
-		assert.Equal(t, changed, hasEmptyOrDotSegment(path))
-	})
-}
