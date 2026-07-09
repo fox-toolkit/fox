@@ -150,7 +150,7 @@ func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 		if handler == nil {
 			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
 		}
-		s.router.pathReject = handler
+		s.router.pathRejectBase = handler
 		return nil
 	})
 }
@@ -180,8 +180,8 @@ func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 }
 
 // WithCollapseDotSegments configures how the router handles "." and ".." segments in request paths.
-// Dot segments are removed as defined by RFC 3986 (see [CollapseDotSegments]) and a path escaping above
-// the root is always rejected with a 400 response, whatever the mode (see [WithRejectPathHandler]).
+// Dot segments are removed as defined by RFC 3986 (see [CollapseDotSegments]). A ".." escaping above the
+// root is rejected with a 400 (see [WithRejectPathHandler]) whenever collapsing runs.
 //
 // Available modes:
 //   - StrictPath: Dot segments are matched as-is (default).
@@ -203,6 +203,17 @@ func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 			return fmt.Errorf("%w: invalid collapse dot segments option", ErrInvalidConfig)
 		}
 		s.router.collapseDots = opt
+		return nil
+	})
+}
+
+// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) requests whose
+// escaped path is not a valid encoding. When disabled, the path is matched as-is from the first malformed
+// escape and non-routable bytes are percent-encoded in place (see [Context.RoutingPath]).
+// This option is disabled by default and applies globally to all routes.
+func WithStrictPathEncoding(enable bool) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		s.router.strictPathEncoding = enable
 		return nil
 	})
 }

@@ -291,7 +291,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 
 		case '%':
 			// Escape sequences must use the canonical routing form. Any other encoding could never match a request
-			// routing path (see stringsutil.NormalizeRoutingPath).
+			// routing path (see stringsutil.NormalizeRawPath).
 			if i+2 >= len(path) {
 				return nil, false, 0, newPatternError("syntax", i, len(path), "invalid percent-encoding")
 			}

@@ -62,8 +62,8 @@ func IsUnreserved(b byte) bool {
 }
 
 // IsRoutableRaw reports whether b can appear raw (outside an escape sequence) in a
-// routing path, i.e. whether [NormalizeRoutingPath] applied to a request's escaped path
-// can emit it. Derived from net/url path escaping and pinned by a differential test.
+// routing path, i.e. whether [NormalizeRawPath] can emit it raw. Derived from net/url
+// path escaping and pinned by a differential test.
 func IsRoutableRaw(b byte) bool {
 	switch b {
 	case '$', '&', '+', ',', '/', ':', ';', '=', '@', // never escaped by net/url in a path
@@ -108,49 +108,90 @@ func UpperHex(c byte) byte {
 	return c
 }
 
-// NormalizeRoutingPath returns the canonical routing form of an escaped path:
-// percent-encoded unreserved characters (see [IsUnreserved]) are decoded and
-// the remaining hex sequences are normalized to uppercase.
-// The path is kept as-is from the first malformed escape sequence. The input
-// is returned unchanged, without allocation, when already canonical.
-func NormalizeRoutingPath(s string) string {
+const upperhex = "0123456789ABCDEF"
+
+// NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
+// are decoded, hex is uppercased, bytes that cannot appear raw (see [IsRoutableRaw]) are
+// percent-encoded in place and the path is kept as-is from the first malformed escape.
+// It reports whether raw is well-formed and whether it is an encoding of the decoded path.
+// When consistent is false, the routing path must be derived from path instead.
+func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent bool) {
 	var buf strings.Builder
-	start := 0 // start of the pending run copied as-is from s
-	for i := 0; i < len(s); i++ {
-		if s[i] != '%' || i+2 >= len(s) {
+	wellFormed = true
+	frozen := false
+	j := 0     // cursor into path, raw must decode to path byte for byte
+	start := 0 // start of the pending run copied as-is from raw
+	i := 0
+	for i < len(raw) {
+		c := raw[i]
+		if c == '%' {
+			var b byte
+			var ok bool
+			if i+2 < len(raw) {
+				b, ok = DecodeHexPair(raw[i+1], raw[i+2])
+			}
+			if !ok {
+				// Malformed or truncated escape, the remainder is kept as-is by the final
+				// flush. A dangling '%' must not recombine with a following escape into a
+				// valid sequence, and no semantics is invented for the tail.
+				wellFormed, frozen = false, true
+				break
+			}
+			if j >= len(path) || path[j] != b {
+				return "", false, false
+			}
+			j++
+			hi, lo := UpperHex(raw[i+1]), UpperHex(raw[i+2])
+			switch {
+			case IsUnreserved(b):
+				if buf.Len() == 0 {
+					buf.Grow(len(raw))
+				}
+				buf.WriteString(raw[start:i])
+				buf.WriteByte(b)
+				start = i + 3
+			case raw[i+1] != hi || raw[i+2] != lo:
+				if buf.Len() == 0 {
+					buf.Grow(len(raw))
+				}
+				buf.WriteString(raw[start:i])
+				buf.WriteByte('%')
+				buf.WriteByte(hi)
+				buf.WriteByte(lo)
+				start = i + 3
+			}
+			i += 3
 			continue
 		}
-		b, ok := DecodeHexPair(s[i+1], s[i+2])
-		if !ok {
-			// Malformed escape, the remainder is kept as-is by the final flush. A dangling
-			// '%' must not recombine with a following escape into a valid sequence.
-			break
+		if j >= len(path) || path[j] != c {
+			return "", false, false
 		}
-		hiUpper := UpperHex(s[i+1])
-		loUpper := UpperHex(s[i+2])
-		switch {
-		case IsUnreserved(b):
+		j++
+		if !IsRoutableRaw(c) {
+			wellFormed = false
 			if buf.Len() == 0 {
-				buf.Grow(len(s))
+				buf.Grow(3*len(raw) - 2*i)
 			}
-			buf.WriteString(s[start:i])
-			buf.WriteByte(b)
-			start = i + 3
-		case s[i+1] != hiUpper || s[i+2] != loUpper:
-			if buf.Len() == 0 {
-				buf.Grow(len(s))
-			}
-			buf.WriteString(s[start:i])
+			buf.WriteString(raw[start:i])
 			buf.WriteByte('%')
-			buf.WriteByte(hiUpper)
-			buf.WriteByte(loUpper)
-			start = i + 3
+			buf.WriteByte(upperhex[c>>4])
+			buf.WriteByte(upperhex[c&0x0F])
+			start = i + 1
 		}
-		i += 2
+		i++
+	}
+	// The frozen remainder cannot be decoded, raw stays authoritative only when
+	// path mirrors it byte for byte.
+	if frozen {
+		if raw[i:] != path[j:] {
+			return "", false, false
+		}
+	} else if j != len(path) {
+		return "", false, false
 	}
 	if buf.Len() == 0 {
-		return s
+		return raw, wellFormed, true
 	}
-	buf.WriteString(s[start:])
-	return buf.String()
+	buf.WriteString(raw[start:])
+	return buf.String(), wellFormed, true
 }

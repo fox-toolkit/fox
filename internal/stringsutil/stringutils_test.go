@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEqualASCIIIgnoreCase(t *testing.T) {
@@ -136,63 +137,127 @@ func TestToLowerASCII(t *testing.T) {
 	}
 }
 
-func TestNormalizeRoutingPath(t *testing.T) {
+func TestNormalizeRawPath(t *testing.T) {
 	cases := []struct {
-		name string
-		in   string
-		want string
+		name       string
+		raw        string
+		path       string
+		want       string
+		wellFormed bool
+		consistent bool
 	}{
-		{"empty string", "", ""},
-		{"plain ascii", "/foo/bar", "/foo/bar"},
-		{"no encoding", "/users/hello/world", "/users/hello/world"},
-		{"uppercase hex pair", "/caf%C3%A9", "/caf%C3%A9"},
-		{"uppercase encoded slash", "/foo%2Fbar", "/foo%2Fbar"},
-		{"multiple uppercase", "/%C3%A9/%E2%82%AC", "/%C3%A9/%E2%82%AC"},
-		{"lowercase hex pair", "/caf%c3%a9", "/caf%C3%A9"},
-		{"lowercase encoded slash", "/foo%2fbar", "/foo%2Fbar"},
-		{"mixed case hi lowercase", "/caf%c3%A9", "/caf%C3%A9"},
-		{"mixed case lo lowercase", "/caf%C3%a9", "/caf%C3%A9"},
-		{"multiple lowercase", "/%c3%a9/%e2%82%ac", "/%C3%A9/%E2%82%AC"},
-		{"mixed sequences", "/foo%C3%a9/bar%2f", "/foo%C3%A9/bar%2F"},
-		{"lowercase at start", "%c3%a9/foo", "%C3%A9/foo"},
-		{"lowercase at end", "/foo/%c3%a9", "/foo/%C3%A9"},
-		{"uppercase then lowercase", "/%C3%A9/%c3%a9", "/%C3%A9/%C3%A9"},
-		{"three byte utf8 lowercase", "/%e2%82%ac", "/%E2%82%AC"},
-		{"four byte utf8 lowercase", "/%f0%90%8d%88", "/%F0%90%8D%88"},
-		{"encoded space", "/hello%20world", "/hello%20world"},
-		{"encoded path segment", "/users/caf%c3%a9/profile", "/users/caf%C3%A9/profile"},
-		{"encoded slash in path", "/api/v1/foo%2fbar/baz", "/api/v1/foo%2Fbar/baz"},
-		{"double encoding preserved", "/foo%252fbar", "/foo%252fbar"},
-		{"encoded digits decoded", "%20%30%09", "%200%09"},
-		{"encoded percent kept encoded digits decoded", "/%25%30%39", "/%2509"},
-		{"encoded lowercase letter decoded", "/a%61b", "/aab"},
-		{"encoded uppercase letters decoded", "/%41%42%43", "/ABC"},
-		{"encoded tilde decoded", "/%7E", "/~"},
-		{"encoded tilde lowercase hex decoded", "/%7e", "/~"},
-		{"encoded marks decoded", "/%2D%5F%2E", "/-_."},
-		{"decode and uppercase mixed", "/caf%c3%a9/%61", "/caf%C3%A9/a"},
-		{"encoded dot segment decoded", "/%2E%2E/", "/../"},
-		{"trailing percent", "/100%", "/100%"},
-		{"truncated escape", "/%2", "/%2"},
-		{"invalid hex digits", "/%zz", "/%zz"},
-		{"invalid escape then text", "/%g1abc", "/%g1abc"},
-		{"invalid escape then valid escape", "/%zz%61", "/%zz%61"},
-		{"invalid second hex digit", "/%4z", "/%4z"},
-		{"valid escape then invalid escape", "/a%61%zz", "/aa%zz"},
-		{"valid escape then truncated hex", "/%61%4z", "/a%4z"},
-		{"normalized escape then trailing percent", "/caf%c3%a9/100%", "/caf%C3%A9/100%"},
-		{"percent before valid escape", "/%%41", "/%%41"},
-		{"malformed escape does not recombine", "/a%2%46b", "/a%2%46b"},
-		{"malformed escape after decoded escape stops normalization", "/%61%2%46b", "/a%2%46b"},
-		{"raw plus and star untouched", "/a+b/c*d", "/a+b/c*d"},
+		{"empty", "", "", "", true, true},
+		{"plain ascii", "/foo/bar", "/foo/bar", "/foo/bar", true, true},
+		{"canonical escaped slash", "/foo%2Fbar", "/foo/bar", "/foo%2Fbar", true, true},
+		{"lowercase hex uppercased", "/foo%2fbar", "/foo/bar", "/foo%2Fbar", true, true},
+		{"unreserved decoded", "/%61%42c", "/aBc", "/aBc", true, true},
+		{"encoded percent kept", "/a%25b", "/a%b", "/a%25b", true, true},
+		{"encoded utf8 kept uppercase", "/caf%c3%a9", "/café", "/caf%C3%A9", true, true},
+		{"encoded space kept", "/hello%20world", "/hello world", "/hello%20world", true, true},
+		{"double encoding preserved", "/foo%252fbar", "/foo%2fbar", "/foo%252fbar", true, true},
+		{"four byte utf8 lowercase", "/%f0%90%8d%88", "/\xf0\x90\x8d\x88", "/%F0%90%8D%88", true, true},
+		{"raw plus and star untouched", "/a+b/c*d", "/a+b/c*d", "/a+b/c*d", true, true},
+		{"sub-delims kept raw", "/a(b)!'*,;=:@[]", "/a(b)!'*,;=:@[]", "/a(b)!'*,;=:@[]", true, true},
+		{"raw utf8 encoded in place", "/foo%2Fcaf\xc3\xa9", "/foo/caf\xc3\xa9", "/foo%2Fcaf%C3%A9", false, true},
+		{"raw utf8 alone", "/caf\xc3\xa9", "/caf\xc3\xa9", "/caf%C3%A9", false, true},
+		{"raw brace encoded in place", "/foo%2Fb{r", "/foo/b{r", "/foo%2Fb%7Br", false, true},
+		{"raw backslash encoded", "/a\\b", "/a\\b", "/a%5Cb", false, true},
+		{"raw quote encoded", "/a\"b", "/a\"b", "/a%22b", false, true},
+		{"encoded dot segments preserved with raw byte", "/%2E%2E/x\xc3\xa9", "/../x\xc3\xa9", "/../x%C3%A9", false, true},
+		{"malformed escape does not recombine", "/a%2%46b", "/a%2%46b", "/a%2%46b", false, true},
+		{"malformed escape after decoded escape", "/%61%2%46b", "/a%2%46b", "/a%2%46b", false, true},
+		{"trailing percent", "/100%", "/100%", "/100%", false, true},
+		{"truncated escape", "/x%4", "/x%4", "/x%4", false, true},
+		{"invalid hex digits", "/%zz", "/%zz", "/%zz", false, true},
+		{"percent before valid escape", "/%%41", "/%%41", "/%%41", false, true},
+		{"frozen tail keeps raw byte", "/a%zz\xc3\xa9", "/a%zz\xc3\xa9", "/a%zz\xc3\xa9", false, true},
+		{"frozen tail keeps lowercase escape", "/a%zz%2f", "/a%zz%2f", "/a%zz%2f", false, true},
+		{"decoded byte mismatch", "/a%2Fb", "/a/c", "", false, false},
+		{"raw byte mismatch", "/abc", "/abd", "", false, false},
+		{"path too long", "/ab", "/abc", "", false, false},
+		{"path too short", "/abc", "/ab", "", false, false},
+		{"empty path", "/a", "", "", false, false},
+		{"mismatch before malformed escape", "/a%zz", "/b%zz", "", false, false},
+		{"frozen tail mismatch", "/a%zz/anything/here", "/admin/secret", "", false, false},
+		{"frozen tail not mirrored by path", "/a%zz", "/a", "", false, false},
+		{"frozen tail after decoded escape mismatch", "/%61%zz/x", "/a%zz/y", "", false, false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := NormalizeRoutingPath(tc.in)
-			assert.Equal(t, tc.want, got)
+			norm, wellFormed, consistent := NormalizeRawPath(tc.raw, tc.path)
+			assert.Equal(t, tc.want, norm)
+			assert.Equal(t, tc.wellFormed, wellFormed)
+			assert.Equal(t, tc.consistent, consistent)
 		})
 	}
+}
+
+func TestNormalizeRawPathNoAlloc(t *testing.T) {
+	noAllocCases := []struct {
+		name string
+		raw  string
+		path string
+	}{
+		{"plain path", "/foo/bar/baz", "/foo/bar/baz"},
+		{"already canonical", "/caf%C3%A9", "/café"},
+		{"canonical escaped slash", "/foo%2Fbar", "/foo/bar"},
+		{"frozen unchanged", "/100%", "/100%"},
+		{"inconsistent", "/abc", "/abd"},
+	}
+
+	for _, tc := range noAllocCases {
+		t.Run(tc.name, func(t *testing.T) {
+			allocs := testing.AllocsPerRun(100, func() {
+				_, _, _ = NormalizeRawPath(tc.raw, tc.path)
+			})
+			assert.Equal(t, float64(0), allocs)
+		})
+	}
+}
+
+func FuzzNormalizeRawPath_DifferentialNetURL(f *testing.F) {
+	seeds := []string{
+		"/foo%2Fbar", "/caf%c3%a9", "/%61%42c", "/a%25b", "/foo%2Fcaf\xc3\xa9",
+		"/a(b)!'*,;=:@[]", "/a+b/c*d", "/%2E%2E/x", "/a{b}\\^`|", "/\xc3\xa9%2f%C3%A9",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, target string) {
+		u, err := url.ParseRequestURI(target)
+		if err != nil || u.RawPath == "" {
+			t.Skip()
+		}
+		norm, wellFormed, consistent := NormalizeRawPath(u.RawPath, u.Path)
+		require.True(t, consistent)
+		if wellFormed {
+			require.Equal(t, u.RawPath, u.EscapedPath())
+		}
+
+		for i := 0; i < len(norm); i++ {
+			if norm[i] != '%' {
+				require.True(t, IsRoutableRaw(norm[i]))
+				continue
+			}
+			require.Less(t, i+2, len(norm))
+			b, ok := DecodeHexPair(norm[i+1], norm[i+2])
+			require.True(t, ok)
+			require.False(t, IsUnreserved(b))
+			require.Equal(t, UpperHex(norm[i+1]), norm[i+1])
+			require.Equal(t, UpperHex(norm[i+2]), norm[i+2])
+			i += 2
+		}
+
+		decoded, err := url.PathUnescape(norm)
+		require.NoError(t, err)
+		require.Equal(t, u.Path, decoded)
+
+		again, wf, cons := NormalizeRawPath(norm, u.Path)
+		require.True(t, cons)
+		require.True(t, wf)
+		require.Equal(t, norm, again)
+	})
 }
 
 // TestIsRoutableRaw_DifferentialNetURL pins the routable-raw byte set to net/url.
@@ -205,29 +270,5 @@ func TestIsRoutableRaw_DifferentialNetURL(t *testing.T) {
 			wire = true
 		}
 		assert.Equal(t, wire, IsRoutableRaw(c), "byte 0x%02X (%q)", b, string(c))
-	}
-}
-
-func TestNormalizeRoutingPathNoAlloc(t *testing.T) {
-	noAllocCases := []struct {
-		name string
-		in   string
-	}{
-		{"empty", ""},
-		{"plain path", "/foo/bar/baz"},
-		{"already uppercase", "/caf%C3%A9"},
-		{"multiple uppercase", "/%C3%A9/%2F/%20"},
-		{"no encoding", "/users/hello"},
-		{"raw plus and star", "/a+b/c*d"},
-		{"malformed escape", "/100%"},
-	}
-
-	for _, tc := range noAllocCases {
-		t.Run(tc.name, func(t *testing.T) {
-			allocs := testing.AllocsPerRun(100, func() {
-				_ = NormalizeRoutingPath(tc.in)
-			})
-			assert.Equal(t, float64(0), allocs)
-		})
 	}
 }
