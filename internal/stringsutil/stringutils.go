@@ -170,7 +170,7 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 		if !IsRoutableRaw(c) {
 			wellFormed = false
 			if buf.Len() == 0 {
-				buf.Grow(len(raw) + 8)
+				buf.Grow(3*len(raw) - 2*i)
 			}
 			buf.WriteString(raw[start:i])
 			buf.WriteByte('%')
