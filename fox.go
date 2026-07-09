@@ -1041,8 +1041,8 @@ func internalPathRedirectHandler(c *Context) {
 
 // rewriteRequest returns a request whose URL is set to the escaped routing path, so downstream
 // handlers (e.g. reverse proxies) see the path the router matched on. Unless owned, the request
-// is shallow copied so the caller's request is never mutated. It reports whether the rewrite
-// happened: a frozen path (malformed escape) has no valid URL representation and returns r as-is.
+// is shallow copied so the caller's request is never mutated. Note that a path containing malformed
+// escape sequence has no valid URL representation and returns r as-is (frozen).
 func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request, bool) {
 	p, err := url.PathUnescape(escaped)
 	if err != nil {
