@@ -633,6 +633,9 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path, ok := routingPath(r)
 	orig := r
 	rewritten := false
+	// A frozen path (malformed escape) has no valid URL representation, so it cannot be
+	// rewritten and should never source a redirect Location.
+	frozen := false
 	if !ok {
 		if fox.strictPathEncoding {
 			c.route = nil
@@ -646,6 +649,8 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			r = req
 			c.req = r
 			rewritten = true
+		} else {
+			frozen = true
 		}
 	}
 
@@ -690,7 +695,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			// A "." or ".." path element in the Location may be resolved by the client,
 			// redirecting to a different path.
-			if route.handleSlash == RedirectSlash && !hasDotSegment(path) {
+			if route.handleSlash == RedirectSlash && !frozen && !hasDotSegment(path) {
 				*c.params = (*c.params)[:0]
 				c.route = nil
 				r.Pattern = ""
@@ -732,7 +737,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				case RedirectPath:
 					// A "." or ".." path element in the Location may be resolved by the client,
 					// redirecting to a different path.
-					if fox.collapseDots >= RelaxedPath || !hasDotSegment(fallbackPath) {
+					if !frozen && (fox.collapseDots >= RelaxedPath || !hasDotSegment(fallbackPath)) {
 						if idx, n, tsr := tree.lookup(r.Method, r.Host, fallbackPath, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
 							*c.params = (*c.params)[:0]
 							c.route = nil
