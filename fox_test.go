@@ -5077,22 +5077,43 @@ func TestRouter_NormalizeMixedModes(t *testing.T) {
 	})
 }
 
-func TestRouter_RedirectPathMutatedRequestRejected(t *testing.T) {
-	f := MustRouter(
-		WithCollapseDotSegments(RedirectPath),
-		WithMiddlewareFor(RedirectPathHandler, func(next HandlerFunc) HandlerFunc {
-			return func(c *Context) {
-				c.SetRequest(httptest.NewRequest(http.MethodGet, "/../x", nil))
-				next(c)
-			}
-		}),
-	)
-	require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+func TestRouter_RedirectPathMutatedRequest(t *testing.T) {
+	cases := []struct {
+		name         string
+		mutated      string
+		wantLocation string
+	}{
+		{
+			name:         "recompute follows the rewritten path",
+			mutated:      "/api/foo/../bar",
+			wantLocation: "/api/bar",
+		},
+		{
+			name:         "above root falls back to root",
+			mutated:      "/../x",
+			wantLocation: "/",
+		},
+	}
 
-	w := httptest.NewRecorder()
-	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/../bar", nil))
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Empty(t, w.Header().Get(HeaderLocation))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := MustRouter(
+				WithCollapseDotSegments(RedirectPath),
+				WithMiddlewareFor(RedirectPathHandler, func(next HandlerFunc) HandlerFunc {
+					return func(c *Context) {
+						c.SetRequest(httptest.NewRequest(http.MethodGet, tc.mutated, nil))
+						next(c)
+					}
+				}),
+			)
+			require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/../bar", nil))
+			assert.Equal(t, http.StatusMovedPermanently, w.Code)
+			assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+		})
+	}
 }
 
 func TestRouter_RedirectPathAboveRootRejected(t *testing.T) {
@@ -5102,6 +5123,25 @@ func TestRouter_RedirectPathAboveRootRejected(t *testing.T) {
 	w := httptest.NewRecorder()
 	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/../etc", nil))
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRouter_ConnectExactMatch(t *testing.T) {
+	for _, opt := range []NormalizeOption{NormalizePath, RedirectPath} {
+		f := MustRouter(WithMergeSlashes(opt), WithCollapseDotSegments(opt), WithHandleTrailingSlash(RedirectSlash))
+		require.NoError(t, onlyError(f.Add(MethodConnect, "/a/b", emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodConnect, "/c/d/", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodConnect, "/a/b", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		for _, target := range []string{"/a//b", "/a/x/../b", "/../b", "/c/d"} {
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, httptest.NewRequest(http.MethodConnect, target, nil))
+			assert.Equal(t, http.StatusNotFound, w.Code)
+			assert.Empty(t, w.Header().Get(HeaderLocation))
+		}
+	}
 }
 
 func TestRouter_NormalizeInvalidOptions(t *testing.T) {

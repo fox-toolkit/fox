@@ -652,7 +652,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if fox.hasNormalize {
+	if fox.hasNormalize && r.Method != http.MethodConnect {
 		var (
 			normalized string
 			redirect   bool
@@ -673,7 +673,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case redirect:
 			// A "." or ".." path element in the Location may be resolved by the client,
 			// redirecting to a different path.
-			if r.Method != http.MethodConnect && !malformed && (fox.collapseDots != ExactPath || !hasDotSegment(normalized)) {
+			if !malformed && (fox.collapseDots != ExactPath || !hasDotSegment(normalized)) {
 				if idx, n, tsr := tree.lookup(r.Method, r.Host, normalized, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != ExactSlash) {
 					c.route = nil
 					r.Pattern = ""
@@ -930,8 +930,30 @@ func internalTrailingSlashHandler(c *Context) {
 	redirect(c.Writer(), req, path, code)
 }
 
+func internalPathRedirectHandler(c *Context) {
+	req := c.Request()
+
+	code := http.StatusMovedPermanently
+	if req.Method != http.MethodGet {
+		// Will be redirected only with the same method (SEO friendly)
+		code = http.StatusPermanentRedirect
+	}
+
+	target, _ := c.fox.normalizeRoutingPath(c.RoutingPath())
+	target = escapeLeadingSlashes(target)
+	if q := req.URL.RawQuery; q != "" {
+		target += "?" + q
+	}
+
+	redirect(c.Writer(), req, target, code)
+}
+
 // redirect is like [http.Redirect] but does not clean the path.
 func redirect(w http.ResponseWriter, r *http.Request, url string, code int) {
+	if url == "" {
+		url = "/"
+	}
+
 	h := w.Header()
 
 	// RFC 7231 notes that a short HTML body is usually included in
@@ -996,29 +1018,6 @@ func hexEscapeNonASCII(s string) string {
 		b = append(b, s[pos:]...)
 	}
 	return string(b)
-}
-
-func internalPathRedirectHandler(c *Context) {
-	req := c.Request()
-
-	code := http.StatusMovedPermanently
-	if req.Method != http.MethodGet {
-		// Will be redirected only with the same method (SEO friendly)
-		code = http.StatusPermanentRedirect
-	}
-
-	target, ok := c.fox.normalizeRoutingPath(c.RoutingPath())
-	if !ok {
-		c.scope = RejectPathHandler
-		c.fox.pathRejectBase(c)
-		return
-	}
-	target = escapeLeadingSlashes(target)
-	if q := req.URL.RawQuery; q != "" {
-		target += "?" + q
-	}
-
-	redirect(c.Writer(), req, target, code)
 }
 
 // rewriteRequest returns a request whose URL is set to the escaped routing path, so downstream
