@@ -313,7 +313,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if isASCIIControl(c) {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
-			// Literals may only use bytes that can appear raw in a request routing path.
+			// Literals may only use bytes that can appear unescaped in a request routing path.
 			// Anything else could never match (see stringsutil.IsRoutableRaw).
 			if !stringsutil.IsRoutableRaw(c) {
 				switch c {

@@ -166,7 +166,7 @@ func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 // Only raw slashes are merged, an encoded %2F never matches a slash (see [MergeSlashes]). When combined
 // with [WithCollapseDotSegments], slashes are merged before dot segments are collapsed.
 //
-// This option applies globally to all routes and cannot be configured per-route.
+// This option applies globally to all routes.
 func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		if opt >= normalizeOptionSentinel {
@@ -190,7 +190,7 @@ func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 //
 // When combined with [WithMergeSlashes], slashes are merged before dot segments are collapsed.
 //
-// This option applies globally to all routes and cannot be configured per-route.
+// This option applies globally to all routes.
 func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		if opt >= normalizeOptionSentinel {
@@ -201,10 +201,10 @@ func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 	})
 }
 
-// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) requests whose
-// escaped path is not a valid encoding. When disabled, the path is matched as-is from the first malformed
-// escape and non-routable bytes are percent-encoded in place (see [Context.RoutingPath]).
-// This option is disabled by default and applies globally to all routes.
+// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) any request
+// path containing a malformed escape sequence or a character that can never appear unescaped
+// in a routing path. When disabled, such requests are matched on their routing path (see [Context.RoutingPath]).
+// This option is disabled by default.
 func WithStrictPathEncoding(enable bool) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.strictPathEncoding = enable

@@ -264,7 +264,7 @@ Fox matches requests against a canonical routing path. Percent-encoded
 [unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) are
 decoded, while every other escape sequence is normalized to uppercase hex (`%2f` becomes `%2F`) and stays
 distinct from its decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths. Characters that can
-never appear raw in a path, like `é` or `{`, are percent-encoded.
+never appear unescaped in a path, like `é` or `{`, are percent-encoded.
 
 #### Priority rules
 

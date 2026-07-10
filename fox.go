@@ -1054,7 +1054,7 @@ func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request,
 
 // routingPath returns the canonical routing path for the request and reports whether the
 // escaped path is well-formed, i.e. free of malformed escapes and of bytes that can never
-// appear raw in a routing path. See [WithStrictPathEncoding].
+// appear unescaped in a routing path. See [WithStrictPathEncoding].
 func routingPath(r *http.Request) (string, bool) {
 	u := r.URL
 	if u.RawPath == "" {
