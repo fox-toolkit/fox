@@ -633,6 +633,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	orig := r
 	rewritten := false
 	malformed := false
+	nonCanonical := false
 	if !ok {
 		if fox.strictPathEncoding {
 			c.route = nil
@@ -682,6 +683,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			nonCanonical = true
 			goto NoMatch
 		case len(normalized) != len(path):
 			path = normalized
@@ -780,33 +782,35 @@ NoMatch:
 			return
 		}
 
-		// Since different method and route may match (e.g. GET /foo/bar & POST /foo/{name}), we cannot set the path and params.
-		seen := make(map[string]struct{})
-		for method := range tree.methods {
-			if _, ok := seen[method]; ok {
-				continue
-			}
-			if idx, n, tsr := tree.lookup(method, r.Host, path, c, true); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
-				for _, m := range n.routes[idx].methods {
-					seen[m] = struct{}{}
+		if !nonCanonical {
+			// Since different method and route may match (e.g. GET /foo/bar & POST /foo/{name}), we cannot set the path and params.
+			seen := make(map[string]struct{})
+			for method := range tree.methods {
+				if _, ok := seen[method]; ok {
+					continue
+				}
+				if idx, n, tsr := tree.lookup(method, r.Host, path, c, true); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
+					for _, m := range n.routes[idx].methods {
+						seen[m] = struct{}{}
+					}
 				}
 			}
-		}
 
-		if len(seen) > 0 {
-			var sb strings.Builder
-			sb.Grow(150)
-			sb.WriteString(http.MethodOptions)
-			for method := range seen {
-				sb.WriteString(", ")
-				sb.WriteString(method)
+			if len(seen) > 0 {
+				var sb strings.Builder
+				sb.Grow(150)
+				sb.WriteString(http.MethodOptions)
+				for method := range seen {
+					sb.WriteString(", ")
+					sb.WriteString(method)
+				}
+				w.Header().Set(HeaderAllow, sb.String())
+				c.scope = OptionsHandler
+				fox.autoOPTIONS(c)
+				return
 			}
-			w.Header().Set(HeaderAllow, sb.String())
-			c.scope = OptionsHandler
-			fox.autoOPTIONS(c)
-			return
 		}
-	} else if fox.handleMethodNotAllowed {
+	} else if fox.handleMethodNotAllowed && !nonCanonical {
 
 		seen := make(map[string]struct{})
 		seen[r.Method] = struct{}{}

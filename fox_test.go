@@ -2693,23 +2693,6 @@ func TestRouter_ServeHTTP_RedirectPath(t *testing.T) {
 		})
 	}
 
-	t.Run("not found instead of method not allowed on raw path", func(t *testing.T) {
-		f := MustRouter(WithMergeSlashes(RedirectPath), WithNoMethod(true))
-		require.NoError(t, onlyError(f.Add(MethodPost, "/foo/bar", emptyHandler)))
-
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo//bar", nil))
-		assert.Equal(t, http.StatusNotFound, w.Code)
-
-		w = httptest.NewRecorder()
-		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/bar", nil))
-		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
-
-		w = httptest.NewRecorder()
-		f.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/foo//bar", nil))
-		assert.Equal(t, http.StatusPermanentRedirect, w.Code)
-		assert.Equal(t, "/foo/bar", w.Header().Get(HeaderLocation))
-	})
 }
 
 func TestRouter_NormalizePathTrailingSlash(t *testing.T) {
@@ -5160,6 +5143,93 @@ func TestRouter_RedirectPathSingleOp(t *testing.T) {
 		w := httptest.NewRecorder()
 		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/..//b", nil))
 		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestRouter_RedirectPathMethodNotAllowed(t *testing.T) {
+	t.Run("static route", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/foo/bar", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo//bar", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+
+		w = httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/bar", nil))
+		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		assert.Equal(t, "POST", w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("wildcard route matching the raw path", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/files/+{path}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/files//x", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("param route matching a raw dot segment", func(t *testing.T) {
+		f := MustRouter(WithCollapseDotSegments(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/foo/{param}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/..", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("consecutive slashes canonical when merge disabled", func(t *testing.T) {
+		f := MustRouter(WithCollapseDotSegments(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/files/+{path}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/files//x", nil))
+		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		assert.Equal(t, "POST", w.Header().Get(HeaderAllow))
+	})
+}
+
+func TestRouter_RedirectPathAutoOptions(t *testing.T) {
+	t.Run("not found on non-canonical path", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithAutoOptions(true))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/files/+{path}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/files//x", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+
+		w = httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/files/x", nil))
+		assert.Equal(t, http.StatusNoContent, w.Code)
+		assert.Equal(t, "OPTIONS, GET", w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("preflight ignores non-canonical path", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithAutoOptions(true))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/files/+{path}", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodOptions, "/files//x", nil)
+		req.Header.Set(HeaderOrigin, "https://example.com")
+		req.Header.Set(HeaderAccessControlRequestMethod, http.MethodGet)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNoContent, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("registered options route redirected", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithAutoOptions(true))
+		require.NoError(t, onlyError(f.Add(MethodOptions, "/foo/bar", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/foo//bar", nil))
+		assert.Equal(t, http.StatusPermanentRedirect, w.Code)
+		assert.Equal(t, "/foo/bar", w.Header().Get(HeaderLocation))
 	})
 }
 
