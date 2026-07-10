@@ -706,7 +706,7 @@ func TestWithHandleTrailingSlash_LeadingDoubleSlash(t *testing.T) {
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "example.com//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
 	assert.NoError(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RelaxedSlash))))
-	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithHandleTrailingSlash(StrictSlash))))
+	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithHandleTrailingSlash(ExactSlash))))
 }
 
 func TestWithQueryMatcher(t *testing.T) {

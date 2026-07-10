@@ -117,6 +117,7 @@ type Router struct {
 	mergeSlash             NormalizeOption
 	collapseDots           NormalizeOption
 	hasNormalize           bool
+	hasRedirectPath        bool
 	handleMethodNotAllowed bool
 	handleOPTIONS          bool
 	systemWideOPTIONS      bool
@@ -136,9 +137,9 @@ func initRouter() *Router {
 	r.maxParams = math.MaxUint8
 	r.maxParamKeyBytes = math.MaxUint8
 	r.maxMatchers = math.MaxUint8
-	r.handleSlash = StrictSlash
-	r.mergeSlash = StrictPath
-	r.collapseDots = StrictPath
+	r.handleSlash = ExactSlash
+	r.mergeSlash = ExactPath
+	r.collapseDots = ExactPath
 	r.systemWideOPTIONS = true
 	return r
 }
@@ -187,10 +188,8 @@ func NewRouter(opts ...GlobalOption) (*Router, error) {
 		}
 	}
 
-	if router.mergeSlash >= RelaxedPath && router.collapseDots >= RelaxedPath && router.mergeSlash != router.collapseDots {
-		return nil, fmt.Errorf("%w: merge slashes and collapse dot segments fallback modes must match", ErrInvalidConfig)
-	}
-	router.hasNormalize = router.mergeSlash == NormalizePath || router.collapseDots == NormalizePath
+	router.hasNormalize = router.mergeSlash != ExactPath || router.collapseDots != ExactPath
+	router.hasRedirectPath = router.mergeSlash == RedirectPath || router.collapseDots == RedirectPath
 
 	router.noRoute = applyMiddleware(NoRouteHandler, router.mws, router.noRouteBase)
 	router.noMethod = applyMiddleware(NoMethodHandler, router.mws, router.noMethod)
@@ -475,7 +474,7 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 	// A trailing slash redirect on a path starting with "//" would produce a protocol-relative
 	// Location that browsers resolve to another host.
 	if rte.handleSlash == RedirectSlash && strings.HasPrefix(pat.str[pat.endHost:], "//") {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidRoute, "unsafe RedirectSlash on path starting with '//'")
+		return nil, fmt.Errorf("%w: %s", ErrInvalidRoute, "unsafe trailing slash redirect on path starting with '//'")
 	}
 
 	rte.priority = cmp.Or(rte.priority, uint(len(rte.matchers)))
@@ -633,9 +632,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path, ok := routingPath(r)
 	orig := r
 	rewritten := false
-	// A frozen path (malformed escape) has no valid URL representation, so it cannot be
-	// rewritten and should never source a redirect Location.
-	frozen := false
+	malformed := false
 	if !ok {
 		if fox.strictPathEncoding {
 			c.route = nil
@@ -644,25 +641,49 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Rewrite so downstream handlers (e.g. reverse proxies) forward the path the router
-		// routed on. No-op on a frozen path, which has no valid URL representation.
+		// routed on. No-op on a malformed path, which has no valid URL representation.
 		if req, rewrote := rewriteRequest(r, path, false); rewrote {
 			r = req
 			c.req = r
 			rewritten = true
 		} else {
-			frozen = true
+			malformed = true
 		}
 	}
 
 	if fox.hasNormalize {
-		normalized, ok := fox.normalizeRoutingPath(path)
+		var (
+			normalized string
+			redirect   bool
+			ok         bool
+		)
+		if fox.hasRedirectPath {
+			normalized, redirect, ok = fox.redirectRoutingPath(path)
+		} else {
+			normalized, ok = fox.normalizeRoutingPath(path)
+		}
 		if !ok {
 			c.route = nil
 			c.scope = RejectPathHandler
 			fox.pathReject(c)
 			return
 		}
-		if len(normalized) != len(path) {
+		switch {
+		case redirect:
+			// A "." or ".." path element in the Location may be resolved by the client,
+			// redirecting to a different path.
+			if r.Method != http.MethodConnect && !malformed && (fox.collapseDots != ExactPath || !hasDotSegment(normalized)) {
+				if idx, n, tsr := tree.lookup(r.Method, r.Host, normalized, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != ExactSlash) {
+					c.route = nil
+					r.Pattern = ""
+					orig.Pattern = ""
+					c.scope = RedirectPathHandler
+					fox.pathRedirect(c)
+					return
+				}
+			}
+			goto NoMatch
+		case len(normalized) != len(path):
 			path = normalized
 			if req, rewrote := rewriteRequest(r, normalized, rewritten); rewrote {
 				r = req
@@ -672,88 +693,37 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
-	if !tsr && n != nil {
+	if idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false); !tsr && n != nil {
 		c.route = n.routes[idx]
 		r.Pattern = c.route.pattern.str
 		orig.Pattern = r.Pattern
 		c.route.hall(c)
 		return
-	}
-
-	if r.Method != http.MethodConnect && r.URL.Path != "/" {
-		if tsr && n != nil {
-			route := n.routes[idx]
-			if route.handleSlash == RelaxedSlash {
-				c.route = route
-				r.Pattern = route.pattern.str
-				orig.Pattern = r.Pattern
-				c.req, _ = rewriteRequest(r, fixTrailingSlash(path), rewritten)
-				c.route.hall(c)
-				return
-			}
-
-			// A "." or ".." path element in the Location may be resolved by the client,
-			// redirecting to a different path.
-			if route.handleSlash == RedirectSlash && !frozen && !hasDotSegment(path) {
-				*c.params = (*c.params)[:0]
-				c.route = nil
-				r.Pattern = ""
-				orig.Pattern = ""
-				c.scope = RedirectSlashHandler
-				fox.tsrRedirect(c)
-				return
-			}
+	} else if tsr && n != nil && r.Method != http.MethodConnect && r.URL.Path != "/" {
+		route := n.routes[idx]
+		if route.handleSlash == RelaxedSlash {
+			c.route = route
+			r.Pattern = route.pattern.str
+			orig.Pattern = r.Pattern
+			c.req, _ = rewriteRequest(r, fixTrailingSlash(path), rewritten)
+			c.route.hall(c)
+			return
 		}
 
-		if fox.mergeSlash >= RelaxedPath || fox.collapseDots >= RelaxedPath {
-			fallbackPath, ok := fox.fallbackRoutingPath(path)
-			if !ok {
-				*c.params = (*c.params)[:0]
-				c.route = nil
-				r.Pattern = ""
-				orig.Pattern = ""
-				c.scope = RejectPathHandler
-				fox.pathReject(c)
-				return
-			}
-
-			if len(fallbackPath) != len(path) {
-				// Note: fallback modes MUST always match
-				switch max(fox.mergeSlash, fox.collapseDots) {
-				case RelaxedPath:
-					*c.params = (*c.params)[:0]
-					if idx, n, tsr := tree.lookup(r.Method, r.Host, fallbackPath, c, false); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
-						c.route = n.routes[idx]
-						r.Pattern = c.route.pattern.str
-						orig.Pattern = r.Pattern
-						if tsr {
-							fallbackPath = fixTrailingSlash(fallbackPath)
-						}
-						c.req, _ = rewriteRequest(r, fallbackPath, rewritten)
-						c.route.hall(c)
-						return
-					}
-				case RedirectPath:
-					// A "." or ".." path element in the Location may be resolved by the client,
-					// redirecting to a different path.
-					if !frozen && (fox.collapseDots >= RelaxedPath || !hasDotSegment(fallbackPath)) {
-						if idx, n, tsr := tree.lookup(r.Method, r.Host, fallbackPath, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != StrictSlash) {
-							*c.params = (*c.params)[:0]
-							c.route = nil
-							r.Pattern = ""
-							orig.Pattern = ""
-							c.scope = RedirectPathHandler
-							fox.pathRedirect(c)
-							return
-						}
-					}
-				default:
-				}
-			}
+		// A "." or ".." path element in the Location may be resolved by the client,
+		// redirecting to a different path.
+		if route.handleSlash == RedirectSlash && !malformed && !hasDotSegment(path) {
+			*c.params = (*c.params)[:0]
+			c.route = nil
+			r.Pattern = ""
+			orig.Pattern = ""
+			c.scope = RedirectSlashHandler
+			fox.tsrRedirect(c)
+			return
 		}
 	}
 
+NoMatch:
 	*c.params = (*c.params)[:0]
 	c.route = nil
 	r.Pattern = ""
@@ -907,28 +877,36 @@ func DefaultRejectPathHandler(c *Context) {
 	http.Error(c.Writer(), http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 }
 
-// normalizeRoutingPath applies the NormalizePath operations to path. It returns ok=false
+// normalizeRoutingPath applies the active normalization passes to path. It returns ok=false
 // when the path must be rejected.
 func (fox *Router) normalizeRoutingPath(path string) (string, bool) {
-	if fox.mergeSlash == NormalizePath {
+	if fox.mergeSlash != ExactPath {
 		path = MergeSlashes(path)
 	}
-	if fox.collapseDots == NormalizePath {
+	if fox.collapseDots != ExactPath {
 		return CollapseDotSegments(path)
 	}
 	return path, true
 }
 
-// fallbackRoutingPath applies the fallback (RelaxedPath or RedirectPath) operations to path.
-// It returns ok=false when the path must be rejected.
-func (fox *Router) fallbackRoutingPath(path string) (string, bool) {
-	if fox.mergeSlash >= RelaxedPath {
-		path = MergeSlashes(path)
+// redirectRoutingPath is like normalizeRoutingPath, but also reports whether a RedirectPath
+// pass changed the path. In a mixed configuration, only a change made by a pass in RedirectPath
+// mode triggers a redirect. Both passes only remove bytes, so a change always shows in the length.
+func (fox *Router) redirectRoutingPath(path string) (_ string, redirect, ok bool) {
+	if fox.mergeSlash != ExactPath {
+		merged := MergeSlashes(path)
+		redirect = len(merged) != len(path) && fox.mergeSlash == RedirectPath
+		path = merged
 	}
-	if fox.collapseDots >= RelaxedPath {
-		return CollapseDotSegments(path)
+	if fox.collapseDots != ExactPath {
+		collapsed, ok := CollapseDotSegments(path)
+		if !ok {
+			return "", false, false
+		}
+		redirect = redirect || (len(collapsed) != len(path) && fox.collapseDots == RedirectPath)
+		path = collapsed
 	}
-	return path, true
+	return path, redirect, true
 }
 
 func internalTrailingSlashHandler(c *Context) {
@@ -1025,24 +1003,24 @@ func internalPathRedirectHandler(c *Context) {
 		code = http.StatusPermanentRedirect
 	}
 
-	fallbackPath, ok := c.fox.fallbackRoutingPath(c.RoutingPath())
+	target, ok := c.fox.normalizeRoutingPath(c.RoutingPath())
 	if !ok {
 		c.scope = RejectPathHandler
 		c.fox.pathRejectBase(c)
 		return
 	}
-	fallbackPath = escapeLeadingSlashes(fallbackPath)
+	target = escapeLeadingSlashes(target)
 	if q := req.URL.RawQuery; q != "" {
-		fallbackPath += "?" + q
+		target += "?" + q
 	}
 
-	redirect(c.Writer(), req, fallbackPath, code)
+	redirect(c.Writer(), req, target, code)
 }
 
 // rewriteRequest returns a request whose URL is set to the escaped routing path, so downstream
 // handlers (e.g. reverse proxies) see the path the router matched on. Unless owned, the request
 // is shallow copied so the caller's request is never mutated. Note that a path containing malformed
-// escape sequence has no valid URL representation and returns r as-is (frozen).
+// escape sequence has no valid URL representation and returns r as-is.
 func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request, bool) {
 	p, err := url.PathUnescape(escaped)
 	if err != nil {
