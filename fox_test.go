@@ -4609,11 +4609,11 @@ func atomicSync() (start func(), wait func()) {
 	return
 }
 
-// This example demonstrates how to create a simple router with the default options
-// combined with pretty logging, which registers the Recovery and Logger middleware.
+// This example demonstrates how to create a simple router with pretty logging,
+// which registers the Recovery and Logger middleware.
 func ExampleNewRouter() {
-	// Create a new router with default options and pretty logging (Recovery + Logger middleware).
-	r, _ := NewRouter(DefaultOptions(), WithPrettyLogs())
+	// Create a new router with pretty logging (Recovery + Logger middleware).
+	r, _ := NewRouter(WithPrettyLogs())
 
 	// Define a route with the path "/hello/{name}", and set a simple handler that greets the
 	// user by their name.

@@ -557,24 +557,3 @@ func WithPrettyLogs() GlobalOption {
 		return nil
 	})
 }
-
-// DefaultOptions configures the router with sensible production defaults:
-//   - Enables automatic OPTIONS responses ([WithAutoOptions])
-//   - Enables 405 Method Not Allowed responses ([WithNoMethod])
-//   - Enables regular expression support in route parameters ([AllowRegexpParam])
-//   - Enables redirect-based path correction for trailing slashes ([WithHandleTrailingSlash] with [RedirectSlash])
-//   - Enables redirect-based path correction for non-canonical paths ([WithMergeSlashes] and
-//     [WithCollapseDotSegments] with [RedirectPath])
-//
-// For development, consider combining this with [WithPrettyLogs] to add debugging middleware.
-func DefaultOptions() GlobalOption {
-	return optionFunc(func(s sealedOption) error {
-		s.router.handleOPTIONS = true
-		s.router.handleMethodNotAllowed = true
-		s.router.allowRegexp = true
-		s.router.mergeSlash = RedirectPath
-		s.router.collapseDots = RedirectPath
-		s.router.handleSlash = RedirectSlash
-		return nil
-	})
-}

@@ -101,7 +101,7 @@ func HelloServer(c *fox.Context) {
 }
 
 func main() {
-	f := fox.MustRouter(fox.DefaultOptions())
+	f := fox.MustRouter()
 
 	f.MustAdd([]string{http.MethodHead, http.MethodGet}, "/hello/{name}", HelloServer)
 
@@ -396,7 +396,7 @@ func Action(c *fox.Context) {
 }
 
 func main() {
-	f := fox.MustRouter(fox.DefaultOptions())
+	f := fox.MustRouter()
 
 	f.MustAdd(fox.MethodPost, "/routes/{action}", Action)
 
@@ -654,7 +654,6 @@ func main() {
 		panic(err)
 	}
 	f := fox.MustRouter(
-		fox.DefaultOptions(),
 		fox.WithClientIPResolver(
 			resolver,
 		),
@@ -678,7 +677,6 @@ It is also possible to create a chain with multiple resolvers that attempt to de
 ````go
 resolver, _ := clientip.NewLeftmostNonPrivate(clientip.ForwardedKey, 10)
 f := fox.MustRouter(
-	fox.DefaultOptions(),
 	fox.WithClientIPResolver(
 		// A common use for this is if a server is both directly connected to the
 		// internet and expecting a header to check.

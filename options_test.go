@@ -15,13 +15,14 @@ import (
 )
 
 func TestNewRouter_Defaults(t *testing.T) {
-	f, _ := NewRouter(DefaultOptions())
-	assert.True(t, f.handleOPTIONS)
-	assert.True(t, f.handleMethodNotAllowed)
-	assert.True(t, f.allowRegexp)
-	assert.Equal(t, f.mergeSlash, RedirectPath)
-	assert.Equal(t, f.collapseDots, RedirectPath)
-	assert.Equal(t, f.handleSlash, RedirectSlash)
+	f, _ := NewRouter()
+	assert.False(t, f.handleOPTIONS)
+	assert.False(t, f.handleMethodNotAllowed)
+	assert.False(t, f.allowRegexp)
+	assert.False(t, f.strictPathEncoding)
+	assert.Equal(t, ExactPath, f.mergeSlash)
+	assert.Equal(t, ExactPath, f.collapseDots)
+	assert.Equal(t, ExactSlash, f.handleSlash)
 }
 
 func TestWithClientIPResolver(t *testing.T) {
