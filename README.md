@@ -426,11 +426,6 @@ func main() {
 }
 ````
 
-````shell
-curl -X PUT localhost:8080/upstreams \
-  -d '{"pattern": "api.example.com/payments/+{path}", "backend": "http://payments.internal"}'
-````
-
 #### ACID Transaction
 Fox supports read-write and read-only transactions (with Atomicity, Consistency, and Isolation; Durability is not supported 
 as transactions are in memory). Thread that route requests always see a consistent version of the routing tree and are 
