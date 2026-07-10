@@ -80,13 +80,13 @@ type Context struct {
 
 // reset resets the [Context] to its initial state, attaching the provided [http.ResponseWriter] and [http.Request].
 // Caution: always pass the original [http.ResponseWriter] to this method, not the [ResponseWriter] itself, to
-// avoid wrapping the [ResponseWriter] within itself. Use wisely! Note that ServeHTTP is managing the reset of
-// c.route and c.tsr.
+// avoid wrapping the [ResponseWriter] within itself. Use wisely!
 func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.rec.reset(w)
 	c.req = r
 	c.w = &c.rec
 	c.cachedQueries = nil
+	c.route = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
 }
