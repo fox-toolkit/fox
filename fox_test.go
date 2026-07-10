@@ -1266,7 +1266,7 @@ func TestRouter_ServeHTTP_Handle(t *testing.T) {
 		require.NoError(t, f.UpdateRoute(want))
 		got = f.Route(MethodGet, "/foo")
 		assert.Equal(t, want, got)
-		assert.Equal(t, StrictSlash, got.TrailingSlashOption())
+		assert.Equal(t, ExactSlash, got.TrailingSlashOption())
 	})
 
 	t.Run("route with invalid method", func(t *testing.T) {
@@ -2524,7 +2524,7 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 	}
 }
 
-func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
+func TestRouter_ServeHTTP_RedirectPath(t *testing.T) {
 	cases := []struct {
 		name         string
 		path         string
@@ -2537,7 +2537,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "redirect with consecutive slash",
 			path:         "/foo/bar",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo//bar",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
@@ -2546,7 +2546,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "redirect parent dir reference",
 			path:         "/bar",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo/../bar",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
@@ -2573,7 +2573,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:      "no redirect with consecutive slash and strict slash",
 			path:      "/foo/bar",
-			slashMode: StrictSlash,
+			slashMode: ExactSlash,
 			req:       "/foo//bar/",
 			method:    http.MethodPost,
 			wantCode:  http.StatusNotFound,
@@ -2590,7 +2590,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "redirect with consecutive slash and raw path",
 			path:         "/foo/{url}",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo//https%3A%2F%2Fbar%2Fbaz",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
@@ -2608,7 +2608,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "redirect with consecutive slash and query",
 			path:         "/foo/bar",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo//bar?1=2",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
@@ -2617,7 +2617,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "consecutive slash with encoded space in segment",
 			path:         "/foo/{bar}",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo//baz%20qux",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
@@ -2626,7 +2626,7 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "consecutive slash with lowercase hex in segment",
 			path:         "/foo/{bar}",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo//baz%2fqux",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
@@ -2635,11 +2635,28 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 		{
 			name:         "consecutive slash with encoded sub-delim in segment",
 			path:         "/foo/{bar}",
-			slashMode:    StrictSlash,
+			slashMode:    ExactSlash,
 			req:          "/foo//baz%21qux",
 			method:       http.MethodGet,
 			wantCode:     http.StatusMovedPermanently,
 			wantLocation: "/foo/baz%21qux",
+		},
+		{
+			name:      "no redirect when collapsed path does not match wildcard",
+			path:      "/files/+{path}",
+			slashMode: ExactSlash,
+			req:       "/files/a/../../etc/passwd",
+			method:    http.MethodGet,
+			wantCode:  http.StatusNotFound,
+		},
+		{
+			name:         "redirect with consecutive slash and wildcard",
+			path:         "/files/+{path}",
+			slashMode:    ExactSlash,
+			req:          "/files//secret",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/files/secret",
 		},
 	}
 
@@ -2675,100 +2692,49 @@ func TestRouter_ServeHTTP_RedirectFixedPath(t *testing.T) {
 			})
 		})
 	}
+
 }
 
-func TestRouter_ServeHTTP_RelaxedFixedPath(t *testing.T) {
+func TestRouter_NormalizePathTrailingSlash(t *testing.T) {
 	cases := []struct {
-		name      string
-		path      string
-		req       string
-		slashMode TrailingSlashOption
-		wantCode  int
+		name         string
+		slashMode    TrailingSlashOption
+		wantCode     int
+		wantLocation string
 	}{
 		{
-			name:      "handle with consecutive slash",
-			path:      "/foo/bar",
-			slashMode: StrictSlash,
-			req:       "/foo//bar",
-			wantCode:  http.StatusOK,
-		},
-		{
-			name:      "handle with consecutive slash and relaxed slash",
-			path:      "/foo/bar",
+			name:      "relaxed slash serves normalized path",
 			slashMode: RelaxedSlash,
-			req:       "/foo//bar/",
 			wantCode:  http.StatusOK,
 		},
 		{
-			name:      "do not handle with consecutive slash and strict slash",
-			path:      "/foo/bar",
-			slashMode: StrictSlash,
-			req:       "/foo//bar/",
+			name:      "exact slash does not match normalized path",
+			slashMode: ExactSlash,
 			wantCode:  http.StatusNotFound,
 		},
 		{
-			name:      "do not handle with consecutive slash and redirect slash",
-			path:      "/foo/bar",
-			slashMode: RedirectSlash,
-			req:       "/foo//bar/",
-			wantCode:  http.StatusNotFound,
-		},
-		{
-			name:      "handle with consecutive slash and raw path",
-			path:      "/foo/{url}",
-			slashMode: StrictSlash,
-			req:       "/foo//https%3A%2F%2Fbar%2Fbaz",
-			wantCode:  http.StatusOK,
-		},
-		{
-			name:      "handle parent dir reference",
-			path:      "/bar",
-			slashMode: StrictSlash,
-			req:       "/foo/../bar",
-			wantCode:  http.StatusOK,
-		},
-		{
-			name:      "handle with consecutive slash and query",
-			path:      "/foo/bar",
-			slashMode: StrictSlash,
-			req:       "/foo//bar?1=2",
-			wantCode:  http.StatusOK,
+			name:         "redirect slash fixes normalized path",
+			slashMode:    RedirectSlash,
+			wantCode:     http.StatusMovedPermanently,
+			wantLocation: "/foo/bar",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithMergeSlashes(RelaxedPath), WithCollapseDotSegments(RelaxedPath), WithHandleTrailingSlash(tc.slashMode))
-			rf := f.RouterInfo()
-			assert.Equal(t, RelaxedPath, rf.MergeSlashes)
-			assert.Equal(t, RelaxedPath, rf.CollapseDotSegments)
+			f := MustRouter(WithMergeSlashes(NormalizePath), WithHandleTrailingSlash(tc.slashMode))
+			require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
 
-			require.NoError(t, onlyError(f.Add(MethodGet, tc.path, func(c *Context) {
-				c.Writer().WriteHeader(tc.wantCode)
-			})))
-
-			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
+			req := httptest.NewRequest(http.MethodGet, "/foo//bar/", nil)
 			w := httptest.NewRecorder()
 			f.ServeHTTP(w, req)
 			assert.Equal(t, tc.wantCode, w.Code)
-
-			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithMergeSlashes(RelaxedPath), WithCollapseDotSegments(RelaxedPath), WithHandleTrailingSlash(tc.slashMode))
-
-				require.NoError(t, onlyError(f.Add(MethodAny, tc.path, func(c *Context) {
-					c.Writer().WriteHeader(tc.wantCode)
-				})))
-
-				req := httptest.NewRequest(http.MethodGet, tc.req, nil)
-				w := httptest.NewRecorder()
-				f.ServeHTTP(w, req)
-				assert.Equal(t, tc.wantCode, w.Code)
-			})
+			assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
 		})
 	}
 }
 
-func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
+func TestRouter_ServeHTTP_NormalizeRewriteURL(t *testing.T) {
 	cases := []struct {
 		name        string
 		path        string
@@ -2796,14 +2762,14 @@ func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
 			name:      "clean consecutive slash",
 			path:      "/foo/bar",
 			req:       "/foo//bar",
-			fixedMode: RelaxedPath,
+			fixedMode: NormalizePath,
 			wantPath:  "/foo/bar",
 		},
 		{
 			name:      "clean encoded dot segments",
 			path:      "/foo/bar",
 			req:       "/baz/%2E%2E/foo/bar",
-			fixedMode: RelaxedPath,
+			fixedMode: NormalizePath,
 			wantPath:  "/foo/bar",
 		},
 		{
@@ -2811,7 +2777,7 @@ func TestRouter_ServeHTTP_RelaxedModeRewriteURL(t *testing.T) {
 			path:      "/foo",
 			req:       "//foo/",
 			slashMode: RelaxedSlash,
-			fixedMode: RelaxedPath,
+			fixedMode: NormalizePath,
 			wantPath:  "/foo",
 		},
 		{
@@ -4167,18 +4133,6 @@ func TestRouter_ServeHTTP_EncodedDotSegments(t *testing.T) {
 		assert.Equal(t, "..", got)
 	})
 
-	t.Run("relaxed path collapses encoded dots", func(t *testing.T) {
-		f, _ := NewRouter(WithMergeSlashes(RelaxedPath), WithCollapseDotSegments(RelaxedPath))
-		var pattern string
-		require.NoError(t, onlyError(f.Add(MethodGet, "/bar", func(c *Context) {
-			pattern = c.Pattern()
-		})))
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/%2E%2E/bar", nil))
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "/bar", pattern)
-	})
-
 	t.Run("redirect path collapses encoded dots", func(t *testing.T) {
 		f, _ := NewRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RedirectPath))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
@@ -4655,11 +4609,11 @@ func atomicSync() (start func(), wait func()) {
 	return
 }
 
-// This example demonstrates how to create a simple router with the default options
-// combined with pretty logging, which registers the Recovery and Logger middleware.
+// This example demonstrates how to create a simple router with pretty logging,
+// which registers the Recovery and Logger middleware.
 func ExampleNewRouter() {
-	// Create a new router with default options and pretty logging (Recovery + Logger middleware).
-	r, _ := NewRouter(DefaultOptions(), WithPrettyLogs())
+	// Create a new router with pretty logging (Recovery + Logger middleware).
+	r, _ := NewRouter(WithPrettyLogs())
 
 	// Define a route with the path "/hello/{name}", and set a simple handler that greets the
 	// user by their name.
@@ -4845,15 +4799,26 @@ func TestRouter_NormalizePathMergeSlashes(t *testing.T) {
 		assert.Equal(t, "a/../b", captured)
 	})
 
-	t.Run("consecutive slash pattern rejected", func(t *testing.T) {
+	t.Run("merged path preserves encoded slash in param", func(t *testing.T) {
 		f := MustRouter(WithMergeSlashes(NormalizePath))
-		err := onlyError(f.Add(MethodGet, "/a//b", emptyHandler))
-		assert.ErrorAs(t, err, new(*PatternError))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/{url}", func(c *Context) {
+			assert.Equal(t, "/foo/https%3A%2F%2Fbar%2Fbaz", c.RoutingPath())
+		})))
 
-		for _, opt := range []NormalizeOption{StrictPath, RelaxedPath, RedirectPath} {
-			f := MustRouter(WithMergeSlashes(opt), WithCollapseDotSegments(opt))
-			assert.NoError(t, onlyError(f.Add(MethodGet, "/a//b", emptyHandler)))
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo//https%3A%2F%2Fbar%2Fbaz", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("consecutive slash pattern rejected", func(t *testing.T) {
+		for _, opt := range []NormalizeOption{NormalizePath, RedirectPath} {
+			f := MustRouter(WithMergeSlashes(opt))
+			err := onlyError(f.Add(MethodGet, "/a//b", emptyHandler))
+			assert.ErrorAs(t, err, new(*PatternError))
 		}
+
+		f := MustRouter(WithCollapseDotSegments(RedirectPath))
+		assert.NoError(t, onlyError(f.Add(MethodGet, "/a//b", emptyHandler)))
 	})
 }
 
@@ -5081,7 +5046,7 @@ func TestRouter_StrictPathEncoding(t *testing.T) {
 	})
 }
 
-func TestRouter_NormalizeMixedTiming(t *testing.T) {
+func TestRouter_NormalizeMixedModes(t *testing.T) {
 	t.Run("merge normalize with collapse redirect", func(t *testing.T) {
 		f := MustRouter(WithMergeSlashes(NormalizePath), WithCollapseDotSegments(RedirectPath))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/b", emptyHandler)))
@@ -5092,45 +5057,90 @@ func TestRouter_NormalizeMixedTiming(t *testing.T) {
 		assert.Equal(t, "/b", w.Header().Get(HeaderLocation))
 	})
 
-	t.Run("collapse normalize with merge relaxed", func(t *testing.T) {
-		f := MustRouter(WithCollapseDotSegments(NormalizePath), WithMergeSlashes(RelaxedPath))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/c/d", func(c *Context) {
-			assert.Equal(t, "/c/d", c.RoutingPath())
-			c.Writer().WriteHeader(http.StatusOK)
-		})))
+	t.Run("merge normalize alone stays silent", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(NormalizePath), WithCollapseDotSegments(RedirectPath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/a/b", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/a//b", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("merge redirect with collapse normalize", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(NormalizePath))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/c/d", emptyHandler)))
 
 		w := httptest.NewRecorder()
 		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/c//./d", nil))
-		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/c/d", w.Header().Get(HeaderLocation))
 	})
 }
 
-func TestRouter_NormalizeRedirectMutatedRequestRejected(t *testing.T) {
-	f := MustRouter(
-		WithCollapseDotSegments(RedirectPath),
-		WithMiddlewareFor(RedirectPathHandler, func(next HandlerFunc) HandlerFunc {
-			return func(c *Context) {
-				c.SetRequest(httptest.NewRequest(http.MethodGet, "/../x", nil))
-				next(c)
-			}
-		}),
-	)
-	require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+func TestRouter_RedirectPathMutatedRequest(t *testing.T) {
+	cases := []struct {
+		name         string
+		mutated      string
+		wantLocation string
+	}{
+		{
+			name:         "recompute follows the rewritten path",
+			mutated:      "/api/foo/../bar",
+			wantLocation: "/api/bar",
+		},
+		{
+			name:         "above root falls back to root",
+			mutated:      "/../x",
+			wantLocation: "/",
+		},
+	}
 
-	w := httptest.NewRecorder()
-	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/../bar", nil))
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Empty(t, w.Header().Get(HeaderLocation))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := MustRouter(
+				WithCollapseDotSegments(RedirectPath),
+				WithMiddlewareFor(RedirectPathHandler, func(next HandlerFunc) HandlerFunc {
+					return func(c *Context) {
+						c.SetRequest(httptest.NewRequest(http.MethodGet, tc.mutated, nil))
+						next(c)
+					}
+				}),
+			)
+			require.NoError(t, onlyError(f.Add(MethodGet, "/bar", emptyHandler)))
+
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/../bar", nil))
+			assert.Equal(t, http.StatusMovedPermanently, w.Code)
+			assert.Equal(t, tc.wantLocation, w.Header().Get(HeaderLocation))
+		})
+	}
 }
 
-func TestRouter_NormalizeFallbackRejectAboveRoot(t *testing.T) {
-	for _, opt := range []NormalizeOption{RelaxedPath, RedirectPath} {
-		f := MustRouter(WithCollapseDotSegments(opt))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/etc", emptyHandler)))
+func TestRouter_RedirectPathAboveRootRejected(t *testing.T) {
+	f := MustRouter(WithCollapseDotSegments(RedirectPath))
+	require.NoError(t, onlyError(f.Add(MethodGet, "/+{any}", emptyHandler)))
+
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/../etc", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRouter_ConnectExactMatch(t *testing.T) {
+	for _, opt := range []NormalizeOption{NormalizePath, RedirectPath} {
+		f := MustRouter(WithMergeSlashes(opt), WithCollapseDotSegments(opt), WithHandleTrailingSlash(RedirectSlash))
+		require.NoError(t, onlyError(f.Add(MethodConnect, "/a/b", emptyHandler)))
+		require.NoError(t, onlyError(f.Add(MethodConnect, "/c/d/", emptyHandler)))
 
 		w := httptest.NewRecorder()
-		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/../etc", nil))
-		assert.Equal(t, http.StatusBadRequest, w.Code)
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodConnect, "/a/b", nil))
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		for _, target := range []string{"/a//b", "/a/x/../b", "/../b", "/c/d"} {
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, httptest.NewRequest(http.MethodConnect, target, nil))
+			assert.Equal(t, http.StatusNotFound, w.Code)
+			assert.Empty(t, w.Header().Get(HeaderLocation))
+		}
 	}
 }
 
@@ -5145,26 +5155,7 @@ func TestRouter_NormalizeInvalidOptions(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidConfig)
 }
 
-func TestRouter_NormalizeMixedFallbackModes(t *testing.T) {
-	_, err := NewRouter(WithMergeSlashes(RelaxedPath), WithCollapseDotSegments(RedirectPath))
-	assert.ErrorIs(t, err, ErrInvalidConfig)
-
-	_, err = NewRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RelaxedPath))
-	assert.ErrorIs(t, err, ErrInvalidConfig)
-
-	for _, opts := range [][]GlobalOption{
-		{WithMergeSlashes(NormalizePath), WithCollapseDotSegments(RedirectPath)},
-		{WithMergeSlashes(RelaxedPath), WithCollapseDotSegments(NormalizePath)},
-		{WithMergeSlashes(RelaxedPath), WithCollapseDotSegments(RelaxedPath)},
-		{WithMergeSlashes(RedirectPath)},
-		{WithCollapseDotSegments(RelaxedPath)},
-	} {
-		_, err := NewRouter(opts...)
-		assert.NoError(t, err)
-	}
-}
-
-func TestRouter_NormalizeFallbackSingleOp(t *testing.T) {
+func TestRouter_RedirectPathSingleOp(t *testing.T) {
 	t.Run("collapse redirect preserves consecutive slashes", func(t *testing.T) {
 		f := MustRouter(WithCollapseDotSegments(RedirectPath))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/a//b", emptyHandler)))
@@ -5192,6 +5183,93 @@ func TestRouter_NormalizeFallbackSingleOp(t *testing.T) {
 		w := httptest.NewRecorder()
 		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/..//b", nil))
 		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestRouter_RedirectPathMethodNotAllowed(t *testing.T) {
+	t.Run("static route", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/foo/bar", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo//bar", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+
+		w = httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/bar", nil))
+		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		assert.Equal(t, "POST", w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("wildcard route matching the raw path", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/files/+{path}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/files//x", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("param route matching a raw dot segment", func(t *testing.T) {
+		f := MustRouter(WithCollapseDotSegments(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/foo/{param}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo/..", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("consecutive slashes canonical when merge disabled", func(t *testing.T) {
+		f := MustRouter(WithCollapseDotSegments(RedirectPath), WithNoMethod(true))
+		require.NoError(t, onlyError(f.Add(MethodPost, "/files/+{path}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/files//x", nil))
+		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+		assert.Equal(t, "POST", w.Header().Get(HeaderAllow))
+	})
+}
+
+func TestRouter_RedirectPathAutoOptions(t *testing.T) {
+	t.Run("not found on non-canonical path", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithAutoOptions(true))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/files/+{path}", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/files//x", nil))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+
+		w = httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/files/x", nil))
+		assert.Equal(t, http.StatusNoContent, w.Code)
+		assert.Equal(t, "OPTIONS, GET", w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("preflight ignores non-canonical path", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithAutoOptions(true))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/files/+{path}", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodOptions, "/files//x", nil)
+		req.Header.Set(HeaderOrigin, "https://example.com")
+		req.Header.Set(HeaderAccessControlRequestMethod, http.MethodGet)
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNoContent, w.Code)
+		assert.Empty(t, w.Header().Get(HeaderAllow))
+	})
+
+	t.Run("registered options route redirected", func(t *testing.T) {
+		f := MustRouter(WithMergeSlashes(RedirectPath), WithAutoOptions(true))
+		require.NoError(t, onlyError(f.Add(MethodOptions, "/foo/bar", emptyHandler)))
+
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, "/foo//bar", nil))
+		assert.Equal(t, http.StatusPermanentRedirect, w.Code)
+		assert.Equal(t, "/foo/bar", w.Header().Get(HeaderLocation))
 	})
 }
 
@@ -5224,7 +5302,11 @@ func FuzzRouter_ServeHTTP_NormalizeSecurity(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, target string) {
-		f := MustRouter(WithMergeSlashes(NormalizePath), WithCollapseDotSegments(NormalizePath))
+		u, err := url.ParseRequestURI(target)
+		if err != nil || u.Scheme != "" || u.Host != "" {
+			t.Skip()
+		}
+
 		check := func(c *Context) {
 			rp := c.RoutingPath()
 			assert.NotContains(t, rp, "//")
@@ -5234,15 +5316,15 @@ func FuzzRouter_ServeHTTP_NormalizeSecurity(f *testing.F) {
 				assert.False(t, hasDotSegment("/"+p.Value))
 			}
 		}
-		require.NoError(t, onlyError(f.Add(MethodGet, "/*{all}", check)))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/files/+{path}", check)))
 
-		u, err := url.ParseRequestURI(target)
-		if err != nil || u.Scheme != "" || u.Host != "" {
-			t.Skip()
+		for _, opt := range []NormalizeOption{NormalizePath, RedirectPath} {
+			f := MustRouter(WithMergeSlashes(opt), WithCollapseDotSegments(opt))
+			require.NoError(t, onlyError(f.Add(MethodGet, "/*{all}", check)))
+			require.NoError(t, onlyError(f.Add(MethodGet, "/files/+{path}", check)))
+
+			req := &http.Request{Method: http.MethodGet, URL: u, Host: "fuzz.local", RemoteAddr: "1.2.3.4:5678"}
+			w := httptest.NewRecorder()
+			f.ServeHTTP(w, req)
 		}
-		req := &http.Request{Method: http.MethodGet, URL: u, Host: "fuzz.local", RemoteAddr: "1.2.3.4:5678"}
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, req)
 	})
 }

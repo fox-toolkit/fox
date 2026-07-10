@@ -303,11 +303,11 @@ Backtrack:
 }
 
 // lookupByPath returns the node matching path, or a trailing slash candidate (tsr)
-// when adding or removing the trailing slash would match a non StrictSlash route.
+// when adding or removing the trailing slash would match a non ExactSlash route.
 //
-// Caveat: StrictSlash only prevents a route from being a tsr candidate, it does not veto
+// Caveat: ExactSlash only prevents a route from being a tsr candidate, it does not veto
 // slash correction triggered by a lower priority route. Since the corrected path
-// is matched from scratch, a higher priority StrictSlash route can win the direct
+// is matched from scratch, a higher priority ExactSlash route can win the direct
 // match and end up serving the redirected traffic.
 func lookupByPath(root *node, method, path string, c *Context, lazy bool, stackOffset int) (index int, n *node, tsr bool) {
 
@@ -442,7 +442,7 @@ Walk:
 									break
 								}
 								for j, route := range child.routes {
-									if route.handleSlash != StrictSlash && route.match(method, c) {
+									if route.handleSlash != ExactSlash && route.match(method, c) {
 										// This is the only case where we don't return a TSR match immediately. Routes like
 										// /+{args}/ (with TSR enabled) and /+{args} can coexist. For a request like /a/b/c,
 										// the infix /+{args}/ would match with TSR (adding a trailing slash), but we must
@@ -573,7 +573,7 @@ Walk:
 		}
 	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" && !strings.HasSuffix(path, "//") {
 		for i, route := range parent.routes {
-			if route.handleSlash != StrictSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && route.match(method, c) {
 				return i, parent, true
 			}
 		}
@@ -582,7 +582,7 @@ Walk:
 Backtrack:
 	if search == "/" && matched.isLeaf() && matched.key != "*" && !strings.HasSuffix(path, "//") {
 		for i, route := range matched.routes {
-			if route.handleSlash != StrictSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && route.match(method, c) {
 				return i, matched, true
 			}
 		}
@@ -615,7 +615,7 @@ Backtrack:
 func matchTrailingSlash(child *node, method string, c *Context, lazy bool) (int, *node) {
 	if child.isLeaf() {
 		for i, route := range child.routes {
-			if route.handleSlash != StrictSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && route.match(method, c) {
 				return i, child
 			}
 		}
@@ -624,7 +624,7 @@ func matchTrailingSlash(child *node, method string, c *Context, lazy bool) (int,
 	// we still need to search for a matching empty catch-all.
 	for _, wildcardNode := range child.wildcards {
 		for i, route := range wildcardNode.routes {
-			if route.handleSlash != StrictSlash && route.pattern.optionalCatchAll && route.match(method, c) {
+			if route.handleSlash != ExactSlash && route.pattern.optionalCatchAll && route.match(method, c) {
 				if !lazy {
 					// record empty match
 					*c.params = append(*c.params, "")

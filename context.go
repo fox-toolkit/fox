@@ -46,7 +46,7 @@ type RequestContext interface {
 	// RoutingPath returns the canonical path that the router uses for matching. Percent-encoded
 	// RFC 3986 unreserved characters (A-Z a-z 0-9 - . _ ~) are decoded while the remaining escape
 	// sequences stay encoded, normalized to uppercase hex and distinct from their decoded form
-	// (%2F never matches /). Bytes that can never appear raw in a path are percent-encoded in
+	// (%2F never matches /). Bytes that can never appear unescaped in a path are percent-encoded in
 	// place (e.g. é becomes %C3%A9). A typical use is when you need the exact path the router matched on, for example
 	// as a cache key.
 	RoutingPath() string
@@ -204,7 +204,7 @@ func (c *Context) Method() string {
 // RoutingPath returns the canonical path that the router uses for matching. Percent-encoded
 // RFC 3986 unreserved characters (A-Z a-z 0-9 - . _ ~) are decoded while the remaining escape
 // sequences stay encoded, normalized to uppercase hex and distinct from their decoded form
-// (%2F never matches /). Bytes that can never appear raw in a path are percent-encoded in
+// (%2F never matches /). Bytes that can never appear unescaped in a path are percent-encoded in
 // place (e.g. é becomes %C3%A9). A typical use is when you need the exact path the router matched on, for example
 // as a cache key.
 func (c *Context) RoutingPath() string {

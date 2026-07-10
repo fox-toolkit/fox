@@ -15,13 +15,14 @@ import (
 )
 
 func TestNewRouter_Defaults(t *testing.T) {
-	f, _ := NewRouter(DefaultOptions())
-	assert.True(t, f.handleOPTIONS)
-	assert.True(t, f.handleMethodNotAllowed)
-	assert.True(t, f.allowRegexp)
-	assert.Equal(t, f.mergeSlash, RedirectPath)
-	assert.Equal(t, f.collapseDots, RedirectPath)
-	assert.Equal(t, f.handleSlash, RedirectSlash)
+	f, _ := NewRouter()
+	assert.False(t, f.handleOPTIONS)
+	assert.False(t, f.handleMethodNotAllowed)
+	assert.False(t, f.allowRegexp)
+	assert.False(t, f.strictPathEncoding)
+	assert.Equal(t, ExactPath, f.mergeSlash)
+	assert.Equal(t, ExactPath, f.collapseDots)
+	assert.Equal(t, ExactSlash, f.handleSlash)
 }
 
 func TestWithClientIPResolver(t *testing.T) {
@@ -706,7 +707,7 @@ func TestWithHandleTrailingSlash_LeadingDoubleSlash(t *testing.T) {
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "example.com//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
 	assert.NoError(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RelaxedSlash))))
-	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithHandleTrailingSlash(StrictSlash))))
+	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithHandleTrailingSlash(ExactSlash))))
 }
 
 func TestWithQueryMatcher(t *testing.T) {

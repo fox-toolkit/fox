@@ -61,9 +61,9 @@ func IsUnreserved(b byte) bool {
 		b == '-' || b == '.' || b == '_' || b == '~'
 }
 
-// IsRoutableRaw reports whether b can appear raw (outside an escape sequence) in a
-// routing path, i.e. whether [NormalizeRawPath] can emit it raw. Derived from net/url
-// path escaping and pinned by a differential test.
+// IsRoutableRaw reports whether b can appear unescaped in a routing path, i.e. whether
+// [NormalizeRawPath] can emit it unescaped. Derived from net/url path escaping and
+// pinned by a differential test.
 func IsRoutableRaw(b byte) bool {
 	switch b {
 	case '$', '&', '+', ',', '/', ':', ';', '=', '@', // never escaped by net/url in a path
@@ -111,7 +111,7 @@ func UpperHex(c byte) byte {
 const upperhex = "0123456789ABCDEF"
 
 // NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
-// are decoded, hex is uppercased, bytes that cannot appear raw (see [IsRoutableRaw]) are
+// are decoded, hex is uppercased, bytes that cannot appear unescaped (see [IsRoutableRaw]) are
 // percent-encoded in place and the path is kept as-is from the first malformed escape.
 // It reports whether raw is well-formed and whether it is an encoding of the decoded path.
 // When consistent is false, the routing path must be derived from path instead.

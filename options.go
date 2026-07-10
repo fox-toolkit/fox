@@ -15,7 +15,7 @@ import (
 type TrailingSlashOption uint8
 
 const (
-	StrictSlash TrailingSlashOption = iota
+	ExactSlash TrailingSlashOption = iota
 	RelaxedSlash
 	RedirectSlash
 
@@ -25,9 +25,8 @@ const (
 type NormalizeOption uint8
 
 const (
-	StrictPath NormalizeOption = iota
+	ExactPath NormalizeOption = iota
 	NormalizePath
-	RelaxedPath
 	RedirectPath
 
 	normalizeOptionSentinel
@@ -109,7 +108,7 @@ func WithOptionsHandler(handler HandlerFunc) GlobalOption {
 // WithHandleTrailingSlash configures how the router handles trailing slashes in request paths.
 //
 // Available slash handling modes:
-//   - StrictSlash: Routes are matched exactly as registered. /foo/bar and /foo/bar/ are treated as different routes.
+//   - ExactSlash: Routes are matched exactly as registered. /foo/bar and /foo/bar/ are treated as different routes.
 //   - RelaxedSlash: Routes match regardless of trailing slash. Both /foo/bar and /foo/bar/ match the same route.
 //   - RedirectSlash: When a route is not found, but exists with/without a trailing slash, issues a redirect to the correct path.
 //
@@ -158,17 +157,16 @@ func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 // WithMergeSlashes configures how the router handles consecutive slashes in request paths.
 //
 // Available modes:
-//   - StrictPath: Consecutive slashes are matched as-is (default).
+//   - ExactPath: Consecutive slashes are matched as-is (default).
 //   - NormalizePath: Slashes are merged before lookup.
-//   - RelaxedPath: After normal lookup fails, retries with slashes merged and serves the handler directly.
-//   - RedirectPath: After normal lookup fails, retries with slashes merged and redirects to the merged path.
+//   - RedirectPath: When merging changes the path, issues a redirect to the merged path if it matches a route.
 //
 // Redirects use the canonical path that the router routed on (see [Context.RoutingPath]).
 //
-// Only raw slashes are merged, an encoded %2F never matches a slash (see [MergeSlashes]). If this option
-// and [WithCollapseDotSegments] both use a fallback mode (RelaxedPath or RedirectPath), the modes must match.
+// Only raw slashes are merged, an encoded %2F never matches a slash (see [MergeSlashes]). When combined
+// with [WithCollapseDotSegments], slashes are merged before dot segments are collapsed.
 //
-// This option applies globally to all routes and cannot be configured per-route.
+// This option applies globally to all routes.
 func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		if opt >= normalizeOptionSentinel {
@@ -181,22 +179,18 @@ func WithMergeSlashes(opt NormalizeOption) GlobalOption {
 
 // WithCollapseDotSegments configures how the router handles "." and ".." segments in request paths.
 // Dot segments are removed as defined by RFC 3986 (see [CollapseDotSegments]). A ".." escaping above the
-// root is rejected with a 400 (see [WithRejectPathHandler]) whenever collapsing runs.
+// root is rejected with a 400 (see [WithRejectPathHandler]) before lookup.
 //
 // Available modes:
-//   - StrictPath: Dot segments are matched as-is (default).
-//   - NormalizePath: Dot segments are collapsed before lookup. This is the only mode guaranteeing that
-//     no traversal sequence reaches a handler, since fallback modes never fire when a wildcard matches
-//     the raw path.
-//   - RelaxedPath: After normal lookup fails, retries with dot segments collapsed and serves the handler directly.
-//   - RedirectPath: After normal lookup fails, retries with dot segments collapsed and redirects to the collapsed path.
+//   - ExactPath: Dot segments are matched as-is (default).
+//   - NormalizePath: Dot segments are collapsed before lookup.
+//   - RedirectPath: When collapsing changes the path, issues a redirect to the collapsed path if it matches a route.
 //
 // Redirects use the canonical path that the router routed on (see [Context.RoutingPath]).
 //
-// If this option and [WithMergeSlashes] both use a fallback mode (RelaxedPath or RedirectPath), the
-// modes must match.
+// When combined with [WithMergeSlashes], slashes are merged before dot segments are collapsed.
 //
-// This option applies globally to all routes and cannot be configured per-route.
+// This option applies globally to all routes.
 func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		if opt >= normalizeOptionSentinel {
@@ -207,10 +201,11 @@ func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 	})
 }
 
-// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) requests whose
-// escaped path is not a valid encoding. When disabled, the path is matched as-is from the first malformed
-// escape and non-routable bytes are percent-encoded in place (see [Context.RoutingPath]).
-// This option is disabled by default and applies globally to all routes.
+// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) any request
+// path containing a malformed escape sequence or an unescaped character that RFC 3986 forbids in
+// a path, like é or {. A request whose URL.RawPath is not a valid encoding of URL.Path is rejected
+// as well. When disabled, such requests are matched on their routing path (see [Context.RoutingPath]).
+// This option is disabled by default.
 func WithStrictPathEncoding(enable bool) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.strictPathEncoding = enable
@@ -560,27 +555,6 @@ func WithPrettyLogs() GlobalOption {
 			{Recovery(slogpretty.DefaultHandler), RouteHandler, true},
 			{Logger(slogpretty.DefaultHandler), AllHandlers, true},
 		}, s.router.mws...)
-		return nil
-	})
-}
-
-// DefaultOptions configures the router with sensible production defaults:
-//   - Enables automatic OPTIONS responses ([WithAutoOptions])
-//   - Enables 405 Method Not Allowed responses ([WithNoMethod])
-//   - Enables regular expression support in route parameters ([AllowRegexpParam])
-//   - Enables redirect-based path correction for trailing slashes ([WithHandleTrailingSlash] with [RedirectSlash])
-//   - Enables redirect-based path correction for non-canonical paths ([WithMergeSlashes] and
-//     [WithCollapseDotSegments] with [RedirectPath])
-//
-// For development, consider combining this with [WithPrettyLogs] to add debugging middleware.
-func DefaultOptions() GlobalOption {
-	return optionFunc(func(s sealedOption) error {
-		s.router.handleOPTIONS = true
-		s.router.handleMethodNotAllowed = true
-		s.router.allowRegexp = true
-		s.router.mergeSlash = RedirectPath
-		s.router.collapseDots = RedirectPath
-		s.router.handleSlash = RedirectSlash
 		return nil
 	})
 }
