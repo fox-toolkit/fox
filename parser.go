@@ -291,7 +291,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 
 		case '%':
 			// Escape sequences must use the canonical routing form. Any other encoding could never match a request
-			// routing path (see stringsutil.NormalizeRoutingPath).
+			// routing path (see stringsutil.NormalizeRawPath).
 			if i+2 >= len(path) {
 				return nil, false, 0, newPatternError("syntax", i, len(path), "invalid percent-encoding")
 			}
@@ -313,7 +313,7 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			if isASCIIControl(c) {
 				return nil, false, 0, newPatternError("syntax", i, i+1, "illegal control character")
 			}
-			// Literals may only use bytes that can appear raw in a request routing path.
+			// Literals may only use bytes that can appear unescaped in a request routing path.
 			// Anything else could never match (see stringsutil.IsRoutableRaw).
 			if !stringsutil.IsRoutableRaw(c) {
 				switch c {
@@ -326,6 +326,9 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 				}
 				_, size := utf8.DecodeRuneInString(path[i:])
 				return nil, false, 0, newPatternError("syntax", i, i+size, "character requires percent-encoding")
+			}
+			if c == '/' && i > 0 && path[i-1] == '/' && fox.mergeSlash != ExactPath {
+				return nil, false, 0, newPatternError("syntax", i-1, i+1, "consecutive '/' unreachable, slashes are merged before matching")
 			}
 			if c == '.' && i > 0 && path[i-1] == '/' {
 				next := i + 1

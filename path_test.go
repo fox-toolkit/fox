@@ -1,7 +1,6 @@
-// Copyright 2013 Julien Schmidt. All rights reserved.
-// Based on the path package, Copyright 2009 The Go Authors.
-// Mount of this source code is governed by a BSD-style license that can be found
-// at https://github.com/julienschmidt/httprouter/blob/master/LICENSE.
+// Copyright 2022 Sylvain Müller. All rights reserved.
+// Mount of this source code is governed by a Apache-2.0 license that can be found
+// at https://github.com/fox-toolkit/fox/blob/master/LICENSE.txt.
 
 package fox
 
@@ -12,127 +11,146 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type cleanPathTest struct {
-	path, result string
-}
-
-var cleanTests = []cleanPathTest{
-	// Already clean
+var mergeSlashesTests = []struct {
+	path, want string
+}{
+	// Already merged
+	{"", ""},
 	{"/", "/"},
 	{"/abc", "/abc"},
 	{"/a/b/c", "/a/b/c"},
-	{"/abc/", "/abc/"},
 	{"/a/b/c/", "/a/b/c/"},
+	{"*", "*"},
 
-	// missing root
-	{"", "/"},
-	{"a/", "/a/"},
-	{"abc", "/abc"},
-	{"abc/def", "/abc/def"},
-	{"a/b/c", "/a/b/c"},
-
-	// Remove doubled slash
+	// Consecutive slashes
 	{"//", "/"},
-	{"/abc//", "/abc/"},
-	{"/abc/def//", "/abc/def/"},
-	{"/a/b/c//", "/a/b/c/"},
-	{"/abc//def//ghi", "/abc/def/ghi"},
+	{"///", "/"},
 	{"//abc", "/abc"},
 	{"///abc", "/abc"},
+	{"/abc//", "/abc/"},
+	{"/abc///def//ghi", "/abc/def/ghi"},
 	{"//abc//", "/abc/"},
+	{"/a//b", "/a/b"},
 
-	// Remove . elements
-	{".", "/"},
-	{"./", "/"},
-	{"/abc/./def", "/abc/def"},
-	{"/./abc/def", "/abc/def"},
-	{"/abc/.", "/abc/"},
+	// Encoded slashes are not merged
+	{"/a/%2F/b", "/a/%2F/b"},
+	{"/a%2F%2Fb", "/a%2F%2Fb"},
+	{"/a/%2F//b", "/a/%2F/b"},
 
-	// Remove .. elements
-	{"..", "/"},
-	{"../", "/"},
-	{"../../", "/"},
-	{"../..", "/"},
-	{"../../abc", "/abc"},
-	{"/abc/def/ghi/../jkl", "/abc/def/jkl"},
-	{"/abc/def/../ghi/../jkl", "/abc/jkl"},
-	{"/abc/def/..", "/abc"},
-	{"/abc/def/../..", "/"},
-	{"/abc/def/../../..", "/"},
-	{"/abc/def/../../..", "/"},
-	{"/abc/def/../../../ghi/jkl/../../../mno", "/mno"},
-
-	// Combinations
-	{"abc/./../def", "/def"},
-	{"abc//./../def", "/def"},
-	{"abc/../../././../def", "/def"},
+	// Dot segments are preserved
+	{"/a//../b", "/a/../b"},
+	{"/a//./b", "/a/./b"},
 }
 
-func TestCleanPath(t *testing.T) {
-	for _, test := range cleanTests {
-		if s := CleanPath(test.path); s != test.result {
-			t.Errorf("CleanPath(%q) = %q, want %q", test.path, s, test.result)
-		}
-		if s := CleanPath(test.result); s != test.result {
-			t.Errorf("CleanPath(%q) = %q, want %q", test.result, s, test.result)
-		}
+func TestMergeSlashes(t *testing.T) {
+	for _, tc := range mergeSlashesTests {
+		assert.Equalf(t, tc.want, MergeSlashes(tc.path), "MergeSlashes(%q)", tc.path)
+		assert.Equalf(t, tc.want, MergeSlashes(tc.want), "MergeSlashes(%q)", tc.want)
 	}
 }
 
-func TestCleanPath_Mallocs(t *testing.T) {
+var collapseDotSegmentsTests = []struct {
+	path, want string
+	reject     bool
+}{
+	// No dot segments
+	{path: "", want: ""},
+	{path: "/", want: "/"},
+	{path: "/abc", want: "/abc"},
+	{path: "/a/b/c/", want: "/a/b/c/"},
+	{path: "/...", want: "/..."},
+	{path: "/a/..b/c", want: "/a/..b/c"},
+	{path: "/a/b../c", want: "/a/b../c"},
+	{path: "/.well-known/a", want: "/.well-known/a"},
+	{path: "*", want: "*"},
+
+	// "." segments
+	{path: "/./abc", want: "/abc"},
+	{path: "/abc/./def", want: "/abc/def"},
+	{path: "/abc/.", want: "/abc/"},
+	{path: "/abc/./", want: "/abc/"},
+	{path: "/./././", want: "/"},
+	{path: ".", want: ""},
+	{path: "./", want: ""},
+
+	// ".." segments
+	{path: "/abc/def/../jkl", want: "/abc/jkl"},
+	{path: "/abc/def/..", want: "/abc/"},
+	{path: "/abc/def/../", want: "/abc/"},
+	{path: "/abc/def/../ghi/../jkl", want: "/abc/jkl"},
+	{path: "/abc/def/../..", want: "/"},
+	{path: "/abc/def/../../", want: "/"},
+	{path: "a/../b", want: "/b"},
+	{path: "a/..", want: "/"},
+
+	// Empty segments are real segments (RFC 3986), consecutive slashes preserved
+	{path: "/a//b", want: "/a//b"},
+	{path: "/a//../b", want: "/a/b"},
+	{path: "//../x", want: "/x"},
+	{path: "//..", want: "/"},
+	{path: "/a/.//b", want: "/a//b"},
+	{path: "//a/../b", want: "//b"},
+
+	// Escaping above the root is rejected
+	{path: "/..", reject: true},
+	{path: "/../", reject: true},
+	{path: "/../abc", reject: true},
+	{path: "/abc/../..", reject: true},
+	{path: "/abc/../../def", reject: true},
+	{path: "/abc/def/../../..", reject: true},
+	{path: "..", reject: true},
+	{path: "../", reject: true},
+	{path: "../abc", reject: true},
+	{path: "./..", reject: true},
+}
+
+func TestCollapseDotSegments(t *testing.T) {
+	for _, tc := range collapseDotSegmentsTests {
+		got, ok := CollapseDotSegments(tc.path)
+		if tc.reject {
+			assert.Falsef(t, ok, "CollapseDotSegments(%q)", tc.path)
+			continue
+		}
+		assert.Truef(t, ok, "CollapseDotSegments(%q)", tc.path)
+		assert.Equalf(t, tc.want, got, "CollapseDotSegments(%q)", tc.path)
+		got, ok = CollapseDotSegments(got)
+		assert.Truef(t, ok, "CollapseDotSegments(%q)", tc.want)
+		assert.Equalf(t, tc.want, got, "CollapseDotSegments(%q)", tc.want)
+	}
+}
+
+func TestNormalizeHelpers_Mallocs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping malloc count in short mode")
 	}
 
-	for _, test := range cleanTests {
-		allocs := testing.AllocsPerRun(100, func() { CleanPath(test.result) })
-		if allocs > 0 {
-			t.Errorf("CleanPath(%q): %v allocs, want zero", test.result, allocs)
+	for _, tc := range mergeSlashesTests {
+		allocs := testing.AllocsPerRun(100, func() { MergeSlashes(tc.want) })
+		assert.Zerof(t, allocs, "MergeSlashes(%q)", tc.want)
+	}
+	for _, tc := range collapseDotSegmentsTests {
+		if tc.reject {
+			continue
 		}
+		allocs := testing.AllocsPerRun(100, func() { CollapseDotSegments(tc.want) })
+		assert.Zerof(t, allocs, "CollapseDotSegments(%q)", tc.want)
 	}
 }
 
-func BenchmarkCleanPath(b *testing.B) {
+func BenchmarkMergeSlashes(b *testing.B) {
 	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		for _, test := range cleanTests {
-			CleanPath(test.path)
+	for range b.N {
+		for _, tc := range mergeSlashesTests {
+			MergeSlashes(tc.path)
 		}
 	}
 }
 
-func genLongPaths() (testPaths []cleanPathTest) {
-	for i := 1; i <= 1234; i++ {
-		ss := strings.Repeat("a", i)
-
-		correctPath := "/" + ss
-		testPaths = append(testPaths, cleanPathTest{
-			path:   correctPath,
-			result: correctPath,
-		}, cleanPathTest{
-			path:   ss,
-			result: correctPath,
-		}, cleanPathTest{
-			path:   "//" + ss,
-			result: correctPath,
-		}, cleanPathTest{
-			path:   "/" + ss + "/b/..",
-			result: correctPath,
-		})
-	}
-	return testPaths
-}
-
-func TestCleanPath_Long(t *testing.T) {
-	cleanTests := genLongPaths()
-
-	for _, test := range cleanTests {
-		if s := CleanPath(test.path); s != test.result {
-			t.Errorf("CleanPath(%q) = %q, want %q", test.path, s, test.result)
-		}
-		if s := CleanPath(test.result); s != test.result {
-			t.Errorf("CleanPath(%q) = %q, want %q", test.result, s, test.result)
+func BenchmarkCollapseDotSegments(b *testing.B) {
+	b.ReportAllocs()
+	for range b.N {
+		for _, tc := range collapseDotSegmentsTests {
+			CollapseDotSegments(tc.path)
 		}
 	}
 }
@@ -149,18 +167,6 @@ func Test_hasDotSegment(t *testing.T) {
 	}
 	for _, path := range []string{"", "/", "/foo", "/a.b", "/a..b", "/...", "/a/...", "/.well-known/a", "/foo/.bar", "/foo/..bar", "/foo/bar.", "/foo/bar.."} {
 		assert.Falsef(t, hasDotSegment(path), "path %s", path)
-	}
-}
-
-func BenchmarkCleanPath_Long(b *testing.B) {
-	cleanTests := genLongPaths()
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		for _, test := range cleanTests {
-			CleanPath(test.path)
-		}
 	}
 }
 
@@ -212,4 +218,39 @@ func Test_escapeLeadingSlashes(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func FuzzCollapseDotSegments(f *testing.F) {
+	for _, tc := range collapseDotSegmentsTests {
+		f.Add(tc.path)
+	}
+	f.Add("/a/b/../../..")
+	f.Add("/a//b/./../c/%2E%2E/d/..")
+
+	f.Fuzz(func(t *testing.T, path string) {
+		got, ok := CollapseDotSegments(path)
+		if !ok {
+			return
+		}
+		assert.False(t, hasDotSegment(got))
+		again, ok := CollapseDotSegments(got)
+		assert.True(t, ok)
+		assert.Equal(t, got, again)
+	})
+}
+
+func FuzzMergeSlashes(f *testing.F) {
+	for _, tc := range mergeSlashesTests {
+		f.Add(tc.path)
+	}
+
+	f.Fuzz(func(t *testing.T, path string) {
+		got := MergeSlashes(path)
+		assert.NotContains(t, got, "//")
+		assert.Equal(t, strings.ReplaceAll(path, "/", ""), strings.ReplaceAll(got, "/", ""))
+		assert.Equal(t, got, MergeSlashes(got))
+		if !strings.Contains(path, "//") {
+			assert.Equal(t, path, got)
+		}
+	})
 }

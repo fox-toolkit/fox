@@ -35,7 +35,8 @@ suffix and infix catch-all, regexp constraints, hostname matching, method and me
 **Trailing slash handling:** Automatically handle trailing slash inconsistencies by either ignoring them, redirecting to 
 the canonical path, or enforcing strict matching based on your needs.
 
-**Path correction:** Automatically handle malformed paths with extra slashes or dots by either serving the cleaned path directly or redirecting to the canonical form.
+**Path normalization:** Automatically handle requests with extra slashes or dot segments by either
+serving the normalized path directly or redirecting to the canonical form.
 
 **Automatic OPTIONS replies:** Fox has built-in native support for [OPTIONS requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS).
 
@@ -100,7 +101,7 @@ func HelloServer(c *fox.Context) {
 }
 
 func main() {
-	f := fox.MustRouter(fox.DefaultOptions())
+	f := fox.MustRouter()
 
 	f.MustAdd([]string{http.MethodHead, http.MethodGet}, "/hello/{name}", HelloServer)
 
@@ -259,10 +260,11 @@ nor the 253-character limit for the full hostname. Internationalized domain name
 
 #### Path encoding
 
-Fox matches requests against a canonical routing path, equivalent to `url.URL.EscapedPath()` with percent-encoded
-[unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) decoded
-and the remaining hex sequences normalized to uppercase (e.g. `%2f` becomes `%2F`). All other escape sequences stay
-encoded and distinct from their decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths.
+Fox matches requests against a canonical routing path. Percent-encoded
+[unreserved characters](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3) (`A-Z a-z 0-9 - . _ ~`) are
+decoded, while every other escape sequence is normalized to uppercase hex (`%2f` becomes `%2F`) and stays
+distinct from its decoded form, so `/foo%2Fbar` and `/foo/bar` are different routing paths. Characters that can
+never appear unescaped in a path, like `é` or `{`, are percent-encoded.
 
 #### Priority rules
 
@@ -394,7 +396,7 @@ func Action(c *fox.Context) {
 }
 
 func main() {
-	f := fox.MustRouter(fox.DefaultOptions())
+	f := fox.MustRouter()
 
 	f.MustAdd(fox.MethodPost, "/routes/{action}", Action)
 
@@ -515,7 +517,7 @@ func main() {
 
 Additionally, `fox.WithMiddlewareFor` option provide a more fine-grained control over where a middleware is applied, such as
 only for 404 or 405 handlers. Possible scopes include `fox.RouteHandler` (regular routes), `fox.NoRouteHandler`, `fox.NoMethodHandler`, 
-`fox.RedirectSlashHandler`, `fox.RedirectPathHandler`, `fox.OptionsHandler` and any combination of these.
+`fox.RedirectSlashHandler`, `fox.RedirectPathHandler`, `fox.RejectPathHandler`, `fox.OptionsHandler` and any combination of these.
 
 ````go
 f  := fox.MustRouter(
@@ -652,7 +654,6 @@ func main() {
 		panic(err)
 	}
 	f := fox.MustRouter(
-		fox.DefaultOptions(),
 		fox.WithClientIPResolver(
 			resolver,
 		),
@@ -676,7 +677,6 @@ It is also possible to create a chain with multiple resolvers that attempt to de
 ````go
 resolver, _ := clientip.NewLeftmostNonPrivate(clientip.ForwardedKey, 10)
 f := fox.MustRouter(
-	fox.DefaultOptions(),
 	fox.WithClientIPResolver(
 		// A common use for this is if a server is both directly connected to the
 		// internet and expecting a header to check.

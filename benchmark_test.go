@@ -85,6 +85,27 @@ func BenchmarkGithubAll(b *testing.B) {
 	benchRoute(b, f, data)
 }
 
+func BenchmarkGithubAllNormalize(b *testing.B) {
+	f := MustRouter(WithMergeSlashes(NormalizePath), WithCollapseDotSegments(NormalizePath))
+	for _, route := range githubAPI {
+		require.NoError(b, onlyError(f.Add([]string{route.method}, route.path, emptyHandler)))
+	}
+
+	data := make([]route, 0, len(githubAPI))
+	for _, r := range githubAPI {
+		data = append(data, route{method: r.method, path: replaceParams.ReplaceAllString(r.path, "xxx")})
+	}
+
+	benchRoute(b, f, data)
+}
+
+func BenchmarkNormalizeDirtyPath(b *testing.B) {
+	f := MustRouter(WithMergeSlashes(NormalizePath), WithCollapseDotSegments(NormalizePath))
+	require.NoError(b, onlyError(f.Add(MethodGet, "/repos/{owner}/{repo}/issues", emptyHandler)))
+
+	benchRoute(b, f, []route{{method: http.MethodGet, path: "/repos//foo/./bar/../bar/issues"}})
+}
+
 func BenchmarkStaticAllMux(b *testing.B) {
 	r := http.NewServeMux()
 	for _, route := range staticRoutes {

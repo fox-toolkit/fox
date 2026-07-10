@@ -391,7 +391,8 @@ func TestContext_Scope(t *testing.T) {
 				next(c)
 			}
 		}),
-		WithHandleFixedPath(RedirectPath),
+		WithMergeSlashes(RedirectPath),
+		WithCollapseDotSegments(RedirectPath),
 		WithMiddlewareFor(RedirectPathHandler, func(next HandlerFunc) HandlerFunc {
 			return func(c *Context) {
 				assert.Equal(t, RedirectPathHandler, c.Scope())
