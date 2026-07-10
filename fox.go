@@ -584,8 +584,8 @@ func (fox *Router) RouterInfo() RouterInfo {
 }
 
 // Txn create a new read-write or read-only transaction. Each [Txn] must be finalized with [Txn.Commit] or [Txn.Abort].
-// It's safe to create transaction from multiple goroutine and while the router is serving request.
-// However, the returned [Txn] itself is NOT thread-safe.
+// It's safe to create transaction from multiple goroutine and while the router is serving request. Creating a write
+// transaction blocks while another write transaction is in progress. However, the returned [Txn] itself is NOT thread-safe.
 // See also [Router.Updates] and [Router.View] for managed read-write and read-only transaction.
 func (fox *Router) Txn(write bool) *Txn {
 	if write {

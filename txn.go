@@ -11,6 +11,13 @@ import (
 )
 
 // Txn is a read or write transaction on the routing tree.
+//
+// A Txn must not be used concurrently by multiple goroutines. It is however
+// safe to run multiple transactions from different goroutines, each on its
+// own Txn. Read transactions operate on a point-in-time snapshot and never
+// block, while write transactions are serialized by the router. A write Txn
+// must be finalized with [Txn.Commit] or [Txn.Abort]. Routing requests never
+// block, even while a write transaction is in progress.
 type Txn struct {
 	fox     *Router
 	rootTxn *tXn
@@ -27,7 +34,6 @@ type Txn struct {
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
 //
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 // To override an existing handler, use [Txn.Update].
 func (txn *Txn) Add(methods []string, pattern string, handler HandlerFunc, opts ...RouteOption) (*Route, error) {
 	if txn.rootTxn == nil {
@@ -54,7 +60,6 @@ func (txn *Txn) Add(methods []string, pattern string, handler HandlerFunc, opts 
 //   - [ErrInvalidRoute]: If the route is missing.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
 //
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 // To override an existing route, use [Txn.UpdateRoute].
 func (txn *Txn) AddRoute(route *Route) error {
 	if txn.rootTxn == nil {
@@ -82,7 +87,6 @@ func (txn *Txn) AddRoute(route *Route) error {
 //
 // Route-specific option and middleware must be reapplied when updating a route. if not, any middleware and option will
 // be removed (or reset to their default value), and the route will fall back to using global configuration (if any).
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 // To add a new handler, use [Txn.Add].
 func (txn *Txn) Update(methods []string, pattern string, handler HandlerFunc, opts ...RouteOption) (*Route, error) {
 	if txn.rootTxn == nil {
@@ -112,7 +116,6 @@ func (txn *Txn) Update(methods []string, pattern string, handler HandlerFunc, op
 //   - [ErrInvalidRoute]: If the route is missing.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
 //
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 // To add a new route, use [Txn.AddRoute].
 func (txn *Txn) UpdateRoute(route *Route) error {
 	if txn.rootTxn == nil {
@@ -135,8 +138,6 @@ func (txn *Txn) UpdateRoute(route *Route) error {
 //   - [ErrInvalidRoute]: If the method is invalid or the pattern is empty.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
-//
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 func (txn *Txn) Delete(methods []string, pattern string, opts ...MatcherOption) (*Route, error) {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -192,8 +193,6 @@ func (txn *Txn) Delete(methods []string, pattern string, opts ...MatcherOption) 
 //   - [ErrRouteNotFound]: If the route does not exist.
 //   - [ErrInvalidRoute]: If the route is missing.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
-//
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 func (txn *Txn) DeleteRoute(route *Route) (*Route, error) {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -227,8 +226,8 @@ func (txn *Txn) Truncate() error {
 	return nil
 }
 
-// Has allows to check if the given methods, pattern and matchers exactly match a registered route. This function is NOT
-// thread-safe and should be run serially, along with all other [Txn] APIs. See also [Txn.Route] as an alternative.
+// Has allows to check if the given methods, pattern and matchers exactly match a registered route.
+// See also [Txn.Route] as an alternative.
 func (txn *Txn) Has(methods []string, pattern string, matchers ...Matcher) bool {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -238,8 +237,7 @@ func (txn *Txn) Has(methods []string, pattern string, matchers ...Matcher) bool 
 }
 
 // Route performs a lookup for a registered route matching the given methods, pattern and matchers. It returns the [Route] if a
-// match is found or nil otherwise. This function is NOT thread-safe and should be run serially, along with all
-// other [Txn] APIs. See also [Txn.Has] or [Iter.Routes] as an alternative.
+// match is found or nil otherwise. See also [Txn.Has] or [Iter.Routes] as an alternative.
 func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Route {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -260,8 +258,7 @@ func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Ro
 }
 
 // Name performs a lookup for a registered route matching the given method and route name. It returns
-// the [Route] if a match is found or nil otherwise. This function is NOT thread-safe and should be run serially,
-// along with all other [Txn] APIs. See also [Txn.Route] as an alternative.
+// the [Route] if a match is found or nil otherwise. See also [Txn.Route] as an alternative.
 func (txn *Txn) Name(name string) *Route {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -278,8 +275,7 @@ func (txn *Txn) Name(name string) *Route {
 
 // Match perform a reverse lookup for the given method and [http.Request]. It returns the matching registered [Route]
 // (if any) along with a boolean indicating if the route was matched by adding or removing a trailing slash
-// (trailing slash action recommended). This function is NOT thread-safe and should be run serially, along with all
-// other [Txn] APIs. See also [Txn.Lookup] as an alternative.
+// (trailing slash action recommended). See also [Txn.Lookup] as an alternative.
 func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -306,8 +302,7 @@ func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
 // Lookup performs a manual route lookup for a given [http.Request], returning the matched [Route] along with a
 // [Context], and a boolean indicating if the route was matched by adding or removing a trailing slash
 // (trailing slash action recommended). If there is a direct match or a tsr is possible, Lookup always return a
-// [Route] and a [Context]. The [Context] should always be closed if non-nil. This function is NOT
-// thread-safe and should be run serially, along with all other [Txn] APIs. See also [Txn.Match] as an alternative.
+// [Route] and a [Context]. The [Context] should always be closed if non-nil. See also [Txn.Match] as an alternative.
 func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Context, tsr bool) {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -336,7 +331,6 @@ func (txn *Txn) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *Con
 // Iter returns a collection of range iterators for traversing registered routes. When called on a write transaction,
 // Iter creates a point-in-time snapshot of the transaction state. Therefore, writing on the current transaction while
 // iterating is allowed, but the mutation will not be observed in the result returned by iterators collection.
-// This function is NOT thread-safe and should be run serially, along with all other [Txn] APIs.
 func (txn *Txn) Iter() Iter {
 	if txn.rootTxn == nil {
 		panic(ErrSettledTxn)
@@ -365,8 +359,7 @@ func (txn *Txn) Len() int {
 }
 
 // Commit finalize the transaction. This is a noop for read transactions, already aborted or
-// committed transactions. This function is NOT thread-safe and should be run serially,
-// along with all other [Txn] APIs.
+// committed transactions.
 func (txn *Txn) Commit() {
 	// Noop for a read transaction
 	if !txn.write {
@@ -387,8 +380,7 @@ func (txn *Txn) Commit() {
 }
 
 // Abort cancel the transaction. This is a noop for read transactions, already aborted or
-// committed transactions. This function is NOT thread-safe and should be run serially,
-// along with all other [Txn] APIs.
+// committed transactions.
 func (txn *Txn) Abort() {
 	// Noop for a read transaction
 	if !txn.write {

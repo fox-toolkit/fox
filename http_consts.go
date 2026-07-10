@@ -108,6 +108,7 @@ var (
 	MethodConnect = []string{http.MethodConnect}
 	MethodOptions = []string{http.MethodOptions}
 	MethodTrace   = []string{http.MethodTrace}
+	MethodQuery   = []string{"QUERY"} // RFC 10008
 )
 
 var MethodAny []string

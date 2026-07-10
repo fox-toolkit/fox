@@ -88,26 +88,45 @@ it only supports the two most recent major releases of Go, i.e. 1.26 and 1.25.
 package main
 
 import (
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 
 	"github.com/fox-toolkit/fox"
 )
 
-func HelloServer(c *fox.Context) {
-	_ = c.String(http.StatusOK, fmt.Sprintf("Hello %s\n", c.Param("name")))
+func proxy(backend string) fox.HandlerFunc {
+	target, err := url.Parse(backend)
+	if err != nil {
+		panic(err)
+	}
+	rp := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(target)
+			r.SetXForwarded()
+			r.Out.Host = r.In.Host
+		},
+	}
+	return func(c *fox.Context) {
+		rp.ServeHTTP(c.Writer(), c.Request())
+	}
 }
 
 func main() {
-	f := fox.MustRouter()
+	f := fox.MustRouter(fox.AllowRegexpParam(true))
 
-	f.MustAdd([]string{http.MethodHead, http.MethodGet}, "/hello/{name}", HelloServer)
+	f.MustAdd(fox.MethodAny, "api.example.com/orders/{id:[0-9]+}", proxy("http://orders.internal"))
+	f.MustAdd(fox.MethodAny, "api.example.com/orders/{ref}", proxy("http://legacy.internal"))
+	f.MustAdd(fox.MethodAny, "api.example.com/files/+{path}/preview", proxy("http://imaging.internal"))
+	f.MustAdd(fox.MethodAny, "api.example.com/files/+{path}", proxy("http://storage.internal"))
+	f.MustAdd([]string{http.MethodGet, http.MethodHead}, "www.example.com/*{path}", proxy("http://frontend.internal"))
 
-	if err := http.ListenAndServe(":8080", f); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalln(err)
-	}
+	f.MustAdd(fox.MethodGet, "/health", func(c *fox.Context) {
+		_ = c.String(http.StatusOK, "ok")
+	})
+
+	log.Fatalln(http.ListenAndServe(":8080", f))
 }
 ````
 
@@ -219,9 +238,9 @@ Route matchers enable routing decisions based on request properties beyond metho
 the same pattern and methods and be differentiated by query parameters, headers, client IP, or custom criteria.
 
 ````go
-f.MustAdd(fox.MethodGet, "/api/users", V1Handler, fox.WithHeaderMatcher("X-API-Version", "v1"))
-f.MustAdd(fox.MethodGet, "/api/users", V2Handler, fox.WithHeaderMatcher("X-API-Version", "v2"))
-f.MustAdd(fox.MethodGet, "/api/users", V1Handler) // Fallback route
+f.MustAdd(fox.MethodAny, "api.example.com/checkout/+{path}", proxy("http://checkout-v2.internal"), fox.WithHeaderMatcher("X-Canary", "on"))
+f.MustAdd(fox.MethodAny, "api.example.com/checkout/+{path}", proxy("http://checkout-v2.internal"), fox.WithClientIPMatcher("10.0.0.0/8"))
+f.MustAdd(fox.MethodAny, "api.example.com/checkout/+{path}", proxy("http://checkout.internal"))
 ````
 
 Built-in matchers include `fox.WithQueryMatcher`, `fox.WithQueryRegexpMatcher`, `fox.WithHeaderMatcher`, `fox.WithHeaderRegexpMatcher`,
@@ -340,70 +359,76 @@ As such threads that route requests should never encounter latency due to ongoin
 
 ### Managing routes at runtime
 #### Routing mutation
-In this example, the handler for `routes/{action}` allows to dynamically register, update and delete handler for the
-given route and method. Thanks to Fox's design, those actions are perfectly safe and may be executed concurrently.
+In this example, the `/upstreams` endpoints allow to dynamically add, update and delete proxy upstreams, reusing the
+`proxy` helper from the [basic example](#basic-example). Thanks to Fox's design, those actions are perfectly safe and
+may be executed concurrently.
 
 ````go
 package main
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/fox-toolkit/fox"
 )
 
-type Data struct {
-	Pattern string   `json:"pattern"`
-	Methods []string `json:"methods"`
-	Text    string   `json:"text"`
+type Upstream struct {
+	Pattern string `json:"pattern"`
+	Backend string `json:"backend"`
 }
 
-func Action(c *fox.Context) {
-	data := new(Data)
-	if err := json.NewDecoder(c.Request().Body).Decode(data); err != nil {
+func UpsertUpstream(c *fox.Context) {
+	var up Upstream
+	if err := json.NewDecoder(c.Request().Body).Decode(&up); err != nil {
 		http.Error(c.Writer(), err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var err error
-	action := c.Param("action")
-	switch action {
-	case "add":
-		_, err = c.Router().Add(data.Methods, data.Pattern, func(c *fox.Context) {
-			_ = c.String(http.StatusOK, data.Text)
-		})
-	case "update":
-		_, err = c.Router().Update(data.Methods, data.Pattern, func(c *fox.Context) {
-			_ = c.String(http.StatusOK, data.Text)
-		})
-	case "delete":
-		_, err = c.Router().Delete(data.Methods, data.Pattern)
-	default:
-		http.Error(c.Writer(), fmt.Sprintf("action %q is not allowed", action), http.StatusBadRequest)
-		return
-	}
-	if err != nil {
-		http.Error(c.Writer(), err.Error(), http.StatusConflict)
+	if err := c.Router().Updates(func(txn *fox.Txn) error {
+		if txn.Has(fox.MethodAny, up.Pattern) {
+			_, err := txn.Update(fox.MethodAny, up.Pattern, proxy(up.Backend))
+			return err
+		}
+		_, err := txn.Add(fox.MethodAny, up.Pattern, proxy(up.Backend))
+		return err
+	}); err != nil {
+		http.Error(c.Writer(), err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
-	_ = c.String(http.StatusOK, fmt.Sprintf("%s route [%s] %s: success\n", action, strings.Join(data.Methods, ","), data.Pattern))
+	_ = c.String(http.StatusOK, "upstream saved\n")
+}
+
+func DeleteUpstream(c *fox.Context) {
+	var up Upstream
+	if err := json.NewDecoder(c.Request().Body).Decode(&up); err != nil {
+		http.Error(c.Writer(), err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if _, err := c.Router().Delete(fox.MethodAny, up.Pattern); err != nil {
+		http.Error(c.Writer(), err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	_ = c.String(http.StatusOK, "upstream deleted\n")
 }
 
 func main() {
 	f := fox.MustRouter()
 
-	f.MustAdd(fox.MethodPost, "/routes/{action}", Action)
+	f.MustAdd(fox.MethodPut, "/upstreams", UpsertUpstream)
+	f.MustAdd(fox.MethodDelete, "/upstreams", DeleteUpstream)
 
-	if err := http.ListenAndServe(":8080", f); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalln(err)
-	}
+	log.Fatalln(http.ListenAndServe(":8080", f))
 }
+````
+
+````shell
+curl -X PUT localhost:8080/upstreams \
+  -d '{"pattern": "api.example.com/payments/+{path}", "backend": "http://payments.internal"}'
 ````
 
 #### ACID Transaction
@@ -418,7 +443,7 @@ the tree, ensuring they do not observe any ongoing or committed changes made aft
 // from the function then the transaction is committed. If an error is returned then the entire transaction is
 // aborted.
 if err := f.Updates(func(txn *fox.Txn) error {
-	if _, err := txn.Add(fox.MethodGet, "example.com/hello/{name}", Handler); err != nil {
+	if _, err := txn.Update(fox.MethodAny, "api.example.com/checkout/+{path}", proxy("http://checkout-v2.internal")); err != nil {
 		return err
 	}
 
@@ -427,7 +452,7 @@ if err := f.Updates(func(txn *fox.Txn) error {
 	// When Iter() is called on a write transaction, it creates a point-in-time snapshot of the transaction state.
 	// It means that writing on the current transaction while iterating is allowed, but the mutation will not be
 	// observed in the result returned by PatternPrefix (or any other iterator).
-	for route := range it.PatternPrefix("tmp.example.com/") {
+	for route := range it.PatternPrefix("beta.example.com/checkout") {
 		if _, err := txn.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
 			return err
 		}
@@ -439,14 +464,26 @@ if err := f.Updates(func(txn *fox.Txn) error {
 ````
 
 #### Managed read-only transaction
+In this example, a readiness endpoint verifies that critical upstreams are registered. All checks observe the same
+point-in-time snapshot of the routing tree.
+
 ````go
-_ = f.View(func(txn *fox.Txn) error {
-	if txn.Has(fox.MethodGet, "/foo") {
-		if txn.Has(fox.MethodGet, "/bar") {
-			// do something
+f.MustAdd(fox.MethodGet, "/ready", func(c *fox.Context) {
+	if err := c.Router().View(func(txn *fox.Txn) error {
+		for _, pattern := range []string{
+			"api.example.com/orders/{id:[0-9]+}",
+			"api.example.com/checkout/+{path}",
+		} {
+			if !txn.Has(fox.MethodAny, pattern) {
+				return fmt.Errorf("upstream %s is not registered", pattern)
+			}
 		}
+		return nil
+	}); err != nil {
+		http.Error(c.Writer(), err.Error(), http.StatusServiceUnavailable)
+		return
 	}
-	return nil
+	_ = c.String(http.StatusOK, "ready")
 })
 ````
 
@@ -456,8 +493,8 @@ _ = f.View(func(txn *fox.Txn) error {
 txn := f.Txn(true)
 defer txn.Abort()
 
-if _, err := txn.Add(fox.MethodGet, "example.com/hello/{name}", Handler); err != nil {
-	log.Printf("error inserting route: %s", err)
+if _, err := txn.Update(fox.MethodAny, "api.example.com/checkout/+{path}", proxy("http://checkout-v2.internal")); err != nil {
+	log.Printf("error updating route: %s", err)
 	return
 }
 
@@ -466,7 +503,7 @@ it := txn.Iter()
 // When Iter() is called on a write transaction, it creates a point-in-time snapshot of the transaction state.
 // It means that writing on the current transaction while iterating is allowed, but the mutation will not be
 // observed in the result returned by PatternPrefix (or any other iterator).
-for route := range it.PatternPrefix("tmp.example.com/") {
+for route := range it.PatternPrefix("beta.example.com/checkout") {
 	if _, err := txn.Delete(slices.Collect(route.Methods()), route.Pattern()); err != nil {
 		log.Printf("error deleting route: %s", err)
 		return
