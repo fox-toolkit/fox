@@ -1872,6 +1872,138 @@ func TestRouter_Add_Conflict(t *testing.T) {
 	}
 }
 
+func TestRouter_Add_ConflictOptionalCatchAll(t *testing.T) {
+	get := []string{http.MethodGet}
+	post := []string{http.MethodPost}
+
+	cases := []struct {
+		name         string
+		firstMethods []string
+		firstPattern string
+		firstOpts    []RouteOption
+		methods      []string
+		pattern      string
+		opts         []RouteOption
+		wantErr      bool
+	}{
+		{
+			name:         "same methods exact first",
+			firstMethods: get,
+			firstPattern: "/foo/",
+			methods:      get,
+			pattern:      "/foo/*{x}",
+			wantErr:      true,
+		},
+		{
+			name:         "same methods catch-all first",
+			firstMethods: get,
+			firstPattern: "/foo/*{x}",
+			methods:      get,
+			pattern:      "/foo/",
+			wantErr:      true,
+		},
+		{
+			name:         "method-less both exact first",
+			firstPattern: "/foo/",
+			pattern:      "/foo/*{x}",
+			wantErr:      true,
+		},
+		{
+			name:         "method-less both catch-all first",
+			firstPattern: "/foo/*{x}",
+			pattern:      "/foo/",
+			wantErr:      true,
+		},
+		{
+			name:         "method-less exact shadows scoped catch-all",
+			firstPattern: "/foo/",
+			methods:      get,
+			pattern:      "/foo/*{x}",
+			wantErr:      true,
+		},
+		{
+			name:         "method-less exact shadows scoped catch-all, catch-all first",
+			firstMethods: get,
+			firstPattern: "/foo/*{x}",
+			pattern:      "/foo/",
+			wantErr:      true,
+		},
+		{
+			name:         "scoped exact with method-less catch-all",
+			firstMethods: get,
+			firstPattern: "/foo/",
+			pattern:      "/foo/*{x}",
+		},
+		{
+			name:         "scoped exact with method-less catch-all, catch-all first",
+			firstPattern: "/foo/*{x}",
+			methods:      get,
+			pattern:      "/foo/",
+		},
+		{
+			name:         "disjoint methods",
+			firstMethods: get,
+			firstPattern: "/foo/",
+			methods:      post,
+			pattern:      "/foo/*{x}",
+		},
+		{
+			name:         "method-less exact with matcher",
+			firstPattern: "/foo/",
+			firstOpts:    []RouteOption{WithQueryMatcher("mode", "beta")},
+			methods:      get,
+			pattern:      "/foo/*{x}",
+		},
+		{
+			name:         "method-less matcher-less exact with matched catch-all",
+			firstPattern: "/foo/",
+			methods:      get,
+			pattern:      "/foo/*{x}",
+			opts:         []RouteOption{WithQueryMatcher("mode", "beta")},
+			wantErr:      true,
+		},
+		{
+			name:         "method-less matcher-less exact with matched catch-all, catch-all first",
+			firstMethods: get,
+			firstPattern: "/foo/*{x}",
+			firstOpts:    []RouteOption{WithQueryMatcher("mode", "beta")},
+			pattern:      "/foo/",
+			wantErr:      true,
+		},
+		{
+			name:         "different matchers",
+			firstPattern: "/foo/",
+			firstOpts:    []RouteOption{WithQueryMatcher("mode", "beta")},
+			methods:      get,
+			pattern:      "/foo/*{x}",
+			opts:         []RouteOption{WithQueryMatcher("mode", "live")},
+		},
+		{
+			name:         "equal matchers",
+			firstPattern: "/foo/",
+			firstOpts:    []RouteOption{WithQueryMatcher("mode", "beta")},
+			methods:      get,
+			pattern:      "/foo/*{x}",
+			opts:         []RouteOption{WithQueryMatcher("mode", "beta")},
+			wantErr:      true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := MustRouter()
+			require.NoError(t, onlyError(f.Add(tc.firstMethods, tc.firstPattern, emptyHandler, tc.firstOpts...)))
+			err := onlyError(f.Add(tc.methods, tc.pattern, emptyHandler, tc.opts...))
+			if tc.wantErr {
+				var conflict *RouteConflictError
+				require.ErrorAs(t, err, &conflict)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestRouter_Add_Conflict_MultiMethod(t *testing.T) {
 	f := MustRouter()
 	f.MustAdd(MethodGet, "/hello/{name}", emptyHandler,
