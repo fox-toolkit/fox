@@ -260,7 +260,58 @@ func FuzzNormalizeRawPath_DifferentialNetURL(f *testing.F) {
 	})
 }
 
-// TestIsRoutableRaw_DifferentialNetURL pins the routable-raw byte set to net/url.
+func TestEscapePath(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"empty", "", ""},
+		{"clean", "/foo/bar", "/foo/bar"},
+		{"reserved kept", "/$&+,/:;=@", "/$&+,/:;=@"},
+		{"unreserved kept", "/-._~Az09", "/-._~Az09"},
+		{"star alone", "*", "*"},
+		{"star in path", "/a*b", "/a%2Ab"},
+		{"space", "/a b", "/a%20b"},
+		{"percent", "/a%b", "/a%25b"},
+		{"utf8", "/café", "/caf%C3%A9"},
+		{"sub delims escaped", "/a(b)!'", "/a%28b%29%21%27"},
+		{"high byte", "/\xff", "/%FF"},
+		{"dirty first byte", " /a", "%20/a"},
+		{"long heap buffer", "/segment/segment/segment/segment/segment/segment/segment/café", "/segment/segment/segment/segment/segment/segment/segment/caf%C3%A9"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, EscapePath(tc.path))
+		})
+	}
+}
+
+func TestEscapePath_DifferentialNetURL(t *testing.T) {
+	for b := 0; b <= 0xFF; b++ {
+		c := byte(b)
+		s := "/a" + string([]byte{c}) + "b"
+		u := &url.URL{Path: s}
+		assert.Equal(t, u.EscapedPath(), EscapePath(s), "byte 0x%02X (%q)", b, string(c))
+	}
+}
+
+func FuzzEscapePath_DifferentialNetURL(f *testing.F) {
+	seeds := []string{
+		"", "*", "/", "/users/42", "/café", "/a b/c~d", "/a%b", "/a(b)!'*,;=:@[]",
+		"/api/v1/organizations/acme-corporation/projects/fox-router/download/café",
+		string([]byte{0x00, 0xFF, '/'}),
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, path string) {
+		u := &url.URL{Path: path}
+		require.Equal(t, u.EscapedPath(), EscapePath(path))
+	})
+}
+
 func TestIsRoutableRaw_DifferentialNetURL(t *testing.T) {
 	for b := 0; b <= 0xFF; b++ {
 		c := byte(b)

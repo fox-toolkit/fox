@@ -6,6 +6,27 @@ package stringsutil
 
 import "strings"
 
+const upperhex = "0123456789ABCDEF"
+
+// pathNoEscape marks the bytes EscapePath keeps unescaped. It mirrors the set
+// net/url leaves raw when encoding a URL path.
+var pathNoEscape = [256]bool{
+	'$': true, '&': true, '+': true, ',': true, '/': true, ':': true,
+	';': true, '=': true, '@': true, '-': true, '_': true, '.': true, '~': true,
+}
+
+func init() {
+	for b := 'a'; b <= 'z'; b++ {
+		pathNoEscape[b] = true
+	}
+	for b := 'A'; b <= 'Z'; b++ {
+		pathNoEscape[b] = true
+	}
+	for b := '0'; b <= '9'; b++ {
+		pathNoEscape[b] = true
+	}
+}
+
 // EqualStringsASCIIIgnoreCase performs case-insensitive comparison of two strings
 // containing ASCII characters. Only supports ASCII letters (A-Z, a-z), digits (0-9), hyphen (-) and underscore (_).
 // Used for hostname matching where registered routes follow LDH standard.
@@ -108,7 +129,53 @@ func UpperHex(c byte) byte {
 	return c
 }
 
-const upperhex = "0123456789ABCDEF"
+// EscapePath returns the default encoding of a decoded URL path. It mirrors
+// [net/url.URL.EscapedPath] for an unset RawPath, including the Path == "*"
+// special case.
+func EscapePath(path string) string {
+	i := 0
+	for i < len(path) && pathNoEscape[path[i]] {
+		i++
+	}
+	if i == len(path) {
+		return path
+	}
+	if path == "*" {
+		return "*"
+	}
+
+	hexCount := 1
+	for j := i + 1; j < len(path); j++ {
+		if !pathNoEscape[path[j]] {
+			hexCount++
+		}
+	}
+
+	var buf [64]byte
+	var t []byte
+	required := len(path) + 2*hexCount
+	if required <= len(buf) {
+		t = buf[:required]
+	} else {
+		t = make([]byte, required)
+	}
+
+	copy(t, path[:i])
+	w := i
+	for ; i < len(path); i++ {
+		c := path[i]
+		if pathNoEscape[c] {
+			t[w] = c
+			w++
+			continue
+		}
+		t[w] = '%'
+		t[w+1] = upperhex[c>>4]
+		t[w+2] = upperhex[c&0x0F]
+		w += 3
+	}
+	return string(t)
+}
 
 // NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
 // are decoded, hex is uppercased, bytes that cannot appear unescaped (see [IsRoutableRaw]) are
