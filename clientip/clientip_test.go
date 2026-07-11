@@ -220,6 +220,10 @@ func TestChain_ClientIP(t *testing.T) {
 	assert.ErrorIs(t, err, ErrRemoteAddress)
 	assert.ErrorIs(t, err, ErrInvalidIPAddress)
 	assert.ErrorContains(t, err, "header not found")
+
+	ipAddr, err = NewChain().ClientIP(c)
+	assert.ErrorIs(t, err, fox.ErrNoClientIPResolver)
+	assert.Nil(t, ipAddr)
 }
 
 func TestAddressesAndRangesToIPNets(t *testing.T) {
