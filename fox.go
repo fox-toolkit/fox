@@ -625,7 +625,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	nonCanonical := false
 	if !ok {
 		if fox.strictPathEncoding {
-			c.route = nil
 			c.scope = RejectPathHandler
 			fox.pathReject(c)
 			return
@@ -653,7 +652,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			normalized, ok = fox.normalizeRoutingPath(path)
 		}
 		if !ok {
-			c.route = nil
 			c.scope = RejectPathHandler
 			fox.pathReject(c)
 			return
@@ -664,7 +662,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// redirecting to a different path.
 			if !malformed && (fox.collapseDots != ExactPath || !hasDotSegment(normalized)) {
 				if idx, n, tsr := tree.lookup(r.Method, r.Host, normalized, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != ExactSlash) {
-					c.route = nil
 					r.Pattern = ""
 					orig.Pattern = ""
 					c.scope = RedirectPathHandler
@@ -705,7 +702,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// redirecting to a different path.
 		if route.handleSlash == RedirectSlash && !malformed && !hasDotSegment(path) {
 			*c.params = (*c.params)[:0]
-			c.route = nil
 			r.Pattern = ""
 			orig.Pattern = ""
 			c.scope = RedirectSlashHandler
@@ -716,7 +712,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 NoMatch:
 	*c.params = (*c.params)[:0]
-	c.route = nil
 	r.Pattern = ""
 	orig.Pattern = ""
 
