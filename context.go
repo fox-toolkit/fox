@@ -323,7 +323,12 @@ func (c *Context) Clone() *Context {
 // beneficial for middlewares that need to wrap their custom [ResponseWriter] while preserving the state of the original
 // [Context].
 func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
-	cp := c.tree.pool.Get().(*Context)
+	// A context returned by Clone has no tree. Borrow from the current tree pool.
+	tree := c.tree
+	if tree == nil {
+		tree = c.fox.getTree()
+	}
+	cp := tree.pool.Get().(*Context)
 	cp.req = r
 	cp.w = w
 	cp.route = c.route
