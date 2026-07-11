@@ -7,12 +7,10 @@ package fox
 import (
 	"cmp"
 	"fmt"
-	"log"
 	"math"
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -99,12 +97,10 @@ const (
 // while handling request concurrently.
 type Router struct {
 	clientip               ClientIPResolver
-	noRouteBase            HandlerFunc
 	noRoute                HandlerFunc
 	noMethod               HandlerFunc
 	tsrRedirect            HandlerFunc
 	pathRedirect           HandlerFunc
-	pathRejectBase         HandlerFunc
 	pathReject             HandlerFunc
 	autoOPTIONS            HandlerFunc
 	tree                   atomic.Pointer[iTree]
@@ -127,12 +123,12 @@ type Router struct {
 
 func initRouter() *Router {
 	r := new(Router)
-	r.noRouteBase = DefaultNotFoundHandler
+	r.noRoute = DefaultNotFoundHandler
 	r.noMethod = DefaultMethodNotAllowedHandler
 	r.autoOPTIONS = DefaultOptionsHandler
 	r.tsrRedirect = internalTrailingSlashHandler
 	r.pathRedirect = internalPathRedirectHandler
-	r.pathRejectBase = DefaultRejectPathHandler
+	r.pathReject = DefaultRejectPathHandler
 	r.clientip = noClientIPResolver{}
 	r.maxParams = math.MaxUint8
 	r.maxParamKeyBytes = math.MaxUint8
@@ -188,14 +184,17 @@ func NewRouter(opts ...GlobalOption) (*Router, error) {
 		}
 	}
 
+	// Clip so NewRoute's append(fox.mws, rte.mws...) can never write into the shared backing array.
+	router.mws = slices.Clip(router.mws)
+
 	router.hasNormalize = router.mergeSlash != ExactPath || router.collapseDots != ExactPath
 	router.hasRedirectPath = router.mergeSlash == RedirectPath || router.collapseDots == RedirectPath
 
-	router.noRoute = applyMiddleware(NoRouteHandler, router.mws, router.noRouteBase)
+	router.noRoute = applyMiddleware(NoRouteHandler, router.mws, router.noRoute)
 	router.noMethod = applyMiddleware(NoMethodHandler, router.mws, router.noMethod)
 	router.tsrRedirect = applyMiddleware(RedirectSlashHandler, router.mws, router.tsrRedirect)
 	router.pathRedirect = applyMiddleware(RedirectPathHandler, router.mws, router.pathRedirect)
-	router.pathReject = applyMiddleware(RejectPathHandler, router.mws, router.pathRejectBase)
+	router.pathReject = applyMiddleware(RejectPathHandler, router.mws, router.pathReject)
 	router.autoOPTIONS = applyMiddleware(OptionsHandler, router.mws, router.autoOPTIONS)
 
 	router.tree.Store(router.newTree())
@@ -298,6 +297,7 @@ func (fox *Router) UpdateRoute(route *Route) error {
 //   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteNotFound]: If the route does not exist.
 //   - [ErrInvalidRoute]: If the method is invalid or the pattern is empty.
+//   - [ErrInvalidConfig]: If the provided options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //
 // It's safe to delete a handler while the router is serving requests. This function is safe for concurrent use by
@@ -495,17 +495,6 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 	return rte, nil
 }
 
-// HandleNoRoute calls the no route handler with the provided [Context].
-// Note that this bypasses any middleware attached to the no route handler.
-func (fox *Router) HandleNoRoute(c *Context) {
-	if c.scope == NoRouteHandler {
-		caller := relevantCaller()
-		log.Printf("fox: recursive call to router.HandleNoRoute from %s (%s:%d)", caller.Function, path.Base(caller.File), caller.Line)
-		return
-	}
-	fox.noRouteBase(c)
-}
-
 // Len returns the number of registered route.
 func (fox *Router) Len() int {
 	tree := fox.getTree()
@@ -636,7 +625,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	nonCanonical := false
 	if !ok {
 		if fox.strictPathEncoding {
-			c.route = nil
 			c.scope = RejectPathHandler
 			fox.pathReject(c)
 			return
@@ -664,7 +652,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			normalized, ok = fox.normalizeRoutingPath(path)
 		}
 		if !ok {
-			c.route = nil
 			c.scope = RejectPathHandler
 			fox.pathReject(c)
 			return
@@ -675,7 +662,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// redirecting to a different path.
 			if !malformed && (fox.collapseDots != ExactPath || !hasDotSegment(normalized)) {
 				if idx, n, tsr := tree.lookup(r.Method, r.Host, normalized, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != ExactSlash) {
-					c.route = nil
 					r.Pattern = ""
 					orig.Pattern = ""
 					c.scope = RedirectPathHandler
@@ -716,7 +702,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// redirecting to a different path.
 		if route.handleSlash == RedirectSlash && !malformed && !hasDotSegment(path) {
 			*c.params = (*c.params)[:0]
-			c.route = nil
 			r.Pattern = ""
 			orig.Pattern = ""
 			c.scope = RedirectSlashHandler
@@ -727,7 +712,6 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 NoMatch:
 	*c.params = (*c.params)[:0]
-	c.route = nil
 	r.Pattern = ""
 	orig.Pattern = ""
 
@@ -1111,5 +1095,8 @@ func firstHeader(headers http.Header, k string) (string, bool) {
 
 func rawExpr(re *regexp.Regexp) string {
 	expr := re.String()
+	if strings.HasPrefix(expr, "(?i)") {
+		return expr[8 : len(expr)-2]
+	}
 	return expr[4 : len(expr)-2]
 }

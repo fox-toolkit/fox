@@ -318,7 +318,7 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 			},
 		},
 		{
-			name: "make hostname case sensitive with regexp",
+			name: "regexp hostname params match all cases with static label priority",
 			routes: []string{
 				"{a:[a-z]+}.b.c/foo",
 				"{a:[A-Z]+}.{b:[A-Z]+}.{c:[A-Z]+}/foo",
@@ -326,20 +326,12 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 			},
 			host:     "FOO.B.C",
 			path:     "/foo",
-			wantPath: "{a:[A-Z]+}.{b:[A-Z]+}.{c:[A-Z]+}/foo",
+			wantPath: "{a:[a-z]+}.b.c/foo",
 			wantTsr:  false,
 			wantParams: Params{
 				{
 					Key:   "a",
 					Value: "FOO",
-				},
-				{
-					Key:   "b",
-					Value: "B",
-				},
-				{
-					Key:   "c",
-					Value: "C",
 				},
 			},
 		},
@@ -1354,6 +1346,38 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 				{
 					Key:   "x",
 					Value: "b.b",
+				},
+			},
+		},
+		{
+			name: "regexp hostname param matches case-insensitively",
+			routes: []string{
+				"{a:[a-z]+}.example.com/",
+			},
+			host:     "FOO.example.com",
+			path:     "/",
+			wantPath: "{a:[a-z]+}.example.com/",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "a",
+					Value: "FOO",
+				},
+			},
+		},
+		{
+			name: "regexp hostname wildcard matches case-insensitively",
+			routes: []string{
+				"+{sub:[a-z.]+}.example.com/",
+			},
+			host:     "A.B.example.com",
+			path:     "/",
+			wantPath: "+{sub:[a-z.]+}.example.com/",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "sub",
+					Value: "A.B",
 				},
 			},
 		},

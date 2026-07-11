@@ -87,6 +87,10 @@ func NewChain(resolvers ...fox.ClientIPResolver) Chain {
 
 // ClientIP try to derive the client IP using this resolver chain.
 func (s Chain) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
+	if len(s.resolvers) == 0 {
+		return nil, fox.ErrNoClientIPResolver
+	}
+
 	var errs error
 	for _, sub := range s.resolvers {
 		ipAddr, err := sub.ClientIP(c)
@@ -157,7 +161,11 @@ func (s SingleIPHeader) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
 		return nil, errSingleIPHeader
 	}
 
-	return ParseIPAddr(ipStr)
+	ipAddr, err := ParseIPAddr(ipStr)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrSingleIPHeader, err)
+	}
+	return ipAddr, nil
 }
 
 // LeftmostNonPrivate derives the client IP from the leftmost valid and non-private/non-internal IP address in the X-Forwarded-For

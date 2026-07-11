@@ -493,6 +493,29 @@ func TestClientIPMatcher_Match(t *testing.T) {
 	}
 }
 
+func TestClientIPMatcher_RouteResolver(t *testing.T) {
+	routeResolver := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
+		return &net.IPAddr{IP: net.ParseIP("127.0.0.1")}, nil
+	})
+	globalResolver := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
+		return &net.IPAddr{IP: net.ParseIP("10.0.0.1")}, nil
+	})
+
+	f := MustRouter()
+	f.MustAdd(MethodGet, "/foo", emptyHandler, WithClientIPResolver(routeResolver), WithClientIPMatcher("127.0.0.0/8"))
+
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	f = MustRouter(WithClientIPResolver(globalResolver))
+	f.MustAdd(MethodGet, "/foo", emptyHandler, WithClientIPResolver(routeResolver), WithClientIPMatcher("127.0.0.0/8"))
+
+	w = httptest.NewRecorder()
+	f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/foo", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestClientIPMatcher_Equal(t *testing.T) {
 	_, ipNet1, _ := net.ParseCIDR("192.168.1.0/24")
 	_, ipNet2, _ := net.ParseCIDR("192.168.1.0/24")
@@ -612,6 +635,12 @@ func TestMatchQueryRegexp(t *testing.T) {
 			expr:    `[`,
 			wantErr: true,
 		},
+		{
+			name:    "regexp anchor escape rejected",
+			key:     "id",
+			expr:    `a)|(?:`,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -715,6 +744,12 @@ func TestMatchHeaderRegexp(t *testing.T) {
 			name:    "invalid regexp",
 			key:     "Content-Type",
 			expr:    `[`,
+			wantErr: true,
+		},
+		{
+			name:    "regexp anchor escape rejected",
+			key:     "Content-Type",
+			expr:    `a)|(?:`,
 			wantErr: true,
 		},
 	}

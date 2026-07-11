@@ -136,6 +136,7 @@ func (txn *Txn) UpdateRoute(route *Route) error {
 //   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteNotFound]: If the route does not exist.
 //   - [ErrInvalidRoute]: If the method is invalid or the pattern is empty.
+//   - [ErrInvalidConfig]: If the provided options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //   - [ErrReadOnlyTxn]: On write in a read-only transaction.
 func (txn *Txn) Delete(methods []string, pattern string, opts ...MatcherOption) (*Route, error) {

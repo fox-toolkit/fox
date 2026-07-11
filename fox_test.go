@@ -3330,29 +3330,6 @@ func TestRouter_UpdatesPanic(t *testing.T) {
 	assert.Empty(t, tree.methods)
 }
 
-func TestRouter_HandleNoRoute(t *testing.T) {
-	called := 0
-	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
-		return func(c *Context) {
-			called++
-			next(c)
-		}
-	})
-
-	f, err := NewRouter(WithMiddleware(m))
-	require.NoError(t, err)
-	require.NoError(t, onlyError(f.Add(MethodGet, "/foo", func(c *Context) {
-		c.Router().HandleNoRoute(c)
-	})))
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-	f.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Equal(t, 1, called)
-
-}
-
 func TestRouter_Update_Middleware(t *testing.T) {
 	called := false
 	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
@@ -4540,6 +4517,30 @@ func TestRouter_Race_Data(t *testing.T) {
 	wg.Wait()
 }
 
+func TestRouter_Race_NewRoute(t *testing.T) {
+	var wg sync.WaitGroup
+	start, wait := atomicSync()
+
+	pass := func(next HandlerFunc) HandlerFunc { return next }
+	f := MustRouter(WithMiddleware(pass, pass, pass))
+
+	wg.Add(len(githubAPI) * 2)
+	for _, rte := range githubAPI {
+		for range 2 {
+			go func(method, route string) {
+				wait()
+				defer wg.Done()
+				_, err := f.NewRoute([]string{method}, route, func(c *Context) {}, WithMiddleware(pass))
+				assert.NoError(t, err)
+			}(rte.method, rte.path)
+		}
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	start()
+	wg.Wait()
+}
+
 func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 	r, _ := NewRouter()
 
@@ -4568,10 +4569,6 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 	require.NoError(t, onlyError(r.Add(MethodGet, "/repos/{owner}/{repo}/contents/+{path}", h2)))
 	require.NoError(t, onlyError(r.Add(MethodGet, "/users/{user}/received_events/public", h3)))
 
-	r1 := httptest.NewRequest(http.MethodGet, "/repos/john/fox/keys", nil)
-	r2 := httptest.NewRequest(http.MethodGet, "/repos/alex/vault/contents/file.txt", nil)
-	r3 := httptest.NewRequest(http.MethodGet, "/users/go/received_events/public", nil)
-
 	var wg sync.WaitGroup
 	wg.Add(300)
 	start, wait := atomicSync()
@@ -4580,7 +4577,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 			defer wg.Done()
 			wait()
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, r1)
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/repos/john/fox/keys", nil))
 			assert.Equal(t, "/repos/{owner}/{repo}/keys", w.Body.String())
 		}()
 
@@ -4588,7 +4585,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 			defer wg.Done()
 			wait()
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, r2)
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/repos/alex/vault/contents/file.txt", nil))
 			assert.Equal(t, "/repos/{owner}/{repo}/contents/+{path}", w.Body.String())
 		}()
 
@@ -4596,7 +4593,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 			defer wg.Done()
 			wait()
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, r3)
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/users/go/received_events/public", nil))
 			assert.Equal(t, "/users/{user}/received_events/public", w.Body.String())
 		}()
 	}

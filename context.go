@@ -66,11 +66,13 @@ type RequestContext interface {
 // to write a response. Be aware that the Context API is not thread-safe and its lifetime should be limited to the
 // duration of the [HandlerFunc] execution, as the Context may be reused as soon as the handler returns.
 type Context struct {
-	w             ResponseWriter
-	req           *http.Request
-	params        *[]string
-	skipStack     *skipStack
-	route         *Route
+	w         ResponseWriter
+	req       *http.Request
+	params    *[]string
+	skipStack *skipStack
+	route     *Route
+	// Set by matchSlow, read only via onlyRequestContext.
+	matcherRoute  *Route
 	tree          *iTree  // no reset
 	fox           *Router // no reset
 	cachedQueries url.Values
@@ -384,15 +386,17 @@ type onlyRequestContext struct {
 	c *Context
 }
 
-func (s onlyRequestContext) Request() *http.Request         { return s.c.Request() }
-func (s onlyRequestContext) RemoteIP() *net.IPAddr          { return s.c.RemoteIP() }
-func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) { return s.c.ClientIP() }
-func (s onlyRequestContext) Method() string                 { return s.c.Method() }
-func (s onlyRequestContext) RoutingPath() string            { return s.c.RoutingPath() }
-func (s onlyRequestContext) Host() string                   { return s.c.Host() }
-func (s onlyRequestContext) QueryParams() url.Values        { return s.c.QueryParams() }
-func (s onlyRequestContext) QueryParam(name string) string  { return s.c.QueryParam(name) }
-func (s onlyRequestContext) Header(key string) string       { return s.c.Header(key) }
+func (s onlyRequestContext) Request() *http.Request { return s.c.Request() }
+func (s onlyRequestContext) RemoteIP() *net.IPAddr  { return s.c.RemoteIP() }
+func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) {
+	return s.c.matcherRoute.clientip.ClientIP(s)
+}
+func (s onlyRequestContext) Method() string                { return s.c.Method() }
+func (s onlyRequestContext) RoutingPath() string           { return s.c.RoutingPath() }
+func (s onlyRequestContext) Host() string                  { return s.c.Host() }
+func (s onlyRequestContext) QueryParams() url.Values       { return s.c.QueryParams() }
+func (s onlyRequestContext) QueryParam(name string) string { return s.c.QueryParam(name) }
+func (s onlyRequestContext) Header(key string) string      { return s.c.Header(key) }
 
 // WrapF is an adapter for wrapping [http.HandlerFunc] and returns a [HandlerFunc] function.
 // The route parameters are being accessed by the wrapped handler through the context.

@@ -46,6 +46,28 @@ func Test_parsePattern(t *testing.T) {
 		return tk
 	}
 
+	hostParamToken := func(v, reg string) token {
+		tk := token{
+			value: v,
+			typ:   nodeParam,
+		}
+		if reg != "" {
+			tk.regexp = regexp.MustCompile("(?i)^(?:" + reg + ")$")
+		}
+		return tk
+	}
+
+	hostWildcardToken := func(v, reg string) token {
+		tk := token{
+			value: v,
+			typ:   nodeWildcard,
+		}
+		if reg != "" {
+			tk.regexp = regexp.MustCompile("(?i)^(?:" + reg + ")$")
+		}
+		return tk
+	}
+
 	cases := []struct {
 		name             string
 		path             string
@@ -949,7 +971,7 @@ func Test_parsePattern(t *testing.T) {
 			name: "hostname starting with regexp",
 			path: "{a:[A-z]+}.b.c/foo",
 			wantTokens: slices.Collect(iterutil.SeqOf(
-				paramToken("a", "[A-z]+"),
+				hostParamToken("a", "[A-z]+"),
 				staticToken(".b.c", true),
 				staticToken("/foo", false),
 			)),
@@ -960,7 +982,7 @@ func Test_parsePattern(t *testing.T) {
 			path: "a.{b:[A-z]+}.c/foo",
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("a.", true),
-				paramToken("b", "[A-z]+"),
+				hostParamToken("b", "[A-z]+"),
 				staticToken(".c", true),
 				staticToken("/foo", false),
 			)),
@@ -971,7 +993,7 @@ func Test_parsePattern(t *testing.T) {
 			path: "a.b.{c:[A-z]+}/foo",
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				staticToken("a.b.", true),
-				paramToken("c", "[A-z]+"),
+				hostParamToken("c", "[A-z]+"),
 				staticToken("/foo", false),
 			)),
 			wantN: 1,
@@ -999,7 +1021,7 @@ func Test_parsePattern(t *testing.T) {
 			name: "regexp wildcard at the beginning of the host",
 			path: "+{a:[A-z]+}.b.c/",
 			wantTokens: slices.Collect(iterutil.SeqOf(
-				wildcardToken("a", "[A-z]+"),
+				hostWildcardToken("a", "[A-z]+"),
 				staticToken(".b.c", true),
 				staticToken("/", false),
 			)),
@@ -1032,7 +1054,7 @@ func Test_parsePattern(t *testing.T) {
 			wantTokens: slices.Collect(iterutil.SeqOf(
 				paramToken("a", ""),
 				staticToken(".", true),
-				wildcardToken("b", "b"),
+				hostWildcardToken("b", "b"),
 				staticToken("/", false),
 			)),
 			wantN: 2,
@@ -1041,9 +1063,9 @@ func Test_parsePattern(t *testing.T) {
 			name: "param regexp then wildcard regexp",
 			path: "{a:a}.+{b:b}/",
 			wantTokens: slices.Collect(iterutil.SeqOf(
-				paramToken("a", "a"),
+				hostParamToken("a", "a"),
 				staticToken(".", true),
-				wildcardToken("b", "b"),
+				hostWildcardToken("b", "b"),
 				staticToken("/", false),
 			)),
 			wantN: 2,
@@ -1848,6 +1870,16 @@ func TestPatternError_Position(t *testing.T) {
 			wantStart:  8,
 			wantEnd:    17,
 			wantMsg:    "capture group",
+		},
+		{
+			name:       "regexp anchor escape rejected",
+			pattern:    "/foo/{a:a)|(?:}",
+			options:    []GlobalOption{AllowRegexpParam(true)},
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  8,
+			wantEnd:    14,
+			wantMsg:    "error parsing regexp",
 		},
 		{
 			name:       "hostname label exceeds 63 chars before dot with param",

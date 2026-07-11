@@ -164,6 +164,7 @@ func (r *Route) matchSlow(method string, c *Context) bool {
 			return false
 		}
 	}
+	c.matcherRoute = r
 	sealed := onlyRequestContext{c}
 	for _, m := range r.matchers {
 		if !m.Match(sealed) {
