@@ -288,6 +288,9 @@ func WithMiddleware(m ...MiddlewareFunc) interface {
 // need fine-grained control over where the middleware is applied.
 func WithMiddlewareFor(scope HandlerScope, m ...MiddlewareFunc) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
+		if scope == 0 || scope&^AllHandlers != 0 {
+			return fmt.Errorf("%w: invalid handler scope", ErrInvalidConfig)
+		}
 		for i := range m {
 			if m[i] == nil {
 				return fmt.Errorf("%w: middleware cannot be nil", ErrInvalidConfig)
