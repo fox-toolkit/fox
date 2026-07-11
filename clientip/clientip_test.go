@@ -93,6 +93,11 @@ func TestSingleIPHeader_ClientIP(t *testing.T) {
 	c.Request().Header.Del("X-Real-IP")
 	_, err = s.ClientIP(c)
 	assert.ErrorIs(t, err, ErrSingleIPHeader)
+
+	c.Request().Header.Set("X-Real-IP", "not-an-ip")
+	_, err = s.ClientIP(c)
+	assert.ErrorIs(t, err, ErrSingleIPHeader)
+	assert.ErrorIs(t, err, ErrInvalidIPAddress)
 }
 
 func TestLeftmostNonPrivate_ClientIP(t *testing.T) {
