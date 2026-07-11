@@ -6,11 +6,22 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"regexp/syntax"
 	"slices"
 	"strings"
 
 	"github.com/fox-toolkit/fox/internal/netutil"
 )
+
+// compileAnchoredRegexp compiles expr wrapped in ^(?:...)$ so the match must cover the whole value.
+// A source that is invalid on its own can still balance inside the wrapper
+// (e.g. "a)|(?:") and defeat the anchoring, so it must compile standalone.
+func compileAnchoredRegexp(expr string) (*regexp.Regexp, error) {
+	if _, err := syntax.Parse(expr, syntax.Perl); err != nil {
+		return nil, err
+	}
+	return regexp.Compile("^(?:" + expr + ")$")
+}
 
 // Matcher evaluates if an HTTP request satisfies specific conditions. Matchers are evaluated after hostname and path
 // matching succeeds. All matchers associated with a route must match for the route to be selected.
@@ -85,7 +96,7 @@ func MatchQueryRegexp(key, expr string) (QueryRegexpMatcher, error) {
 	if key == "" {
 		return QueryRegexpMatcher{}, errors.New("empty query key")
 	}
-	regex, err := regexp.Compile("^(?:" + expr + ")$")
+	regex, err := compileAnchoredRegexp(expr)
 	if err != nil {
 		return QueryRegexpMatcher{}, err
 	}
@@ -198,7 +209,7 @@ func MatchHeaderRegexp(key, expr string) (HeaderRegexpMatcher, error) {
 	if key == "" {
 		return HeaderRegexpMatcher{}, errors.New("empty header key")
 	}
-	regex, err := regexp.Compile("^(?:" + expr + ")$")
+	regex, err := compileAnchoredRegexp(expr)
 	if err != nil {
 		return HeaderRegexpMatcher{}, err
 	}

@@ -635,6 +635,12 @@ func TestMatchQueryRegexp(t *testing.T) {
 			expr:    `[`,
 			wantErr: true,
 		},
+		{
+			name:    "regexp anchor escape rejected",
+			key:     "id",
+			expr:    `a)|(?:`,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range cases {
@@ -738,6 +744,12 @@ func TestMatchHeaderRegexp(t *testing.T) {
 			name:    "invalid regexp",
 			key:     "Content-Type",
 			expr:    `[`,
+			wantErr: true,
+		},
+		{
+			name:    "regexp anchor escape rejected",
+			key:     "Content-Type",
+			expr:    `a)|(?:`,
 			wantErr: true,
 		},
 	}
