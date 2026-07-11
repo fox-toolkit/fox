@@ -188,22 +188,32 @@ func (r *recorder) ReadFrom(src io.Reader) (n int64, err error) {
 		return 0, http.ErrHijacked
 	}
 
-	if rf, ok := r.ResponseWriter.(io.ReaderFrom); ok {
-		if r.size == notWritten {
-			r.size = 0
-			r.ResponseWriter.WriteHeader(r.status)
-		}
-		n, err = rf.ReadFrom(src)
-		r.size += int(n)
-		return n, err
+	rf, ok := r.ResponseWriter.(io.ReaderFrom)
+	if !ok {
+		// Fallback in compatibility mode.
+		bufp := copyBufPool.Get().(*[]byte)
+		buf := *bufp
+		n, err = io.CopyBuffer(onlyWrite{r}, src, buf)
+		copyBufPool.Put(bufp)
+		return
 	}
 
-	// Fallback in compatibility mode.
-	bufp := copyBufPool.Get().(*[]byte)
-	buf := *bufp
-	n, err = io.CopyBuffer(onlyWrite{r}, src, buf)
-	copyBufPool.Put(bufp)
-	return
+	// Copy the first bytes through Write so the header is not committed before
+	// the source produces data (see golang.org/issue/5660).
+	if r.size == notWritten {
+		bufp := copyBufPool.Get().(*[]byte)
+		buf := *bufp
+		n, err = io.CopyBuffer(onlyWrite{r}, io.LimitReader(src, int64(len(buf))), buf)
+		copyBufPool.Put(bufp)
+		if err != nil || n < int64(len(buf)) {
+			return n, err
+		}
+	}
+
+	nr, err := rf.ReadFrom(src)
+	r.size += int(nr)
+	n += nr
+	return n, err
 }
 
 // FlushError flushes buffered data to the client. If flush is not supported, FlushError returns an error

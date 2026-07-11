@@ -7,6 +7,7 @@ package fox
 import (
 	"bufio"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -447,4 +448,57 @@ func TestRecorder_WriteHeader_Informational(t *testing.T) {
 	linkHeader := resp.Header.Get("Link")
 	expectedLink := "</style.css>; rel=preload; as=style"
 	assert.Equal(t, expectedLink, linkHeader)
+}
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) { return 0, errors.New("source failed") }
+
+type readerFromRecorder struct {
+	*httptest.ResponseRecorder
+}
+
+func (w readerFromRecorder) ReadFrom(src io.Reader) (int64, error) {
+	return io.Copy(struct{ io.Writer }{w.ResponseRecorder}, src)
+}
+
+func TestRecorder_ReadFrom_SourceError(t *testing.T) {
+	f, _ := NewRouter()
+	f.MustAdd(MethodGet, "/proxy", func(c *Context) {
+		_, err := io.Copy(c.Writer(), errorReader{})
+		require.Error(t, err)
+		assert.False(t, c.Writer().Written())
+		c.Writer().WriteHeader(http.StatusBadGateway)
+	})
+
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+
+	resp, err := srv.Client().Get(srv.URL + "/proxy")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+}
+
+func TestRecorder_ReadFrom_EmptySource(t *testing.T) {
+	rec := new(recorder)
+	rec.reset(httptest.NewRecorder())
+	n, err := rec.ReadFrom(strings.NewReader(""))
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+	assert.False(t, rec.Written())
+
+	rec = new(recorder)
+	rec.reset(readerFromRecorder{httptest.NewRecorder()})
+	n, err = rec.ReadFrom(strings.NewReader(""))
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+	assert.False(t, rec.Written())
+
+	n, err = rec.ReadFrom(strings.NewReader("foo"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n)
+	assert.Equal(t, 3, rec.Size())
+	assert.Equal(t, http.StatusOK, rec.Status())
+	assert.True(t, rec.Written())
 }
