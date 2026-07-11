@@ -1251,6 +1251,78 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "suffix hostname wildcard does not capture path bytes on path fallback",
+			routes: []string{
+				"+{x}/foo",
+			},
+			host: "zzz",
+			path: "/bar/foo",
+		},
+		{
+			name: "suffix hostname wildcard does not capture path bytes with empty host",
+			routes: []string{
+				"+{x}/foo",
+			},
+			host: "",
+			path: "/bar/foo",
+		},
+		{
+			name: "boundary hostname wildcard does not capture path bytes",
+			routes: []string{
+				"example.com/p",
+				"example.com+{y}/q",
+			},
+			host: "example.com",
+			path: "/zzz/q",
+		},
+		{
+			name: "root hostname param does not capture asterisk form target",
+			routes: []string{
+				"{tld}/",
+			},
+			host: "zzz",
+			path: "*",
+		},
+		{
+			name: "path fallback to path only route with hostname wildcard sibling",
+			routes: []string{
+				"+{x}/foo",
+				"/bar",
+			},
+			host:     "zzz",
+			path:     "/bar",
+			wantPath: "/bar",
+			wantTsr:  false,
+		},
+		{
+			name: "boundary hostname static path with hostname wildcard sibling",
+			routes: []string{
+				"example.com/p",
+				"example.com+{y}/q",
+			},
+			host:     "example.com",
+			path:     "/p",
+			wantPath: "example.com/p",
+			wantTsr:  false,
+		},
+		{
+			name: "suffix hostname wildcard extending static hostname",
+			routes: []string{
+				"example.com/p",
+				"example.com+{y}/q",
+			},
+			host:     "example.comfoo",
+			path:     "/q",
+			wantPath: "example.com+{y}/q",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "y",
+					Value: "foo",
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1262,6 +1334,10 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 			tree := f.getTree()
 			c := newTestContext(f)
 			idx, n, tsr := tree.lookup(http.MethodGet, tc.host, tc.path, c, false)
+			if tc.wantPath == "" {
+				require.Nil(t, n)
+				return
+			}
 			require.NotNil(t, n)
 			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)

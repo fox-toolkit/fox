@@ -337,7 +337,9 @@ Walk:
 				// short-circuits the memequal call: we already verified search[0] == child.key[0] via the
 				// label match above.
 				if keyLen == 1 || (keyLen <= len(search) && search[:keyLen] == child.key) {
-					if len(matched.params) > 0 || len(matched.wildcards) > 0 {
+					// Only the lookup root can have hostname params and wildcards.
+					// A path lookup must skip them.
+					if (len(matched.params) > 0 || len(matched.wildcards) > 0) && matched != root {
 						*c.skipStack = append(*c.skipStack, skipNode{
 							node:         matched,
 							parent:       parent,
@@ -365,7 +367,7 @@ Walk:
 
 		skipStatic = false
 		params := matched.params[childParamIdx:]
-		if len(params) > 0 {
+		if len(params) > 0 && matched != root {
 			end := strings.IndexByte(search, slashDelim)
 			if end == -1 {
 				end = len(search)
@@ -416,7 +418,7 @@ Walk:
 		}
 
 		wildcards := matched.wildcards[childWildcardIdx:]
-		if len(wildcards) > 0 {
+		if len(wildcards) > 0 && matched != root {
 			offset := charsMatched
 
 		WalkWildcard:
