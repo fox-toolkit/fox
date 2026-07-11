@@ -1850,6 +1850,16 @@ func TestPatternError_Position(t *testing.T) {
 			wantMsg:    "capture group",
 		},
 		{
+			name:       "regexp anchor escape rejected",
+			pattern:    "/foo/{a:a)|(?:}",
+			options:    []GlobalOption{AllowRegexpParam(true)},
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  8,
+			wantEnd:    14,
+			wantMsg:    "error parsing regexp",
+		},
+		{
 			name:       "hostname label exceeds 63 chars before dot with param",
 			pattern:    strings.Repeat("a", 64) + "{b}.com/",
 			wantType:   "hostname",

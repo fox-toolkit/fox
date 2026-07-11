@@ -3,6 +3,7 @@ package fox
 import (
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"strings"
 	"unicode/utf8"
 
@@ -432,6 +433,18 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 	}
 	if rawRegex == "" {
 		return nil, newPatternError("regexp", 0, 0, "missing expression")
+	}
+
+	// A source that is invalid on its own can still balance inside the wrapper
+	// (e.g. "a)|(?:") and defeat the anchoring, so it must compile standalone.
+	if _, err := syntax.Parse(rawRegex, syntax.Perl); err != nil {
+		return nil, &PatternError{
+			Reason: "regexp",
+			Start:  0,
+			End:    len(rawRegex),
+			Hint:   err.Error(),
+			err:    err,
+		}
 	}
 
 	re, err := regexp.Compile("^(?:" + rawRegex + ")$")
