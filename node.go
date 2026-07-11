@@ -580,18 +580,18 @@ Walk:
 		if i, tsrNode := matchTrailingSlash(child, method, c, lazy); tsrNode != nil {
 			return i, tsrNode, true
 		}
-	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" && !strings.HasSuffix(path, "//") {
+	} else if matched.key == "/" && parent != nil && parent.isLeaf() && !strings.HasSuffix(path, "//") {
 		for i, route := range parent.routes {
-			if route.handleSlash != ExactSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && !route.pattern.catchAll && route.match(method, c) {
 				return i, parent, true
 			}
 		}
 	}
 
 Backtrack:
-	if search == "/" && matched.isLeaf() && matched.key != "*" && !strings.HasSuffix(path, "//") {
+	if search == "/" && matched.isLeaf() && !strings.HasSuffix(path, "//") {
 		for i, route := range matched.routes {
-			if route.handleSlash != ExactSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && !route.pattern.catchAll && route.match(method, c) {
 				return i, matched, true
 			}
 		}

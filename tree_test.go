@@ -4773,6 +4773,26 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 			paths: []string{"/+{w:[a-z]+}"},
 			key:   "/abc/",
 		},
+		{
+			name:  "no tsr when a suffix regex catch-all direct matches",
+			paths: []string{"/+{w:[a-z/]+}", "/+{w:[a-z/]+}/x"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr for suffix regex catch-all rejecting the full capture with sibling",
+			paths: []string{"/+{w:[a-z]+}", "/+{w:[a-z]+}/x"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr on slash node when parent suffix regex catch-all direct matches",
+			paths: []string{"/+{w:[a-z/]+}", "/+{w:[a-z/]+}/x", "/+{w:[a-z/]+}/y"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr on slash node when parent suffix catch-all direct matches",
+			paths: []string{"/+{a}", "/+{a}/x", "/+{a}/y"},
+			key:   "/abc/",
+		},
 	}
 
 	for _, tc := range cases {
