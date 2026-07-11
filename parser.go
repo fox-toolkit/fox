@@ -13,6 +13,7 @@ type pattern struct {
 	str              string // pattern as registered
 	tokens           []token
 	optionalCatchAll bool
+	catchAll         bool // the last path token is a wildcard
 	endHost          int
 }
 
@@ -67,6 +68,7 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 		tokens:           tokens,
 		endHost:          endHost,
 		optionalCatchAll: optCatchAll,
+		catchAll:         pathTokens[len(pathTokens)-1].typ == nodeWildcard,
 	}, paramCount, nil
 }
 

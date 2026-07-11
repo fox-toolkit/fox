@@ -248,7 +248,8 @@ Walk:
 				}
 			}
 
-			// After trying all infix wildcards, try suffix catchalls
+			// After trying all infix wildcards, try suffix catchalls. The path is
+			// matched in place so a failed candidate does not end the lookup.
 			for _, wildcardNode := range matched.wildcards {
 				if len(wildcardNode.statics) == 1 && wildcardNode.statics[0].label == dotDelim {
 					continue // Not a suffix catchall
@@ -258,12 +259,18 @@ Walk:
 					continue
 				}
 
+				paramCnt := len(*c.params)
 				if !lazy {
 					*c.params = append(*c.params, search)
 				}
 
-				matched = wildcardNode
-				break Walk
+				stackOffset := len(*c.skipStack)
+				if idx, subNode, subTsr := lookupByPath(wildcardNode, method, path, c, lazy, stackOffset); subNode != nil {
+					return idx, subNode, subTsr
+				}
+
+				*c.skipStack = (*c.skipStack)[:stackOffset]
+				*c.params = (*c.params)[:paramCnt]
 			}
 		}
 
@@ -337,7 +344,9 @@ Walk:
 				// short-circuits the memequal call: we already verified search[0] == child.key[0] via the
 				// label match above.
 				if keyLen == 1 || (keyLen <= len(search) && search[:keyLen] == child.key) {
-					if len(matched.params) > 0 || len(matched.wildcards) > 0 {
+					// Only the lookup root can have hostname params and wildcards.
+					// A path lookup must skip them.
+					if (len(matched.params) > 0 || len(matched.wildcards) > 0) && matched != root {
 						*c.skipStack = append(*c.skipStack, skipNode{
 							node:         matched,
 							parent:       parent,
@@ -365,7 +374,7 @@ Walk:
 
 		skipStatic = false
 		params := matched.params[childParamIdx:]
-		if len(params) > 0 {
+		if len(params) > 0 && matched != root {
 			end := strings.IndexByte(search, slashDelim)
 			if end == -1 {
 				end = len(search)
@@ -416,7 +425,7 @@ Walk:
 		}
 
 		wildcards := matched.wildcards[childWildcardIdx:]
-		if len(wildcards) > 0 {
+		if len(wildcards) > 0 && matched != root {
 			offset := charsMatched
 
 		WalkWildcard:
@@ -571,18 +580,18 @@ Walk:
 		if i, tsrNode := matchTrailingSlash(child, method, c, lazy); tsrNode != nil {
 			return i, tsrNode, true
 		}
-	} else if matched.key == "/" && parent != nil && parent.isLeaf() && parent.key != "*" && !strings.HasSuffix(path, "//") {
+	} else if matched.key == "/" && parent != nil && parent.isLeaf() && !strings.HasSuffix(path, "//") {
 		for i, route := range parent.routes {
-			if route.handleSlash != ExactSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && !route.pattern.catchAll && route.match(method, c) {
 				return i, parent, true
 			}
 		}
 	}
 
 Backtrack:
-	if search == "/" && matched.isLeaf() && matched.key != "*" && !strings.HasSuffix(path, "//") {
+	if search == "/" && matched.isLeaf() && !strings.HasSuffix(path, "//") {
 		for i, route := range matched.routes {
-			if route.handleSlash != ExactSlash && route.match(method, c) {
+			if route.handleSlash != ExactSlash && !route.pattern.catchAll && route.match(method, c) {
 				return i, matched, true
 			}
 		}

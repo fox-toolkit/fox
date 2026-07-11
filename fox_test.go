@@ -3217,11 +3217,23 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 			},
 			wantPath: "/+{args}",
 		},
+		{
+			name:   "no tsr when a suffix regex catch-all direct matches",
+			routes: []string{"/+{w:[a-z/]+}", "/+{w:[a-z/]+}/x"},
+			target: "/abc/",
+			wantParams: Params{
+				{
+					Key:   "w",
+					Value: "abc/",
+				},
+			},
+			wantPath: "/+{w:[a-z/]+}",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
+			f := MustRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, func(c *Context) {
 					assert.Equal(t, tc.wantPath, c.Pattern())
@@ -3235,7 +3247,7 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code)
 
 			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
+				f := MustRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
 				for _, rte := range tc.routes {
 					require.NoError(t, onlyError(f.Add(MethodAny, rte, func(c *Context) {
 						assert.Equal(t, tc.wantPath, c.Pattern())

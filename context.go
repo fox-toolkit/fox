@@ -80,13 +80,13 @@ type Context struct {
 
 // reset resets the [Context] to its initial state, attaching the provided [http.ResponseWriter] and [http.Request].
 // Caution: always pass the original [http.ResponseWriter] to this method, not the [ResponseWriter] itself, to
-// avoid wrapping the [ResponseWriter] within itself. Use wisely! Note that ServeHTTP is managing the reset of
-// c.route and c.tsr.
+// avoid wrapping the [ResponseWriter] within itself. Use wisely!
 func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.rec.reset(w)
 	c.req = r
 	c.w = &c.rec
 	c.cachedQueries = nil
+	c.route = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
 }
@@ -100,7 +100,7 @@ func (c *Context) resetNil() {
 }
 
 // resetWithRequest resets the [Context] to its initial state, with the provided [http.Request]. This is used
-// only by caller that don't return the [Context] (e.g. Match). Use wisely! Note that caller is managing the reset of c.tsr.
+// only by caller that don't return the [Context] (e.g. Match). Use wisely!
 func (c *Context) resetWithRequest(r *http.Request) {
 	c.req = r
 	c.w = nil
@@ -110,11 +110,12 @@ func (c *Context) resetWithRequest(r *http.Request) {
 }
 
 // resetWithWriter resets the [Context] to its initial state, with the provided [ResponseWriter] and [http.Request].
-// Use wisely! Note that caller is managing the reset of c.route and c.tsr.
+// Use wisely!
 func (c *Context) resetWithWriter(w ResponseWriter, r *http.Request) {
 	c.req = r
 	c.w = w
 	c.cachedQueries = nil
+	c.route = nil
 	c.scope = RouteHandler
 	*c.params = (*c.params)[:0]
 }
@@ -292,14 +293,22 @@ func (c *Context) Router() *Router {
 // Any attempt to write on the [ResponseWriter] will panic with the error [ErrDiscardedResponseWriter].
 func (c *Context) Clone() *Context {
 	cp := Context{
-		rec:   c.rec,
 		req:   c.req.Clone(c.req.Context()),
 		fox:   c.fox, // Note: no tree here so Context.Close is noop.
 		route: c.route,
 		scope: c.scope,
 	}
 
-	cp.rec.ResponseWriter = noopWriter{c.rec.Header().Clone()}
+	// Snapshot the response state from c.w. The embedded c.rec is only valid
+	// on the ServeHTTP path and may hold state from a previous request.
+	cp.rec = recorder{
+		ResponseWriter: noopWriter{c.w.Header().Clone()},
+		status:         c.w.Status(),
+		size:           notWritten,
+	}
+	if c.w.Written() {
+		cp.rec.size = c.w.Size()
+	}
 	cp.w = noUnwrap{&cp.rec}
 
 	params := make([]string, len(*c.params))
@@ -315,7 +324,12 @@ func (c *Context) Clone() *Context {
 // beneficial for middlewares that need to wrap their custom [ResponseWriter] while preserving the state of the original
 // [Context].
 func (c *Context) CloneWith(w ResponseWriter, r *http.Request) *Context {
-	cp := c.tree.pool.Get().(*Context)
+	// A context returned by Clone has no tree. Borrow from the current tree pool.
+	tree := c.tree
+	if tree == nil {
+		tree = c.fox.getTree()
+	}
+	cp := tree.pool.Get().(*Context)
 	cp.req = r
 	cp.w = w
 	cp.route = c.route

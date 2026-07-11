@@ -1251,6 +1251,121 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "suffix hostname wildcard does not capture path bytes on path fallback",
+			routes: []string{
+				"+{x}/foo",
+			},
+			host: "zzz",
+			path: "/bar/foo",
+		},
+		{
+			name: "suffix hostname wildcard does not capture path bytes with empty host",
+			routes: []string{
+				"+{x}/foo",
+			},
+			host: "",
+			path: "/bar/foo",
+		},
+		{
+			name: "boundary hostname wildcard does not capture path bytes",
+			routes: []string{
+				"example.com/p",
+				"example.com+{y}/q",
+			},
+			host: "example.com",
+			path: "/zzz/q",
+		},
+		{
+			name: "root hostname param does not capture asterisk form target",
+			routes: []string{
+				"{tld}/",
+			},
+			host: "zzz",
+			path: "*",
+		},
+		{
+			name: "path fallback to path only route with hostname wildcard sibling",
+			routes: []string{
+				"+{x}/foo",
+				"/bar",
+			},
+			host:     "zzz",
+			path:     "/bar",
+			wantPath: "/bar",
+			wantTsr:  false,
+		},
+		{
+			name: "boundary hostname static path with hostname wildcard sibling",
+			routes: []string{
+				"example.com/p",
+				"example.com+{y}/q",
+			},
+			host:     "example.com",
+			path:     "/p",
+			wantPath: "example.com/p",
+			wantTsr:  false,
+		},
+		{
+			name: "suffix hostname wildcard extending static hostname",
+			routes: []string{
+				"example.com/p",
+				"example.com+{y}/q",
+			},
+			host:     "example.comfoo",
+			path:     "/q",
+			wantPath: "example.com+{y}/q",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "y",
+					Value: "foo",
+				},
+			},
+		},
+		{
+			name: "fallback to next suffix hostname wildcard when path subtree does not match",
+			routes: []string{
+				"a.+{x:[b.]+}/foo",
+				"a.+{y}/bar",
+			},
+			host:     "a.b.b",
+			path:     "/bar",
+			wantPath: "a.+{y}/bar",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "y",
+					Value: "b.b",
+				},
+			},
+		},
+		{
+			name: "regexp suffix hostname wildcard priority when path subtree matches",
+			routes: []string{
+				"a.+{x:[b.]+}/foo",
+				"a.+{y}/foo",
+			},
+			host:     "a.b.b",
+			path:     "/foo",
+			wantPath: "a.+{x:[b.]+}/foo",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "x",
+					Value: "b.b",
+				},
+			},
+		},
+		{
+			name: "no match when no suffix hostname wildcard path subtree matches",
+			routes: []string{
+				"a.+{x:[b.]+}/foo",
+				"a.+{y}/bar",
+			},
+			host: "a.b.b",
+			path: "/nope",
+		},
 	}
 
 	for _, tc := range cases {
@@ -1262,6 +1377,10 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 			tree := f.getTree()
 			c := newTestContext(f)
 			idx, n, tsr := tree.lookup(http.MethodGet, tc.host, tc.path, c, false)
+			if tc.wantPath == "" {
+				require.Nil(t, n)
+				return
+			}
 			require.NotNil(t, n)
 			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
 			assert.Equal(t, tc.wantTsr, tsr)
@@ -4652,6 +4771,26 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 		{
 			name:  "no tsr for suffix regex catch-all rejecting the full capture",
 			paths: []string{"/+{w:[a-z]+}"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr when a suffix regex catch-all direct matches",
+			paths: []string{"/+{w:[a-z/]+}", "/+{w:[a-z/]+}/x"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr for suffix regex catch-all rejecting the full capture with sibling",
+			paths: []string{"/+{w:[a-z]+}", "/+{w:[a-z]+}/x"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr on slash node when parent suffix regex catch-all direct matches",
+			paths: []string{"/+{w:[a-z/]+}", "/+{w:[a-z/]+}/x", "/+{w:[a-z/]+}/y"},
+			key:   "/abc/",
+		},
+		{
+			name:  "no tsr on slash node when parent suffix catch-all direct matches",
+			paths: []string{"/+{a}", "/+{a}/x", "/+{a}/y"},
 			key:   "/abc/",
 		},
 	}
