@@ -740,7 +740,9 @@ NoMatch:
 		// with at least one route. A server responding solely to OPTIONS * doesn't meaningfully
 		// "support" OPTIONS for resource access.
 		if hasOPTIONS || mayHandleOPTIONS {
-			sb.WriteString(", ")
+			if sb.Len() > 0 {
+				sb.WriteString(", ")
+			}
 			sb.WriteString(http.MethodOptions)
 		}
 

@@ -539,6 +539,14 @@ func TestRouter_ServeHTTP_AutomaticOptions(t *testing.T) {
 			wantCode: http.StatusOK,
 		},
 		{
+			name:     "system-wide with only options method registered",
+			target:   "*",
+			path:     "/foo",
+			methods:  []string{"OPTIONS"},
+			want:     []string{"OPTIONS"},
+			wantCode: http.StatusOK,
+		},
+		{
 			name:     "regular OPTIONS request",
 			target:   "/foo",
 			path:     "/foo",
