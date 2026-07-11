@@ -309,13 +309,32 @@ Backtrack:
 	goto Walk
 }
 
-// lookupByPath returns the node matching path, or a trailing slash candidate (tsr)
-// when adding or removing the trailing slash would match a non ExactSlash route.
+// lookupByPath returns the node matching path. When tsr is true, the returned node matches the
+// path with its trailing slash added or removed. Only routes not registered with ExactSlash are
+// eligible for a tsr match, and the node is nil when no route matches either form.
 //
-// Caveat: ExactSlash only prevents a route from being a tsr candidate, it does not veto
-// slash correction triggered by a lower priority route. Since the corrected path
-// is matched from scratch, a higher priority ExactSlash route can win the direct
-// match and end up serving the redirected traffic.
+// A route registered with RelaxedSlash or RedirectSlash matches with and without its trailing
+// slash. A tsr candidate therefore counts as a direct match and keeps the priority of the
+// branch where it was found (static > regex param > param > regex wildcard > wildcard). The
+// lookup returns it without exploring lower priority alternatives on the skip stack, even when
+// one of them matches the path exactly. For example with /foo/ registered as RelaxedSlash and
+// /{a}, a request for /foo matches /foo/ because the static branch has priority over the
+// param branch.
+//
+// When both slash variants of the same pattern are registered, each request form is served by
+// its exact variant. Static and param patterns need no special handling since the exact leaf
+// is checked before any tsr candidate. Catch-alls need special handling because the infix
+// wildcard (/+{x}/) is always walked before the suffix (/+{x}) to favor the longest match,
+// otherwise the suffix would always win as it matches any remainder. The infix tsr candidate
+// is recorded and only used when no suffix catch-all at the same node matches directly.
+//
+// A tsr candidate never crosses a "//" boundary, so /foo// and /foo/ stay distinct.
+//
+// A route registered with ExactSlash is never used as a tsr candidate, but a slash correction
+// triggered by another route can still redirect traffic to it, for example /foo/ registered with
+// ExactSlash and /{a}/ registered with RedirectSlash. A request for /foo finds no direct match
+// and the param branch offers /{a}/ as a tsr candidate, so the router redirects to /foo/. The
+// client follows the redirect and the new request is a direct match for the static /foo/ route.
 func lookupByPath(root *node, method, path string, c *Context, lazy bool, stackOffset int) (index int, n *node, tsr bool) {
 
 	var (

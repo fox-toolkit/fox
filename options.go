@@ -105,6 +105,19 @@ func WithOptionsHandler(handler HandlerFunc) GlobalOption {
 	})
 }
 
+// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the
+// request, e.g. a ".." segment escaping above the root with [WithCollapseDotSegments] enabled.
+// By default, the [DefaultRejectPathHandler] replies with a 400 Bad Request.
+func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		if handler == nil {
+			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
+		}
+		s.router.pathReject = handler
+		return nil
+	})
+}
+
 // WithHandleTrailingSlash configures how the router handles trailing slashes in request paths.
 //
 // Available slash handling modes:
@@ -119,8 +132,7 @@ func WithOptionsHandler(handler HandlerFunc) GlobalOption {
 //   - If applied to a specific route, it will override the global setting for that route.
 //
 // If both /foo/bar and /foo/bar/ are explicitly registered, the exact match always takes precedence.
-// The trailing slash handling logic only applies when there is no direct match but a match would be
-// possible by adding or removing a trailing slash.
+// Otherwise a trailing slash match keeps the route's normal priority, like a direct match.
 func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
 	GlobalOption
 	RouteOption
@@ -137,19 +149,6 @@ func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
 			s.route.handleSlash = opt
 			return nil
 		}
-		return nil
-	})
-}
-
-// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the
-// request, e.g. a ".." segment escaping above the root with [WithCollapseDotSegments] enabled.
-// By default, the [DefaultRejectPathHandler] replies with a 400 Bad Request.
-func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
-	return optionFunc(func(s sealedOption) error {
-		if handler == nil {
-			return fmt.Errorf("%w: reject path handler cannot be nil", ErrInvalidConfig)
-		}
-		s.router.pathReject = handler
 		return nil
 	})
 }
