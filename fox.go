@@ -7,12 +7,10 @@ package fox
 import (
 	"cmp"
 	"fmt"
-	"log"
 	"math"
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -99,12 +97,10 @@ const (
 // while handling request concurrently.
 type Router struct {
 	clientip               ClientIPResolver
-	noRouteBase            HandlerFunc
 	noRoute                HandlerFunc
 	noMethod               HandlerFunc
 	tsrRedirect            HandlerFunc
 	pathRedirect           HandlerFunc
-	pathRejectBase         HandlerFunc
 	pathReject             HandlerFunc
 	autoOPTIONS            HandlerFunc
 	tree                   atomic.Pointer[iTree]
@@ -127,12 +123,12 @@ type Router struct {
 
 func initRouter() *Router {
 	r := new(Router)
-	r.noRouteBase = DefaultNotFoundHandler
+	r.noRoute = DefaultNotFoundHandler
 	r.noMethod = DefaultMethodNotAllowedHandler
 	r.autoOPTIONS = DefaultOptionsHandler
 	r.tsrRedirect = internalTrailingSlashHandler
 	r.pathRedirect = internalPathRedirectHandler
-	r.pathRejectBase = DefaultRejectPathHandler
+	r.pathReject = DefaultRejectPathHandler
 	r.clientip = noClientIPResolver{}
 	r.maxParams = math.MaxUint8
 	r.maxParamKeyBytes = math.MaxUint8
@@ -194,11 +190,11 @@ func NewRouter(opts ...GlobalOption) (*Router, error) {
 	router.hasNormalize = router.mergeSlash != ExactPath || router.collapseDots != ExactPath
 	router.hasRedirectPath = router.mergeSlash == RedirectPath || router.collapseDots == RedirectPath
 
-	router.noRoute = applyMiddleware(NoRouteHandler, router.mws, router.noRouteBase)
+	router.noRoute = applyMiddleware(NoRouteHandler, router.mws, router.noRoute)
 	router.noMethod = applyMiddleware(NoMethodHandler, router.mws, router.noMethod)
 	router.tsrRedirect = applyMiddleware(RedirectSlashHandler, router.mws, router.tsrRedirect)
 	router.pathRedirect = applyMiddleware(RedirectPathHandler, router.mws, router.pathRedirect)
-	router.pathReject = applyMiddleware(RejectPathHandler, router.mws, router.pathRejectBase)
+	router.pathReject = applyMiddleware(RejectPathHandler, router.mws, router.pathReject)
 	router.autoOPTIONS = applyMiddleware(OptionsHandler, router.mws, router.autoOPTIONS)
 
 	router.tree.Store(router.newTree())
@@ -496,17 +492,6 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 	}
 
 	return rte, nil
-}
-
-// HandleNoRoute calls the no route handler with the provided [Context].
-// Note that this bypasses any middleware attached to the no route handler.
-func (fox *Router) HandleNoRoute(c *Context) {
-	if c.scope == NoRouteHandler {
-		caller := relevantCaller()
-		log.Printf("fox: recursive call to router.HandleNoRoute from %s (%s:%d)", caller.Function, path.Base(caller.File), caller.Line)
-		return
-	}
-	fox.noRouteBase(c)
 }
 
 // Len returns the number of registered route.

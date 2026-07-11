@@ -3330,29 +3330,6 @@ func TestRouter_UpdatesPanic(t *testing.T) {
 	assert.Empty(t, tree.methods)
 }
 
-func TestRouter_HandleNoRoute(t *testing.T) {
-	called := 0
-	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
-		return func(c *Context) {
-			called++
-			next(c)
-		}
-	})
-
-	f, err := NewRouter(WithMiddleware(m))
-	require.NoError(t, err)
-	require.NoError(t, onlyError(f.Add(MethodGet, "/foo", func(c *Context) {
-		c.Router().HandleNoRoute(c)
-	})))
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-	f.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Equal(t, 1, called)
-
-}
-
 func TestRouter_Update_Middleware(t *testing.T) {
 	called := false
 	m := MiddlewareFunc(func(next HandlerFunc) HandlerFunc {
