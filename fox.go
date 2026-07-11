@@ -775,7 +775,7 @@ NoMatch:
 				if _, ok := seen[method]; ok {
 					continue
 				}
-				if idx, n, tsr := tree.lookup(method, r.Host, path, c, true); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
+				if idx, n, tsr := tree.lookup(method, r.Host, path, c, true); n != nil && (!tsr || (method != http.MethodConnect && n.routes[idx].handleSlash == RelaxedSlash)) {
 					for _, m := range n.routes[idx].methods {
 						seen[m] = struct{}{}
 					}
@@ -805,7 +805,7 @@ NoMatch:
 			if _, ok := seen[method]; ok {
 				continue
 			}
-			if idx, n, tsr := tree.lookup(method, r.Host, path, c, true); n != nil && (!tsr || n.routes[idx].handleSlash == RelaxedSlash) {
+			if idx, n, tsr := tree.lookup(method, r.Host, path, c, true); n != nil && (!tsr || (method != http.MethodConnect && n.routes[idx].handleSlash == RelaxedSlash)) {
 				for _, m := range n.routes[idx].methods {
 					seen[m] = struct{}{}
 				}

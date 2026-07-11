@@ -145,7 +145,7 @@ func TestRouter_ServeHTTP_AllowedMethodWithIgnoreTsEnable(t *testing.T) {
 			path:    "/foo/bar/",
 			req:     "/foo/bar",
 			target:  http.MethodTrace,
-			want:    []string{"GET", "POST", "PUT", "DELETE", "PATCH", "CONNECT", "OPTIONS", "HEAD"},
+			want:    []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"},
 		},
 		{
 			name:    "all route except the first one",
@@ -153,7 +153,7 @@ func TestRouter_ServeHTTP_AllowedMethodWithIgnoreTsEnable(t *testing.T) {
 			path:    "/foo/baz",
 			req:     "/foo/baz/",
 			target:  http.MethodGet,
-			want:    []string{"POST", "PUT", "DELETE", "PATCH", "CONNECT", "OPTIONS", "HEAD", "TRACE"},
+			want:    []string{"POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "TRACE"},
 		},
 	}
 
@@ -213,7 +213,7 @@ func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsEnable(t *testing.T) {
 			name:     "regular option request and ignore ts",
 			target:   "/foo/",
 			path:     "/foo",
-			methods:  []string{"GET", "TRACE", "PUT"},
+			methods:  []string{"GET", "TRACE", "PUT", "CONNECT"},
 			want:     []string{"GET", "PUT", "TRACE", "OPTIONS"},
 			wantCode: http.StatusNoContent,
 		},
