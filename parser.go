@@ -415,7 +415,7 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 		return "", nil, 0, newPatternError("regexp", 0, consumed, "not allowed in optional wildcard")
 	}
 
-	re, pe := fox.compileParamRegexp(rawRegex)
+	re, pe := fox.compileParamRegexp(rawRegex, delim == dotDelim)
 	if pe != nil {
 		regexOffset := 1 + colonIdx + 1
 		pe.Start += regexOffset
@@ -426,8 +426,9 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 }
 
 // compileParamRegexp validates and compiles a regular expression constraint for a parameter.
+// Hostnames are compiled with the ignoreCase flag since hostname matching is case-insensitive.
 // Positions in the returned PatternError are relative to rawRegex.
-func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *PatternError) {
+func (fox *Router) compileParamRegexp(rawRegex string, ignoreCase bool) (*regexp.Regexp, *PatternError) {
 	if !fox.allowRegexp {
 		return nil, newPatternError("regexp", 0, len(rawRegex), "feature not enabled")
 	}
@@ -447,7 +448,11 @@ func (fox *Router) compileParamRegexp(rawRegex string) (*regexp.Regexp, *Pattern
 		}
 	}
 
-	re, err := regexp.Compile("^(?:" + rawRegex + ")$")
+	expr := "^(?:" + rawRegex + ")$"
+	if ignoreCase {
+		expr = "(?i)" + expr
+	}
+	re, err := regexp.Compile(expr)
 	if err != nil {
 		return nil, &PatternError{
 			Reason: "regexp",

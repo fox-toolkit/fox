@@ -1099,5 +1099,8 @@ func firstHeader(headers http.Header, k string) (string, bool) {
 
 func rawExpr(re *regexp.Regexp) string {
 	expr := re.String()
+	if strings.HasPrefix(expr, "(?i)") {
+		return expr[8 : len(expr)-2]
+	}
 	return expr[4 : len(expr)-2]
 }
