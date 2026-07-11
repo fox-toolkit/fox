@@ -415,6 +415,13 @@ func (fox *Router) parseBrace(s string, delim byte, isOptional bool) (string, *r
 		return "", nil, 0, newPatternError("regexp", 0, consumed, "not allowed in optional wildcard")
 	}
 
+	for j := 0; j < len(rawRegex); j++ {
+		if isASCIIControl(rawRegex[j]) {
+			off := 1 + colonIdx + 1
+			return "", nil, 0, newPatternError("regexp", off+j, off+j+1, "illegal control character")
+		}
+	}
+
 	re, pe := fox.compileParamRegexp(rawRegex, delim == dotDelim)
 	if pe != nil {
 		regexOffset := 1 + colonIdx + 1

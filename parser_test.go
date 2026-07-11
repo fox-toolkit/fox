@@ -515,6 +515,16 @@ func Test_parsePattern(t *testing.T) {
 			wantN: 0,
 		},
 		{
+			name:  "illegal control character in path regex constraint",
+			path:  "/x/{a:\x01}",
+			wantN: 0,
+		},
+		{
+			name:  "illegal control character in hostname regex constraint",
+			path:  "{s:a\nb}.example.com/",
+			wantN: 0,
+		},
+		{
 			name:  "illegal leading hyphen in hostname",
 			path:  "-a.com/",
 			wantN: 0,
@@ -1925,6 +1935,16 @@ func TestPatternError_Position(t *testing.T) {
 			wantStart:  2,
 			wantEnd:    3,
 			wantMsg:    "illegal control character in name",
+		},
+		{
+			name:       "path control character in regex constraint",
+			pattern:    "/x/{a:a\nb}",
+			options:    []GlobalOption{AllowRegexpParam(true)},
+			wantType:   "path",
+			wantReason: "regexp",
+			wantStart:  7,
+			wantEnd:    8,
+			wantMsg:    "illegal control character",
 		},
 	}
 
