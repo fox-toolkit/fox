@@ -292,14 +292,22 @@ func (c *Context) Router() *Router {
 // Any attempt to write on the [ResponseWriter] will panic with the error [ErrDiscardedResponseWriter].
 func (c *Context) Clone() *Context {
 	cp := Context{
-		rec:   c.rec,
 		req:   c.req.Clone(c.req.Context()),
 		fox:   c.fox, // Note: no tree here so Context.Close is noop.
 		route: c.route,
 		scope: c.scope,
 	}
 
-	cp.rec.ResponseWriter = noopWriter{c.rec.Header().Clone()}
+	// Snapshot the response state from c.w. The embedded c.rec is only valid
+	// on the ServeHTTP path and may hold state from a previous request.
+	cp.rec = recorder{
+		ResponseWriter: noopWriter{c.w.Header().Clone()},
+		status:         c.w.Status(),
+		size:           notWritten,
+	}
+	if c.w.Written() {
+		cp.rec.size = c.w.Size()
+	}
 	cp.w = noUnwrap{&cp.rec}
 
 	params := make([]string, len(*c.params))
