@@ -4838,6 +4838,112 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 	}
 }
 
+func Test_iTree_lookup_TsrMatchers(t *testing.T) {
+	type rte struct {
+		pattern string
+		opts    []RouteOption
+	}
+
+	cases := []struct {
+		name         string
+		routes       []rte
+		target       string
+		wantPath     string
+		wantTsr      bool
+		wantMatchers int
+	}{
+		{
+			name:         "matcher pass on tsr candidate",
+			routes:       []rte{{"/foo/", []RouteOption{WithQueryMatcher("mode", "beta")}}},
+			target:       "/foo?mode=beta",
+			wantPath:     "/foo/",
+			wantTsr:      true,
+			wantMatchers: 1,
+		},
+		{
+			name:   "matcher veto on tsr candidate",
+			routes: []rte{{"/foo/", []RouteOption{WithQueryMatcher("mode", "beta")}}},
+			target: "/foo",
+		},
+		{
+			name: "matcher veto reopens lower priority direct match",
+			routes: []rte{
+				{"/foo/", []RouteOption{WithQueryMatcher("mode", "beta")}},
+				{"/{a}", nil},
+			},
+			target:   "/foo",
+			wantPath: "/{a}",
+		},
+		{
+			name: "matcher pass keeps tsr priority over direct match",
+			routes: []rte{
+				{"/foo/", []RouteOption{WithQueryMatcher("mode", "beta")}},
+				{"/{a}", nil},
+			},
+			target:       "/foo?mode=beta",
+			wantPath:     "/foo/",
+			wantTsr:      true,
+			wantMatchers: 1,
+		},
+		{
+			name: "matched route first on shared tsr candidate",
+			routes: []rte{
+				{"/foo/", []RouteOption{WithQueryMatcher("mode", "beta")}},
+				{"/foo/", nil},
+			},
+			target:       "/foo?mode=beta",
+			wantPath:     "/foo/",
+			wantTsr:      true,
+			wantMatchers: 1,
+		},
+		{
+			name: "fallback route on shared tsr candidate",
+			routes: []rte{
+				{"/foo/", []RouteOption{WithQueryMatcher("mode", "beta")}},
+				{"/foo/", nil},
+			},
+			target:   "/foo",
+			wantPath: "/foo/",
+			wantTsr:  true,
+		},
+		{
+			name:         "matcher pass on empty catch-all candidate",
+			routes:       []rte{{"/foo/*{x}", []RouteOption{WithQueryMatcher("mode", "beta")}}},
+			target:       "/foo?mode=beta",
+			wantPath:     "/foo/*{x}",
+			wantTsr:      true,
+			wantMatchers: 1,
+		},
+		{
+			name:   "matcher veto on empty catch-all candidate",
+			routes: []rte{{"/foo/*{x}", []RouteOption{WithQueryMatcher("mode", "beta")}}},
+			target: "/foo",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+			for _, r := range tc.routes {
+				require.NoError(t, onlyError(f.Add(MethodGet, r.pattern, emptyHandler, r.opts...)))
+			}
+			tree := f.getTree()
+			c := newTestContext(f)
+			req := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			c.resetWithRequest(req)
+			idx, n, tsr := lookupByPath(tree.patterns, http.MethodGet, req.URL.Path, c, true, 0)
+			if tc.wantPath == "" {
+				assert.Nil(t, n)
+				return
+			}
+			require.NotNil(t, n)
+			assert.Equal(t, tc.wantTsr, tsr)
+			assert.Equal(t, tc.wantPath, n.routes[idx].pattern.str)
+			assert.Equal(t, tc.wantMatchers, len(n.routes[idx].matchers))
+		})
+	}
+}
+
 func Test_iTree_delete(t *testing.T) {
 	f, _ := NewRouter()
 	routes := make([]route, len(githubAPI))
