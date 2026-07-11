@@ -297,6 +297,7 @@ func (fox *Router) UpdateRoute(route *Route) error {
 //   - [*PatternError]: If the pattern syntax is invalid.
 //   - [ErrRouteNotFound]: If the route does not exist.
 //   - [ErrInvalidRoute]: If the method is invalid or the pattern is empty.
+//   - [ErrInvalidConfig]: If the provided options are invalid.
 //   - [ErrInvalidMatcher]: If the provided matcher options are invalid.
 //
 // It's safe to delete a handler while the router is serving requests. This function is safe for concurrent use by

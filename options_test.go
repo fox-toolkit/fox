@@ -1004,4 +1004,12 @@ func TestWithMatcher(t *testing.T) {
 		err = onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatcher(m, nil)))
 		assert.ErrorIs(t, err, ErrInvalidConfig)
 	})
+
+	t.Run("nil matcher on delete", func(t *testing.T) {
+		f, err := NewRouter()
+		require.NoError(t, err)
+		f.MustAdd(MethodGet, "/foo", emptyHandler)
+		_, err = f.Delete(MethodGet, "/foo", WithMatcher(nil))
+		assert.ErrorIs(t, err, ErrInvalidConfig)
+	})
 }
