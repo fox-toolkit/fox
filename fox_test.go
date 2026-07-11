@@ -4540,6 +4540,30 @@ func TestRouter_Race_Data(t *testing.T) {
 	wg.Wait()
 }
 
+func TestRouter_Race_NewRoute(t *testing.T) {
+	var wg sync.WaitGroup
+	start, wait := atomicSync()
+
+	pass := func(next HandlerFunc) HandlerFunc { return next }
+	f := MustRouter(WithMiddleware(pass, pass, pass))
+
+	wg.Add(len(githubAPI) * 2)
+	for _, rte := range githubAPI {
+		for range 2 {
+			go func(method, route string) {
+				wait()
+				defer wg.Done()
+				_, err := f.NewRoute([]string{method}, route, func(c *Context) {}, WithMiddleware(pass))
+				assert.NoError(t, err)
+			}(rte.method, rte.path)
+		}
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	start()
+	wg.Wait()
+}
+
 func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 	r, _ := NewRouter()
 

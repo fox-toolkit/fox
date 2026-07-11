@@ -188,6 +188,9 @@ func NewRouter(opts ...GlobalOption) (*Router, error) {
 		}
 	}
 
+	// Clip so NewRoute's append(fox.mws, rte.mws...) can never write into the shared backing array.
+	router.mws = slices.Clip(router.mws)
+
 	router.hasNormalize = router.mergeSlash != ExactPath || router.collapseDots != ExactPath
 	router.hasRedirectPath = router.mergeSlash == RedirectPath || router.collapseDots == RedirectPath
 
