@@ -1323,6 +1323,49 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "fallback to next suffix hostname wildcard when path subtree does not match",
+			routes: []string{
+				"a.+{x:[b.]+}/foo",
+				"a.+{y}/bar",
+			},
+			host:     "a.b.b",
+			path:     "/bar",
+			wantPath: "a.+{y}/bar",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "y",
+					Value: "b.b",
+				},
+			},
+		},
+		{
+			name: "regexp suffix hostname wildcard priority when path subtree matches",
+			routes: []string{
+				"a.+{x:[b.]+}/foo",
+				"a.+{y}/foo",
+			},
+			host:     "a.b.b",
+			path:     "/foo",
+			wantPath: "a.+{x:[b.]+}/foo",
+			wantTsr:  false,
+			wantParams: Params{
+				{
+					Key:   "x",
+					Value: "b.b",
+				},
+			},
+		},
+		{
+			name: "no match when no suffix hostname wildcard path subtree matches",
+			routes: []string{
+				"a.+{x:[b.]+}/foo",
+				"a.+{y}/bar",
+			},
+			host: "a.b.b",
+			path: "/nope",
+		},
 	}
 
 	for _, tc := range cases {

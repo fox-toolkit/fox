@@ -248,7 +248,8 @@ Walk:
 				}
 			}
 
-			// After trying all infix wildcards, try suffix catchalls
+			// After trying all infix wildcards, try suffix catchalls. The path is
+			// matched in place so a failed candidate does not end the lookup.
 			for _, wildcardNode := range matched.wildcards {
 				if len(wildcardNode.statics) == 1 && wildcardNode.statics[0].label == dotDelim {
 					continue // Not a suffix catchall
@@ -258,12 +259,18 @@ Walk:
 					continue
 				}
 
+				paramCnt := len(*c.params)
 				if !lazy {
 					*c.params = append(*c.params, search)
 				}
 
-				matched = wildcardNode
-				break Walk
+				stackOffset := len(*c.skipStack)
+				if idx, subNode, subTsr := lookupByPath(wildcardNode, method, path, c, lazy, stackOffset); subNode != nil {
+					return idx, subNode, subTsr
+				}
+
+				*c.skipStack = (*c.skipStack)[:stackOffset]
+				*c.params = (*c.params)[:paramCnt]
 			}
 		}
 
