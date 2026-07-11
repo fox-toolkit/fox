@@ -4592,10 +4592,6 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 	require.NoError(t, onlyError(r.Add(MethodGet, "/repos/{owner}/{repo}/contents/+{path}", h2)))
 	require.NoError(t, onlyError(r.Add(MethodGet, "/users/{user}/received_events/public", h3)))
 
-	r1 := httptest.NewRequest(http.MethodGet, "/repos/john/fox/keys", nil)
-	r2 := httptest.NewRequest(http.MethodGet, "/repos/alex/vault/contents/file.txt", nil)
-	r3 := httptest.NewRequest(http.MethodGet, "/users/go/received_events/public", nil)
-
 	var wg sync.WaitGroup
 	wg.Add(300)
 	start, wait := atomicSync()
@@ -4604,7 +4600,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 			defer wg.Done()
 			wait()
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, r1)
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/repos/john/fox/keys", nil))
 			assert.Equal(t, "/repos/{owner}/{repo}/keys", w.Body.String())
 		}()
 
@@ -4612,7 +4608,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 			defer wg.Done()
 			wait()
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, r2)
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/repos/alex/vault/contents/file.txt", nil))
 			assert.Equal(t, "/repos/{owner}/{repo}/contents/+{path}", w.Body.String())
 		}()
 
@@ -4620,7 +4616,7 @@ func TestRouter_ServeHTTP_Concurrent(t *testing.T) {
 			defer wg.Done()
 			wait()
 			w := httptest.NewRecorder()
-			r.ServeHTTP(w, r3)
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/users/go/received_events/public", nil))
 			assert.Equal(t, "/users/{user}/received_events/public", w.Body.String())
 		}()
 	}
