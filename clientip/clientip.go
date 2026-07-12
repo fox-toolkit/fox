@@ -657,10 +657,14 @@ var linkLocalRanges = []netip.Prefix{
 
 // isContainedInRanges returns true if the given address is contained in at least one of the given ranges.
 // The zone is stripped before the check since [netip.Prefix.Contains] never matches a zoned address, while
-// range membership only depends on the address bits.
+// range membership only depends on the address bits. IPv4-mapped IPv6 prefixes are rewritten to their IPv4
+// form since [netip.Prefix.Contains] never matches across families and addresses are unmapped at parse time.
 func isContainedInRanges(addr netip.Addr, ranges []netip.Prefix) bool {
 	addr = addr.WithZone("")
 	for _, r := range ranges {
+		if r.Addr().Is4In6() && r.Bits() >= 96 {
+			r = netip.PrefixFrom(r.Addr().Unmap(), r.Bits()-96)
+		}
 		if r.Contains(addr) {
 			return true
 		}

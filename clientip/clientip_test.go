@@ -214,6 +214,14 @@ func TestRightmostTrustedRange_ClientIP(t *testing.T) {
 	assert.ErrorIs(t, err, ErrRightmostTrustedRange)
 	assert.ErrorContains(t, err, "unable to find a valid IP address")
 
+	req.Header.Set("X-Forwarded-For", "203.0.113.99, 10.0.0.5")
+	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
+		return []netip.Prefix{netip.MustParsePrefix("::ffff:10.0.0.0/104")}, nil
+	})
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "203.0.113.99", ipAddr.String())
+
 	var resolverErr = errors.New("resolver error")
 	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
 		return nil, resolverErr
