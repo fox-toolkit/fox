@@ -1286,9 +1286,14 @@ func TestRouter_ServeHTTP_Handle(t *testing.T) {
 		assert.Nil(t, rte)
 	})
 
-	t.Run("handle and update route with nil route", func(t *testing.T) {
+	t.Run("handle, update and delete route with nil or zero-value route", func(t *testing.T) {
 		assert.ErrorIs(t, f.AddRoute(nil), ErrInvalidRoute)
 		assert.ErrorIs(t, f.UpdateRoute(nil), ErrInvalidRoute)
+		assert.ErrorIs(t, onlyError(f.DeleteRoute(nil)), ErrInvalidRoute)
+		assert.ErrorIs(t, f.AddRoute(&Route{}), ErrInvalidRoute)
+		assert.ErrorIs(t, f.UpdateRoute(&Route{}), ErrInvalidRoute)
+		assert.ErrorIs(t, onlyError(f.DeleteRoute(&Route{})), ErrInvalidRoute)
+		assert.Equal(t, 1, f.Len())
 	})
 }
 
