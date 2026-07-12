@@ -508,7 +508,6 @@ func (fox *Router) Len() int {
 func (fox *Router) Iter() Iter {
 	tree := fox.getTree()
 	return Iter{
-		tree:     tree,
 		patterns: tree.patterns,
 		names:    tree.names,
 		methods:  tree.methods,

@@ -343,7 +343,6 @@ func (txn *Txn) Iter() Iter {
 	}
 
 	return Iter{
-		tree:     txn.rootTxn.tree,
 		patterns: patterns,
 		names:    names,
 		methods:  methods,
