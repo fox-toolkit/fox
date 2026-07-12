@@ -508,7 +508,6 @@ func (fox *Router) Len() int {
 func (fox *Router) Iter() Iter {
 	tree := fox.getTree()
 	return Iter{
-		tree:     tree,
 		patterns: tree.patterns,
 		names:    tree.names,
 		methods:  tree.methods,
@@ -617,6 +616,14 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := tree.pool.Get().(*Context)
 	c.reset(w, r)
 	defer tree.pool.Put(c)
+
+	if r.Method == "" {
+		// This may only happen if a middleware set r.Method = "" before ServeHTTP is called
+		// but since it may produce unexpected match with fastMethod, let's be defensive here.
+		c.scope = NoRouteHandler
+		fox.noRoute(c)
+		return
+	}
 
 	path, ok := routingPath(r)
 	orig := r

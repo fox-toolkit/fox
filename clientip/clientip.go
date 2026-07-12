@@ -74,7 +74,8 @@ const (
 // tried, and so on, until a good IP is found or the resolvers are exhausted. A common use for this is if a server is
 // both directly connected to the internet and expecting a header to check. It might be called like:
 //
-//	var chain = NewChain(NewLeftmostNonPrivate(XForwardedForKey), NewRemoteAddr())
+//	leftmost, _ := NewLeftmostNonPrivate(XForwardedForKey, 16)
+//	chain := NewChain(leftmost, NewRemoteAddr())
 type Chain struct {
 	resolvers []fox.ClientIPResolver
 }
@@ -308,9 +309,9 @@ type RightmostTrustedRange struct {
 	headerName string
 }
 
-// NewRightmostTrustedRange creates a [RightmostTrustedRange] resolver. headerName must be "X-Forwarded-For"
-// or "Forwarded". trustedRanges must contain all trusted reverse proxies on the path to this server and can
-// be private/internal or external (for example, if a third-party reverse proxy is used).
+// NewRightmostTrustedRange creates a [RightmostTrustedRange] resolver. key must be [XForwardedForKey] or
+// [ForwardedKey]. resolver must provide all trusted reverse proxy ranges on the path to this server, private/internal
+// or external (for example, if a third-party reverse proxy is used).
 func NewRightmostTrustedRange(key HeaderKey, resolver TrustedIPRange) (RightmostTrustedRange, error) {
 	if key > 1 {
 		return RightmostTrustedRange{}, errors.New("invalid header key")

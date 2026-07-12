@@ -79,6 +79,8 @@ func At[I constraints.Integer, E any](seq iter.Seq[E], n I) (e E, ok bool) {
 	return
 }
 
+// SplitBytesSeq returns an iterator over all subslices of s separated by sep.
+// sep must not be empty, otherwise the iterator never terminates.
 func SplitBytesSeq(s, sep []byte) iter.Seq[[]byte] {
 	return splitBytesSeq(s, sep)
 }
@@ -100,6 +102,8 @@ func splitBytesSeq(s, sep []byte) iter.Seq[[]byte] {
 	}
 }
 
+// SplitStringSeq returns an iterator over all substrings of s separated by sep.
+// sep must not be empty, otherwise the iterator never terminates.
 func SplitStringSeq(s, sep string) iter.Seq[string] {
 	return splitStringSeq(s, sep)
 }
@@ -121,6 +125,8 @@ func splitStringSeq(s, sep string) iter.Seq[string] {
 	}
 }
 
+// BackwardSplitStringSeq returns an iterator over all substrings of s separated
+// by sep, in reverse order. sep must not be empty, otherwise the iterator never terminates.
 func BackwardSplitStringSeq(s, sep string) iter.Seq[string] {
 	return backwardSplitSeq(s, sep)
 }

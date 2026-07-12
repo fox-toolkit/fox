@@ -19,7 +19,6 @@ type stack struct {
 // snapshot of the routing tree. Therefore, all iterators returned by Iter will not observe subsequent write on the
 // router or on the transaction from which the Iter is created.
 type Iter struct {
-	tree     *iTree
 	patterns *node
 	names    *node
 	methods  map[string]uint

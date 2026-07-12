@@ -68,8 +68,8 @@ func (txn *Txn) AddRoute(route *Route) error {
 	if !txn.write {
 		return ErrReadOnlyTxn
 	}
-	if route == nil {
-		return fmt.Errorf("%w: nil route", ErrInvalidRoute)
+	if route == nil || route.hbase == nil {
+		return ErrInvalidRoute
 	}
 
 	return txn.rootTxn.insert(route, modeInsert)
@@ -124,8 +124,8 @@ func (txn *Txn) UpdateRoute(route *Route) error {
 	if !txn.write {
 		return ErrReadOnlyTxn
 	}
-	if route == nil {
-		return fmt.Errorf("%w: nil route", ErrInvalidRoute)
+	if route == nil || route.hbase == nil {
+		return ErrInvalidRoute
 	}
 
 	return txn.rootTxn.insert(route, modeUpdate)
@@ -202,8 +202,8 @@ func (txn *Txn) DeleteRoute(route *Route) (*Route, error) {
 		return nil, ErrReadOnlyTxn
 	}
 
-	if route == nil {
-		return nil, fmt.Errorf("%w: nil route", ErrInvalidRoute)
+	if route == nil || route.hbase == nil {
+		return nil, ErrInvalidRoute
 	}
 
 	rte, deleted := txn.rootTxn.delete(route)
@@ -343,7 +343,6 @@ func (txn *Txn) Iter() Iter {
 	}
 
 	return Iter{
-		tree:     txn.rootTxn.tree,
 		patterns: patterns,
 		names:    names,
 		methods:  methods,

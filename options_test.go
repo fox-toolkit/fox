@@ -708,10 +708,12 @@ func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsDisable(t *testing.T) {
 
 func TestWithAnnotation_Invalid(t *testing.T) {
 	var nonComparableKey = []int{1, 2, 3}
+	var unhashableKey = [2]any{func() {}, 1}
 	f, err := NewRouter()
 	require.NoError(t, err)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(nonComparableKey, nil))), ErrInvalidConfig)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(nil, "value"))), ErrInvalidConfig)
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(unhashableKey, nil))), ErrInvalidConfig)
 }
 
 func TestWithHandleTrailingSlash_LeadingDoubleSlash(t *testing.T) {

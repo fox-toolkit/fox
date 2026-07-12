@@ -844,6 +844,17 @@ var wildcardHostnames = []route{
 	{"DELETE", "user.keys.{id}"},
 }
 
+func TestRouter_ServeHTTP_EmptyMethod(t *testing.T) {
+	f := MustRouter()
+	require.NoError(t, onlyError(f.Add([]string{http.MethodGet, http.MethodPost}, "/foo", emptyHandler)))
+
+	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+	req.Method = ""
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestRouter_ServeHTTP_Static(t *testing.T) {
 	f := MustRouter()
 
@@ -1275,9 +1286,14 @@ func TestRouter_ServeHTTP_Handle(t *testing.T) {
 		assert.Nil(t, rte)
 	})
 
-	t.Run("handle and update route with nil route", func(t *testing.T) {
+	t.Run("handle, update and delete route with nil or zero-value route", func(t *testing.T) {
 		assert.ErrorIs(t, f.AddRoute(nil), ErrInvalidRoute)
 		assert.ErrorIs(t, f.UpdateRoute(nil), ErrInvalidRoute)
+		assert.ErrorIs(t, onlyError(f.DeleteRoute(nil)), ErrInvalidRoute)
+		assert.ErrorIs(t, f.AddRoute(&Route{}), ErrInvalidRoute)
+		assert.ErrorIs(t, f.UpdateRoute(&Route{}), ErrInvalidRoute)
+		assert.ErrorIs(t, onlyError(f.DeleteRoute(&Route{})), ErrInvalidRoute)
+		assert.Equal(t, 1, f.Len())
 	})
 }
 
