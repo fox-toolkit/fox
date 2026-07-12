@@ -114,9 +114,8 @@ func NewRemoteAddr() RemoteAddr {
 	return RemoteAddr{}
 }
 
-// ClientIP derives the client IP using the [RemoteAddr] resolver. The returned [netip.Addr] may contain a zone identifier.
-// This should only happen if the remote address has been modified to something illegal, or if the server is accepting connections
-// on a Unix domain socket (in which case [RemoteAddr] is "@"). If no valid IP can be derived, an error is returned.
+// ClientIP derives the client IP using the [RemoteAddr] resolver. The returned [netip.Addr] may contain
+// a zone identifier. If no valid IP can be derived, an error is returned.
 func (s RemoteAddr) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	addr, err := ParseAddr(c.Request().RemoteAddr)
 	if err != nil {
