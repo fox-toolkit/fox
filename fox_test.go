@@ -2223,14 +2223,14 @@ func TestRouter_Add_MatchersConstraint(t *testing.T) {
 	})
 	t.Run("insert: no priority or zero priority without matcher", func(t *testing.T) {
 		f, _ := NewRouter()
-		assert.NoError(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatcherPriority(0))))
-		assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatcherPriority(1))), ErrInvalidRoute)
+		assert.NoError(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatchersPriority(0))))
+		assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler, WithMatchersPriority(1))), ErrInvalidRoute)
 	})
 	t.Run("update: no priority or zero priority without matcher", func(t *testing.T) {
 		f, _ := NewRouter()
 		assert.NoError(t, onlyError(f.Add(MethodGet, "/foo", emptyHandler)))
-		assert.NoError(t, onlyError(f.Update(MethodGet, "/foo", emptyHandler, WithMatcherPriority(0))))
-		assert.ErrorIs(t, onlyError(f.Update(MethodGet, "/foo", emptyHandler, WithMatcherPriority(1))), ErrInvalidRoute)
+		assert.NoError(t, onlyError(f.Update(MethodGet, "/foo", emptyHandler, WithMatchersPriority(0))))
+		assert.ErrorIs(t, onlyError(f.Update(MethodGet, "/foo", emptyHandler, WithMatchersPriority(1))), ErrInvalidRoute)
 	})
 }
 
@@ -2410,7 +2410,7 @@ func TestRouter_ServeHTTP_IgnoreTrailingSlash(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
-			rf := f.RouterInfo()
+			rf := f.Info()
 			assert.Equal(t, RelaxedSlash, rf.TrailingSlashOption)
 			for _, path := range tc.paths {
 				require.NoError(t, onlyError(f.Add([]string{tc.method}, path, func(c *Context) {
@@ -2626,7 +2626,7 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := NewRouter(WithHandleTrailingSlash(RedirectSlash))
-			rf := f.RouterInfo()
+			rf := f.Info()
 			assert.Equal(t, RedirectSlash, rf.TrailingSlashOption)
 
 			for _, path := range tc.paths {
@@ -2811,7 +2811,7 @@ func TestRouter_ServeHTTP_RedirectPath(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := MustRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
-			rf := f.RouterInfo()
+			rf := f.Info()
 			assert.Equal(t, RedirectPath, rf.MergeSlashes)
 			assert.Equal(t, RedirectPath, rf.CollapseDotSegments)
 
@@ -5198,8 +5198,8 @@ func TestRouter_StrictPathEncoding(t *testing.T) {
 	})
 
 	t.Run("router info", func(t *testing.T) {
-		assert.True(t, MustRouter(WithStrictPathEncoding(true)).RouterInfo().StrictPathEncoding)
-		assert.False(t, MustRouter().RouterInfo().StrictPathEncoding)
+		assert.True(t, MustRouter(WithStrictPathEncoding(true)).Info().StrictPathEncoding)
+		assert.False(t, MustRouter().Info().StrictPathEncoding)
 	})
 }
 

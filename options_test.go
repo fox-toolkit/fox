@@ -34,11 +34,11 @@ func TestWithClientIPResolver(t *testing.T) {
 		ip, err := c.ClientIP()
 		assert.NoError(t, err)
 		assert.NotNil(t, ip)
-		DefaultNotFoundHandler(c)
+		DefaultNoRouteHandler(c)
 	}))
 	f.MustAdd(MethodGet, "/foo", emptyHandler)
-	rf := f.RouterInfo()
-	assert.True(t, rf.ClientIP)
+	rf := f.Info()
+	assert.True(t, rf.ClientIPResolver)
 
 	rte := f.Route(MethodGet, "/foo")
 	require.NotNil(t, rte)
@@ -402,8 +402,8 @@ func TestRouter_ServeHTTP_AllowedMethod(t *testing.T) {
 		return parts
 	}
 
-	rf := f.RouterInfo()
-	require.True(t, rf.MethodNotAllowed)
+	rf := f.Info()
+	require.True(t, rf.NoMethod)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, r := range tc.routes {
@@ -589,7 +589,7 @@ func TestRouter_ServeHTTP_AutomaticOptions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := NewRouter(WithAutoOptions(true), WithSystemWideOptions(true))
-			rf := f.RouterInfo()
+			rf := f.Info()
 			require.True(t, rf.AutoOptions)
 			require.True(t, rf.SystemWideOptions)
 			for _, method := range tc.methods {
@@ -647,7 +647,7 @@ func TestRouter_ServeHTTP_AutomaticCORSPreflightOptions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := MustRouter(WithAutoOptions(true), WithSystemWideOptions(true), WithNoMethod(true))
-			rf := f.RouterInfo()
+			rf := f.Info()
 			require.True(t, rf.AutoOptions)
 			require.True(t, rf.SystemWideOptions)
 			for _, method := range tc.methods {

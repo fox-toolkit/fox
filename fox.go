@@ -123,8 +123,8 @@ type Router struct {
 
 func initRouter() *Router {
 	r := new(Router)
-	r.noRoute = DefaultNotFoundHandler
-	r.noMethod = DefaultMethodNotAllowedHandler
+	r.noRoute = DefaultNoRouteHandler
+	r.noMethod = DefaultNoMethodHandler
 	r.autoOPTIONS = DefaultOptionsHandler
 	r.tsrRedirect = internalTrailingSlashHandler
 	r.pathRedirect = internalPathRedirectHandler
@@ -148,10 +148,10 @@ type RouterInfo struct {
 	TrailingSlashOption   TrailingSlashOption
 	MergeSlashes          NormalizeOption
 	CollapseDotSegments   NormalizeOption
-	MethodNotAllowed      bool
+	NoMethod              bool
 	AutoOptions           bool
 	SystemWideOptions     bool
-	ClientIP              bool
+	ClientIPResolver      bool
 	AllowRegexp           bool
 	StrictPathEncoding    bool
 }
@@ -357,7 +357,7 @@ func (fox *Router) Route(methods []string, pattern string, matchers ...Matcher) 
 	return matched.routes[idx]
 }
 
-// Name performs a lookup for a registered route matching the given method and route name. It returns
+// Name performs a lookup for a registered route matching the given route name. It returns
 // the [Route] if a match is found or nil otherwise. This function is safe for concurrent use by multiple
 // goroutines and while mutations on routes are ongoing. See also [Router.Route] as an alternative.
 func (fox *Router) Name(name string) *Route {
@@ -376,7 +376,7 @@ func (fox *Router) Name(name string) *Route {
 	return matched.routes[0]
 }
 
-// Match perform a reverse lookup for the given method and [http.Request]. It returns the matching registered [Route]
+// Match performs a route lookup for the given method and [http.Request]. It returns the matching registered [Route]
 // (if any) along with a boolean indicating if the route was matched by adding or removing a trailing slash
 // (trailing slash action recommended). This function is safe for concurrent use by multiple goroutine and while
 // mutation on routes are ongoing. See also [Router.Lookup] as an alternative.
@@ -552,19 +552,19 @@ func (fox *Router) View(fn func(txn *Txn) error) error {
 	return fn(txn)
 }
 
-// RouterInfo returns information on the configured global option.
-func (fox *Router) RouterInfo() RouterInfo {
+// Info returns information on the configured global option.
+func (fox *Router) Info() RouterInfo {
 	_, ok := fox.clientip.(noClientIPResolver)
 	return RouterInfo{
 		MaxRouteParams:        fox.maxParams,
 		MaxRouteParamKeyBytes: fox.maxParamKeyBytes,
 		MaxRouteMatchers:      fox.maxMatchers,
-		MethodNotAllowed:      fox.handleMethodNotAllowed,
+		NoMethod:              fox.handleMethodNotAllowed,
 		AutoOptions:           fox.handleOPTIONS,
 		TrailingSlashOption:   fox.handleSlash,
 		MergeSlashes:          fox.mergeSlash,
 		CollapseDotSegments:   fox.collapseDots,
-		ClientIP:              !ok,
+		ClientIPResolver:      !ok,
 		AllowRegexp:           fox.allowRegexp,
 		SystemWideOptions:     fox.systemWideOPTIONS,
 		StrictPathEncoding:    fox.strictPathEncoding,
@@ -851,15 +851,15 @@ NoMatch:
 	fox.noRoute(c)
 }
 
-// DefaultNotFoundHandler is a simple [HandlerFunc] that replies to each request
+// DefaultNoRouteHandler is a simple [HandlerFunc] that replies to each request
 // with a “404 page not found” reply.
-func DefaultNotFoundHandler(c *Context) {
+func DefaultNoRouteHandler(c *Context) {
 	http.Error(c.Writer(), "404 page not found", http.StatusNotFound)
 }
 
-// DefaultMethodNotAllowedHandler is a simple [HandlerFunc] that replies to each request
+// DefaultNoMethodHandler is a simple [HandlerFunc] that replies to each request
 // with a “405 Method Not Allowed” reply.
-func DefaultMethodNotAllowedHandler(c *Context) {
+func DefaultNoMethodHandler(c *Context) {
 	http.Error(c.Writer(), http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 }
 

@@ -1813,7 +1813,7 @@ func Test_iTree_lookup_MatchersPriority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := NewRouter(AllowRegexpParam(true))
 			for _, rte := range tc.routes {
-				require.NoError(t, onlyError(f.Add(MethodGet, rte.pattern, emptyHandler, WithMatcher(rte.matchers...), WithMatcherPriority(rte.priority))))
+				require.NoError(t, onlyError(f.Add(MethodGet, rte.pattern, emptyHandler, WithMatcher(rte.matchers...), WithMatchersPriority(rte.priority))))
 			}
 			tree := f.getTree()
 			c := newTestContext(f)

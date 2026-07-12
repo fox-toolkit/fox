@@ -64,7 +64,7 @@ func (o optionFunc) applyMatcher(s sealedOption) error {
 }
 
 // WithNoRouteHandler register an [HandlerFunc] which is called when no matching route is found.
-// By default, the [DefaultNotFoundHandler] is used.
+// By default, the [DefaultNoRouteHandler] is used.
 func WithNoRouteHandler(handler HandlerFunc) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		if handler == nil {
@@ -77,7 +77,7 @@ func WithNoRouteHandler(handler HandlerFunc) GlobalOption {
 
 // WithNoMethodHandler register an [HandlerFunc] which is called when the request cannot be routed,
 // but the same route exist for other methods. The "Allow" header it automatically set before calling the
-// handler. By default, the [DefaultMethodNotAllowedHandler] is used. Note that this option automatically
+// handler. By default, the [DefaultNoMethodHandler] is used. Note that this option automatically
 // enable [WithNoMethod].
 func WithNoMethodHandler(handler HandlerFunc) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
@@ -399,12 +399,12 @@ func WithName(name string) RouteOption {
 	})
 }
 
-// WithMatcherPriority sets the priority for a route with matchers. When multiple routes share the same pattern
+// WithMatchersPriority sets the priority for a route with matchers. When multiple routes share the same pattern
 // (regardless of param names) and have overlapping methods, matchers are evaluated by priority (highest first).
 // Routes with equal priority may be evaluated in any order. Routes without matchers are always evaluated last.
 // If unset or 0, the priority defaults to the number of matchers. Note that routes with specific methods are
 // always evaluated before method-less routes, regardless of priority.
-func WithMatcherPriority(priority uint) RouteOption {
+func WithMatchersPriority(priority uint) RouteOption {
 	return optionFunc(func(s sealedOption) error {
 		s.route.priority = priority
 		return nil
