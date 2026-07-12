@@ -6,6 +6,7 @@ package stringsutil
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -310,6 +311,26 @@ func FuzzEscapePath_DifferentialNetURL(f *testing.F) {
 		u := &url.URL{Path: path}
 		require.Equal(t, u.EscapedPath(), EscapePath(path))
 	})
+}
+
+func BenchmarkEscapePath(b *testing.B) {
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"clean", "/api/v1/organizations/acme-corporation/projects/fox-router"},
+		{"escape stack", "/café/report"},
+		{"escape heap", "/segment/segment/segment/segment/segment/segment/segment/café"},
+		{"escape heap long", strings.Repeat("/segment/café", 16)},
+	}
+	for _, bc := range cases {
+		b.Run(bc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				EscapePath(bc.path)
+			}
+		})
+	}
 }
 
 func TestIsRoutableRaw_DifferentialNetURL(t *testing.T) {

@@ -4,7 +4,11 @@
 
 package stringsutil
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/fox-toolkit/fox/internal/bytesconv"
+)
 
 const upperhex = "0123456789ABCDEF"
 
@@ -165,14 +169,22 @@ func EscapePath(path string) string {
 	}
 
 	var buf [64]byte
-	var t []byte
 	required := len(path) + 2*hexCount
 	if required <= len(buf) {
-		t = buf[:required]
-	} else {
-		t = make([]byte, required)
+		t := buf[:required]
+		escapeInto(t, path, i)
+		// string(t) copies, keeping buf on the stack.
+		return string(t)
 	}
+	t := make([]byte, required)
+	escapeInto(t, path, i)
+	// t is never modified after, alias it as string to skip the copy.
+	return bytesconv.String(t)
+}
 
+// escapeInto writes the escaped form of path into t, which is pre-sized to the escaped
+// length. The first i bytes of path need no escaping.
+func escapeInto(t []byte, path string, i int) {
 	copy(t, path[:i])
 	w := i
 	for ; i < len(path); i++ {
@@ -187,7 +199,6 @@ func EscapePath(path string) string {
 		t[w+2] = upperhex[c&0x0F]
 		w += 3
 	}
-	return string(t)
 }
 
 // NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
@@ -211,9 +222,9 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 				b, ok = DecodeHexPair(raw[i+1], raw[i+2])
 			}
 			if !ok {
-				// Malformed or truncated escape, the remainder is kept as-is by the final
-				// flush. A dangling '%' must not recombine with a following escape into a
-				// valid sequence, and no semantics is invented for the tail.
+				// Malformed or truncated escape. Past this point there is no correct decoded
+				// form, so the rest is kept exactly as sent: rewriting bytes after a
+				// dangling '%' could recombine them into a valid escape sequence the client never sent.
 				wellFormed, frozen = false, true
 				break
 			}
