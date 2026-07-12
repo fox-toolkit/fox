@@ -328,6 +328,11 @@ func TestParsePrefixes(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "Error: address with zone",
+			ranges:  []string{"fe80::abcd%nope"},
+			wantErr: true,
+		},
+		{
 			name:    "Error: garbage IP",
 			ranges:  []string{"1.1.1.nope"},
 			wantErr: true,

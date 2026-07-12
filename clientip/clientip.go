@@ -391,10 +391,6 @@ func ParseAddr(ip string) (netip.Addr, error) {
 func ParsePrefixes(ranges ...string) ([]netip.Prefix, error) {
 	prefixes := make([]netip.Prefix, 0, len(ranges))
 	for _, r := range ranges {
-		if strings.Contains(r, "%") {
-			return nil, fmt.Errorf("zones are not allowed: %q", r)
-		}
-
 		prefix, err := netutil.ParsePrefix(r)
 		if err != nil {
 			return nil, fmt.Errorf("invalid address or prefix %q: %w", r, err)
