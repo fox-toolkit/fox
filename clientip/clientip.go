@@ -379,7 +379,7 @@ func ParseAddr(ip string) (netip.Addr, error) {
 	}
 
 	addr = addr.Unmap()
-	if addr.IsUnspecified() {
+	if addr.WithZone("").IsUnspecified() {
 		return netip.Addr{}, ErrUnspecifiedIPAddress
 	}
 

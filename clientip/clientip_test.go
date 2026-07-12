@@ -418,6 +418,11 @@ func TestParseAddr(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "Unspecified address with zone",
+			ipStr:   "::%eth0",
+			wantErr: true,
+		},
+		{
 			name:    "Error: empty zone",
 			ipStr:   "1.1.1.1%",
 			wantErr: true,
