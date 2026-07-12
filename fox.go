@@ -1031,7 +1031,7 @@ func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request,
 	u := r.URL
 	u.Path = p
 	u.RawPath = ""
-	if u.EscapedPath() != escaped {
+	if stringsutil.EscapePath(p) != escaped {
 		u.RawPath = escaped
 	}
 	return r, true
