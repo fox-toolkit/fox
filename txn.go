@@ -258,7 +258,7 @@ func (txn *Txn) Route(methods []string, pattern string, matchers ...Matcher) *Ro
 	return matched.routes[idx]
 }
 
-// Name performs a lookup for a registered route matching the given method and route name. It returns
+// Name performs a lookup for a registered route matching the given route name. It returns
 // the [Route] if a match is found or nil otherwise. See also [Txn.Route] as an alternative.
 func (txn *Txn) Name(name string) *Route {
 	if txn.rootTxn == nil {
@@ -274,7 +274,7 @@ func (txn *Txn) Name(name string) *Route {
 	return matched.routes[0]
 }
 
-// Match perform a reverse lookup for the given method and [http.Request]. It returns the matching registered [Route]
+// Match performs a route lookup for the given method and [http.Request]. It returns the matching registered [Route]
 // (if any) along with a boolean indicating if the route was matched by adding or removing a trailing slash
 // (trailing slash action recommended). See also [Txn.Lookup] as an alternative.
 func (txn *Txn) Match(method string, r *http.Request) (route *Route, tsr bool) {
