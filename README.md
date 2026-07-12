@@ -41,7 +41,7 @@ serving the normalized path directly or redirecting to the canonical form.
 
 **Client IP Derivation:** Accurately determine the "real" client IP address using best practices tailored to your network topology.
 
-**Growing middleware ecosystem:** Fox's middleware ecosystem is still limited, but standard `http.Handler` middleware are fully compatible. Contributions are welcome!
+**Growing middleware ecosystem:** Fox's middleware ecosystem is still limited, but most standard `http.Handler` middleware should be compatible.
 
 ---
 * [Getting started](#getting-started)
