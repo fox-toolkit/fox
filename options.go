@@ -376,7 +376,7 @@ func WithAnnotation(key, value any) RouteOption {
 		if key == nil {
 			return fmt.Errorf("%w: annotation key is nil", ErrInvalidConfig)
 		}
-		if !reflect.TypeOf(key).Comparable() {
+		if !reflect.ValueOf(key).Comparable() {
 			return fmt.Errorf("%w: annotation key is not comparable", ErrInvalidConfig)
 		}
 		if s.route.annots == nil {
