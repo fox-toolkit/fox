@@ -57,8 +57,7 @@ type MiddlewareFunc func(next HandlerFunc) HandlerFunc
 type ClientIPResolver interface {
 	// ClientIP returns the "real" client IP according to the implemented resolver. It returns an error if no valid IP
 	// address can be derived. This is typically considered a misconfiguration error, unless the resolver involves
-	// obtaining an untrustworthy or optional value. The returned address should be in canonical form: IPv4-mapped
-	// IPv6 addresses unmapped to their IPv4 form (see [netip.Addr.Unmap]).
+	// obtaining an untrustworthy or optional value.
 	ClientIP(c RequestContext) (netip.Addr, error)
 }
 

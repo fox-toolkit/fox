@@ -352,7 +352,7 @@ func (s RightmostTrustedRange) ClientIP(c fox.RequestContext) (netip.Addr, error
 }
 
 // ParseAddr safely parses the given string into a [netip.Addr]. The port and any surrounding square brackets are
-// stripped, IPv4-mapped IPv6 addresses are unmapped to their IPv4 form and the zone identifier is preserved.
+// stripped, IPv4-mapped IPv6 addresses are unmapped to their IPv4 form and IPv6 zone identifiers are preserved.
 // It also returns an error for unspecified addresses (like "::" or "0.0.0.0"). These are nominally valid IPs,
 // but they are never valid "real" client IPs.
 //

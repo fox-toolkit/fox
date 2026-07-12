@@ -28,7 +28,7 @@ type RequestContext interface {
 	// Request returns the current [http.Request].
 	Request() *http.Request
 	// RemoteIP parses the IP from [http.Request.RemoteAddr], normalizes it, and returns a [netip.Addr].
-	// The returned address may contain a zone identifier and is the zero [netip.Addr] if parsing fails.
+	// The returned address may contain a zone identifier.
 	RemoteIP() netip.Addr
 	// ClientIP returns the "real" client IP address based on the configured [ClientIPResolver].
 	// The resolver is set using the [WithClientIPResolver] option. There is no sane default, so if no resolver is configured,
@@ -144,7 +144,7 @@ func (c *Context) SetWriter(w ResponseWriter) {
 }
 
 // RemoteIP parses the IP from [http.Request.RemoteAddr], normalizes it, and returns a [netip.Addr].
-// The returned address may contain a zone identifier and is the zero [netip.Addr] if parsing fails.
+// The returned address may contain a zone identifier.
 func (c *Context) RemoteIP() netip.Addr {
 	ipStr, _, _ := net.SplitHostPort(c.req.RemoteAddr)
 
