@@ -1031,7 +1031,7 @@ func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request,
 	u := r.URL
 	u.Path = p
 	u.RawPath = ""
-	if u.EscapedPath() != escaped {
+	if stringsutil.EscapePath(p) != escaped {
 		u.RawPath = escaped
 	}
 	return r, true
@@ -1044,12 +1044,12 @@ func routingPath(r *http.Request) (string, bool) {
 	u := r.URL
 	if u.RawPath == "" {
 		// The wire path was the default encoding of Path, which is always canonical.
-		return u.EscapedPath(), true
+		return stringsutil.EscapePath(u.Path), true
 	}
 	norm, wellFormed, consistent := stringsutil.NormalizeRawPath(u.RawPath, u.Path)
 	if !consistent {
 		// RawPath is not an encoding of Path, like net/url, Path is the source of truth.
-		return u.EscapedPath(), false
+		return stringsutil.EscapePath(u.Path), false
 	}
 	return norm, wellFormed
 }

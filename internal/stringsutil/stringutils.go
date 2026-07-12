@@ -4,7 +4,52 @@
 
 package stringsutil
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/fox-toolkit/fox/internal/bytesconv"
+)
+
+const upperhex = "0123456789ABCDEF"
+
+var (
+	// unreservedTab adds the RFC 3986 unreserved bytes, ALPHA / DIGIT / - . _ ~.
+	// Only these can be percent-decoded without changing the meaning of a URI.
+	unreservedTab = [256]bool{'-': true, '.': true, '_': true, '~': true}
+
+	// pathNoEscape adds the reserved bytes that RFC 3986 allows unescaped in a
+	// path and that net/url never escapes. Encoding a reserved byte changes the
+	// meaning of the URI, so EscapePath leaves them as is.
+	pathNoEscape = [256]bool{
+		'$': true, '&': true, '+': true, ',': true, '/': true, ':': true,
+		';': true, '=': true, '@': true,
+	}
+
+	// pathKeepRaw adds the remaining sub-delims and the gen-delims [ ]. A "!"
+	// on the wire stays "!" through NormalizeRawPath and a "%21" stays "%21"
+	// through EscapePath, matching what net/url produces.
+	pathKeepRaw = [256]bool{
+		'!': true, '\'': true, '(': true, ')': true, '*': true, '[': true, ']': true,
+	}
+)
+
+func init() {
+	for b := 'a'; b <= 'z'; b++ {
+		unreservedTab[b] = true
+	}
+	for b := 'A'; b <= 'Z'; b++ {
+		unreservedTab[b] = true
+	}
+	for b := '0'; b <= '9'; b++ {
+		unreservedTab[b] = true
+	}
+	for i, ok := range unreservedTab {
+		pathNoEscape[i] = pathNoEscape[i] || ok
+	}
+	for i, ok := range pathNoEscape {
+		pathKeepRaw[i] = pathKeepRaw[i] || ok
+	}
+}
 
 // EqualStringsASCIIIgnoreCase performs case-insensitive comparison of two strings
 // containing ASCII characters. Only supports ASCII letters (A-Z, a-z), digits (0-9), hyphen (-) and underscore (_).
@@ -57,20 +102,13 @@ func ToLowerASCII(b byte) byte {
 // ALPHA / DIGIT / "-" / "." / "_" / "~". Unreserved characters are the only
 // ones that can be safely percent-decoded without changing the meaning of a URI.
 func IsUnreserved(b byte) bool {
-	return 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z' || '0' <= b && b <= '9' ||
-		b == '-' || b == '.' || b == '_' || b == '~'
+	return unreservedTab[b]
 }
 
 // IsRoutableRaw reports whether b can appear unescaped in a routing path, i.e. whether
-// [NormalizeRawPath] can emit it unescaped. Derived from net/url path escaping and
-// pinned by a differential test.
+// [NormalizeRawPath] can emit it unescaped.
 func IsRoutableRaw(b byte) bool {
-	switch b {
-	case '$', '&', '+', ',', '/', ':', ';', '=', '@', // never escaped by net/url in a path
-		'!', '\'', '(', ')', '*', '[', ']': // kept raw when present on the wire
-		return true
-	}
-	return IsUnreserved(b)
+	return pathKeepRaw[b]
 }
 
 // DecodeHexPair decodes two ASCII hexadecimal digits into a byte. It returns
@@ -108,7 +146,60 @@ func UpperHex(c byte) byte {
 	return c
 }
 
-const upperhex = "0123456789ABCDEF"
+// EscapePath returns the default encoding of a decoded URL path. It mirrors
+// [net/url.URL.EscapedPath] for an unset RawPath, including the Path == "*"
+// special case.
+func EscapePath(path string) string {
+	i := 0
+	for i < len(path) && pathNoEscape[path[i]] {
+		i++
+	}
+	if i == len(path) {
+		return path
+	}
+	if path == "*" {
+		return "*"
+	}
+
+	hexCount := 1
+	for j := i + 1; j < len(path); j++ {
+		if !pathNoEscape[path[j]] {
+			hexCount++
+		}
+	}
+
+	var buf [64]byte
+	required := len(path) + 2*hexCount
+	if required <= len(buf) {
+		t := buf[:required]
+		escapeInto(t, path, i)
+		// string(t) copies, keeping buf on the stack.
+		return string(t)
+	}
+	t := make([]byte, required)
+	escapeInto(t, path, i)
+	// t is never modified after, alias it as string to skip the copy.
+	return bytesconv.String(t)
+}
+
+// escapeInto writes the escaped form of path into t, which is pre-sized to the escaped
+// length. The first i bytes of path need no escaping.
+func escapeInto(t []byte, path string, i int) {
+	copy(t, path[:i])
+	w := i
+	for ; i < len(path); i++ {
+		c := path[i]
+		if pathNoEscape[c] {
+			t[w] = c
+			w++
+			continue
+		}
+		t[w] = '%'
+		t[w+1] = upperhex[c>>4]
+		t[w+2] = upperhex[c&0x0F]
+		w += 3
+	}
+}
 
 // NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
 // are decoded, hex is uppercased, bytes that cannot appear unescaped (see [IsRoutableRaw]) are
@@ -131,9 +222,9 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 				b, ok = DecodeHexPair(raw[i+1], raw[i+2])
 			}
 			if !ok {
-				// Malformed or truncated escape, the remainder is kept as-is by the final
-				// flush. A dangling '%' must not recombine with a following escape into a
-				// valid sequence, and no semantics is invented for the tail.
+				// Malformed or truncated escape. Past this point there is no correct decoded
+				// form, so the rest is kept exactly as sent: rewriting bytes after a
+				// dangling '%' could recombine them into a valid escape sequence the client never sent.
 				wellFormed, frozen = false, true
 				break
 			}
@@ -143,7 +234,7 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 			j++
 			hi, lo := UpperHex(raw[i+1]), UpperHex(raw[i+2])
 			switch {
-			case IsUnreserved(b):
+			case unreservedTab[b]:
 				if buf.Len() == 0 {
 					buf.Grow(len(raw))
 				}
@@ -167,7 +258,7 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 			return "", false, false
 		}
 		j++
-		if !IsRoutableRaw(c) {
+		if !pathKeepRaw[c] {
 			wellFormed = false
 			if buf.Len() == 0 {
 				buf.Grow(3*len(raw) - 2*i)
