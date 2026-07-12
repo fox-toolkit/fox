@@ -20,11 +20,19 @@ import (
 
 var _ ResponseWriter = (*recorder)(nil)
 
-var copyBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, 32*1024)
-		return &b
-	},
+const copyBufPoolSize = 32 * 1024
+
+var copyBufPool = sync.Pool{New: func() any { return new([copyBufPoolSize]byte) }}
+
+func getCopyBuf() []byte {
+	return copyBufPool.Get().(*[copyBufPoolSize]byte)[:]
+}
+
+func putCopyBuf(b []byte) {
+	if len(b) != copyBufPoolSize {
+		panic("trying to put back buffer of the wrong size in the copyBufPool")
+	}
+	copyBufPool.Put((*[copyBufPoolSize]byte)(b))
 }
 
 // ResponseWriter extends [http.ResponseWriter] and provides methods to retrieve the recorded status code,
@@ -190,20 +198,18 @@ func (r *recorder) ReadFrom(src io.Reader) (n int64, err error) {
 	rf, ok := r.ResponseWriter.(io.ReaderFrom)
 	if !ok {
 		// Fallback in compatibility mode.
-		bufp := copyBufPool.Get().(*[]byte)
-		buf := *bufp
+		buf := getCopyBuf()
 		n, err = io.CopyBuffer(onlyWrite{r}, src, buf)
-		copyBufPool.Put(bufp)
+		putCopyBuf(buf)
 		return
 	}
 
 	// Copy the first bytes through Write so the header is not committed before
 	// the source produces data (see golang.org/issue/5660).
 	if r.size == notWritten {
-		bufp := copyBufPool.Get().(*[]byte)
-		buf := *bufp
+		buf := getCopyBuf()
 		n, err = io.CopyBuffer(onlyWrite{r}, io.LimitReader(src, int64(len(buf))), buf)
-		copyBufPool.Put(bufp)
+		putCopyBuf(buf)
 		if err != nil || n < int64(len(buf)) {
 			return n, err
 		}
