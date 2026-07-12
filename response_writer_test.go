@@ -122,6 +122,7 @@ func TestRecorder_FlushError(t *testing.T) {
 }
 
 func TestRecorder_Hijack(t *testing.T) {
+	errHijack := errors.New("hijack")
 	cases := []struct {
 		name   string
 		rec    *recorder
@@ -158,7 +159,7 @@ func TestRecorder_Hijack(t *testing.T) {
 			},
 		},
 		{
-			name: "underlying hijacker returns http.ErrNotSupported does not mark hijacked",
+			name: "underlying hijacker returns an error does not mark hijacked",
 			rec: &recorder{
 				ResponseWriter: struct {
 					http.ResponseWriter
@@ -166,13 +167,13 @@ func TestRecorder_Hijack(t *testing.T) {
 				}{
 					ResponseWriter: httptest.NewRecorder(),
 					Hijacker: hijackWriterFunc(func() (net.Conn, *bufio.ReadWriter, error) {
-						return nil, nil, http.ErrNotSupported
+						return nil, nil, errHijack
 					}),
 				},
 			},
 			assert: func(t *testing.T, w ResponseWriter) {
 				_, _, err := w.Hijack()
-				assert.ErrorIs(t, err, http.ErrNotSupported)
+				assert.ErrorIs(t, err, errHijack)
 				assert.False(t, w.(*recorder).hijacked)
 			},
 		},
