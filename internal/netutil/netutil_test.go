@@ -11,54 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSplitHostZone(t *testing.T) {
-	cases := []struct {
-		name     string
-		input    string
-		wantHost string
-		wantZone string
-	}{
-		{
-			name:     "ipv6 with zone",
-			input:    "fe80::1%eth0",
-			wantHost: "fe80::1",
-			wantZone: "eth0",
-		},
-		{
-			name:     "ipv6 without zone",
-			input:    "fe80::1",
-			wantHost: "fe80::1",
-			wantZone: "",
-		},
-		{
-			name:     "ipv4 address",
-			input:    "192.168.1.1",
-			wantHost: "192.168.1.1",
-			wantZone: "",
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			wantHost: "",
-			wantZone: "",
-		},
-		{
-			name:     "zone only percent at start",
-			input:    "%eth0",
-			wantHost: "%eth0",
-			wantZone: "",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			host, zone := SplitHostZone(tc.input)
-			assert.Equal(t, tc.wantHost, host)
-			assert.Equal(t, tc.wantZone, zone)
-		})
-	}
-}
-
 func TestStripHostPort(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -114,32 +66,62 @@ func TestStripHostPort(t *testing.T) {
 	}
 }
 
-func TestParseCIDR(t *testing.T) {
+func TestParsePrefix(t *testing.T) {
 	cases := []struct {
-		name      string
-		input     string
-		wantCIDR  string
-		wantError bool
+		name       string
+		input      string
+		wantPrefix string
+		wantError  bool
 	}{
 		{
-			name:     "valid ipv4 cidr",
-			input:    "192.168.1.0/24",
-			wantCIDR: "192.168.1.0/24",
+			name:       "valid ipv4 cidr",
+			input:      "192.168.1.0/24",
+			wantPrefix: "192.168.1.0/24",
 		},
 		{
-			name:     "valid ipv6 cidr",
-			input:    "2001:db8::/32",
-			wantCIDR: "2001:db8::/32",
+			name:       "ipv4 cidr with host bits",
+			input:      "192.168.1.5/24",
+			wantPrefix: "192.168.1.0/24",
 		},
 		{
-			name:     "plain ipv4 address",
-			input:    "192.168.1.1",
-			wantCIDR: "192.168.1.1/32",
+			name:       "valid ipv6 cidr",
+			input:      "2001:db8::/32",
+			wantPrefix: "2001:db8::/32",
 		},
 		{
-			name:     "plain ipv6 address",
-			input:    "2001:db8::1",
-			wantCIDR: "2001:db8::1/128",
+			name:       "plain ipv4 address",
+			input:      "192.168.1.1",
+			wantPrefix: "192.168.1.1/32",
+		},
+		{
+			name:       "plain ipv6 address",
+			input:      "2001:db8::1",
+			wantPrefix: "2001:db8::1/128",
+		},
+		{
+			name:       "ipv4 mapped ipv6 address",
+			input:      "::ffff:192.168.1.1",
+			wantPrefix: "192.168.1.1/32",
+		},
+		{
+			name:       "ipv4 mapped ipv6 cidr",
+			input:      "::ffff:10.0.0.0/104",
+			wantPrefix: "10.0.0.0/8",
+		},
+		{
+			name:       "ipv4 mapped ipv6 cidr below 96 bits",
+			input:      "::ffff:0:0/80",
+			wantPrefix: "::/80",
+		},
+		{
+			name:      "zoned address",
+			input:     "fe80::1%eth0",
+			wantError: true,
+		},
+		{
+			name:      "zoned cidr",
+			input:     "fe80::1%eth0/10",
+			wantError: true,
 		},
 		{
 			name:      "invalid input",
@@ -155,13 +137,13 @@ func TestParseCIDR(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ipNet, err := ParseCIDR(tc.input)
+			prefix, err := ParsePrefix(tc.input)
 			if tc.wantError {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantCIDR, ipNet.String())
+			assert.Equal(t, tc.wantPrefix, prefix.String())
 		})
 	}
 }

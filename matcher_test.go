@@ -2,9 +2,9 @@ package fox
 
 import (
 	"crypto/tls"
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"regexp"
 	"testing"
 
@@ -472,15 +472,26 @@ func TestClientIPMatcher_Match(t *testing.T) {
 			clientIP: "2001:db8::1",
 			want:     true,
 		},
+		{
+			name:     "match ipv4 mapped ipv6 client ip",
+			cidr:     "192.168.1.0/24",
+			clientIP: "::ffff:192.168.1.100",
+			want:     true,
+		},
+		{
+			name:     "match zoned link local client ip",
+			cidr:     "fe80::/10",
+			clientIP: "fe80::1%eth0",
+			want:     true,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ipNet, _ := net.ParseCIDR(tc.cidr)
-			m := ClientIPMatcher{ipNet: ipNet}
+			m := ClientIPMatcher{prefix: netip.MustParsePrefix(tc.cidr)}
 
-			resolver := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
-				return &net.IPAddr{IP: net.ParseIP(tc.clientIP)}, nil
+			resolver := ClientIPResolverFunc(func(c RequestContext) (netip.Addr, error) {
+				return netip.MustParseAddr(tc.clientIP), nil
 			})
 
 			req := httptest.NewRequest(http.MethodGet, "/path", nil)
@@ -494,11 +505,11 @@ func TestClientIPMatcher_Match(t *testing.T) {
 }
 
 func TestClientIPMatcher_RouteResolver(t *testing.T) {
-	routeResolver := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
-		return &net.IPAddr{IP: net.ParseIP("127.0.0.1")}, nil
+	routeResolver := ClientIPResolverFunc(func(c RequestContext) (netip.Addr, error) {
+		return netip.MustParseAddr("127.0.0.1"), nil
 	})
-	globalResolver := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
-		return &net.IPAddr{IP: net.ParseIP("10.0.0.1")}, nil
+	globalResolver := ClientIPResolverFunc(func(c RequestContext) (netip.Addr, error) {
+		return netip.MustParseAddr("10.0.0.1"), nil
 	})
 
 	f := MustRouter()
@@ -517,10 +528,10 @@ func TestClientIPMatcher_RouteResolver(t *testing.T) {
 }
 
 func TestClientIPMatcher_Equal(t *testing.T) {
-	_, ipNet1, _ := net.ParseCIDR("192.168.1.0/24")
-	_, ipNet2, _ := net.ParseCIDR("192.168.1.0/24")
-	_, ipNet3, _ := net.ParseCIDR("192.168.2.0/24")
-	_, ipNet4, _ := net.ParseCIDR("192.168.1.0/16")
+	prefix1 := netip.MustParsePrefix("192.168.1.0/24")
+	prefix2 := netip.MustParsePrefix("192.168.1.0/24")
+	prefix3 := netip.MustParsePrefix("192.168.2.0/24")
+	prefix4 := netip.MustParsePrefix("192.168.1.0/16")
 
 	cases := []struct {
 		name string
@@ -530,25 +541,25 @@ func TestClientIPMatcher_Equal(t *testing.T) {
 	}{
 		{
 			name: "equal matchers",
-			m1:   ClientIPMatcher{ipNet: ipNet1},
-			m2:   ClientIPMatcher{ipNet: ipNet2},
+			m1:   ClientIPMatcher{prefix: prefix1},
+			m2:   ClientIPMatcher{prefix: prefix2},
 			want: true,
 		},
 		{
 			name: "different ip",
-			m1:   ClientIPMatcher{ipNet: ipNet1},
-			m2:   ClientIPMatcher{ipNet: ipNet3},
+			m1:   ClientIPMatcher{prefix: prefix1},
+			m2:   ClientIPMatcher{prefix: prefix3},
 			want: false,
 		},
 		{
 			name: "different mask",
-			m1:   ClientIPMatcher{ipNet: ipNet1},
-			m2:   ClientIPMatcher{ipNet: ipNet4},
+			m1:   ClientIPMatcher{prefix: prefix1},
+			m2:   ClientIPMatcher{prefix: prefix4},
 			want: false,
 		},
 		{
 			name: "different type",
-			m1:   ClientIPMatcher{ipNet: ipNet1},
+			m1:   ClientIPMatcher{prefix: prefix1},
 			m2:   QueryMatcher{key: "ip", value: "192.168.1.0/24"},
 			want: false,
 		},
@@ -1021,7 +1032,7 @@ func TestMatchClientIP(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			assert.NotNil(t, m.IPNet())
+			assert.True(t, m.Prefix().IsValid())
 		})
 	}
 }

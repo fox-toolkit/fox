@@ -10,11 +10,11 @@ import (
 	"iter"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 
 	"github.com/fox-toolkit/fox/internal/bytesconv"
-	"github.com/fox-toolkit/fox/internal/netutil"
 )
 
 // RequestContext provides read-only access to incoming HTTP request data, including request properties,
@@ -27,9 +27,9 @@ import (
 type RequestContext interface {
 	// Request returns the current [http.Request].
 	Request() *http.Request
-	// RemoteIP parses the IP from [http.Request.RemoteAddr], normalizes it, and returns an IP address. The returned [net.IPAddr]
-	// may contain a zone identifier. RemoteIP never returns nil, even if parsing the IP fails.
-	RemoteIP() *net.IPAddr
+	// RemoteIP parses the IP from [http.Request.RemoteAddr], normalizes it, and returns a [netip.Addr].
+	// The returned address may contain a zone identifier and is the zero [netip.Addr] if parsing fails.
+	RemoteIP() netip.Addr
 	// ClientIP returns the "real" client IP address based on the configured [ClientIPResolver].
 	// The resolver is set using the [WithClientIPResolver] option. There is no sane default, so if no resolver is configured,
 	// the method returns [ErrNoClientIPResolver].
@@ -39,8 +39,8 @@ type RequestContext interface {
 	// Consequently, getting an error result should be treated as an application error, perhaps even
 	// worthy of panicking.
 	//
-	// The returned [net.IPAddr] may contain a zone identifier.
-	ClientIP() (*net.IPAddr, error)
+	// The returned [netip.Addr] may contain a zone identifier.
+	ClientIP() (netip.Addr, error)
 	// Method returns the request method.
 	Method() string
 	// RoutingPath returns the canonical path that the router uses for matching. Percent-encoded
@@ -143,22 +143,17 @@ func (c *Context) SetWriter(w ResponseWriter) {
 	c.w = w
 }
 
-// RemoteIP parses the IP from [http.Request.RemoteAddr], normalizes it, and returns a [net.IPAddr].
-// It never returns nil, even if parsing the IP fails.
-func (c *Context) RemoteIP() *net.IPAddr {
+// RemoteIP parses the IP from [http.Request.RemoteAddr], normalizes it, and returns a [netip.Addr].
+// The returned address may contain a zone identifier and is the zero [netip.Addr] if parsing fails.
+func (c *Context) RemoteIP() netip.Addr {
 	ipStr, _, _ := net.SplitHostPort(c.req.RemoteAddr)
 
-	ip, zone := netutil.SplitHostZone(ipStr)
-	ipAddr := &net.IPAddr{
-		IP:   net.ParseIP(ip),
-		Zone: zone,
+	addr, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return netip.Addr{}
 	}
 
-	if ipAddr.IP == nil {
-		return &net.IPAddr{}
-	}
-
-	return ipAddr
+	return addr.Unmap()
 }
 
 // ClientIP returns the "real" client IP address based on the configured [ClientIPResolver].
@@ -169,7 +164,7 @@ func (c *Context) RemoteIP() *net.IPAddr {
 // in a resolver never returning an error -- i.e., never failing to find a candidate for the "real" IP.
 // Consequently, getting an error result should be treated as an application error, perhaps even
 // worthy of panicking.
-func (c *Context) ClientIP() (*net.IPAddr, error) {
+func (c *Context) ClientIP() (netip.Addr, error) {
 	// We may be in a handler which does not match a route like NotFound handler.
 	if c.route == nil {
 		resolver := c.fox.clientip
@@ -387,8 +382,8 @@ type onlyRequestContext struct {
 }
 
 func (s onlyRequestContext) Request() *http.Request { return s.c.Request() }
-func (s onlyRequestContext) RemoteIP() *net.IPAddr  { return s.c.RemoteIP() }
-func (s onlyRequestContext) ClientIP() (*net.IPAddr, error) {
+func (s onlyRequestContext) RemoteIP() netip.Addr   { return s.c.RemoteIP() }
+func (s onlyRequestContext) ClientIP() (netip.Addr, error) {
 	return s.c.matcherRoute.clientip.ClientIP(s)
 }
 func (s onlyRequestContext) Method() string                { return s.c.Method() }

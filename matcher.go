@@ -1,10 +1,9 @@
 package fox
 
 import (
-	"bytes"
 	"errors"
-	"net"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"regexp/syntax"
 	"slices"
@@ -267,42 +266,34 @@ func (m HeaderRegexpMatcher) String() string {
 // the matcher always fails. See [WithClientIPMatcher] for the option counterpart and [WithClientIPResolver] to
 // configure the resolver.
 func MatchClientIP(ip string) (ClientIPMatcher, error) {
-	ipNet, err := netutil.ParseCIDR(ip)
+	prefix, err := netutil.ParsePrefix(ip)
 	if err != nil {
 		return ClientIPMatcher{}, err
 	}
 	return ClientIPMatcher{
-		ipNet: ipNet,
+		prefix: prefix,
 	}, nil
 }
 
 // ClientIPMatcher matches a request when the resolved client IP belongs to the configured CIDR range.
 type ClientIPMatcher struct {
-	ipNet *net.IPNet
+	prefix netip.Prefix
 }
 
-// IPNet returns a copy of the network range tested by this matcher.
-func (m ClientIPMatcher) IPNet() *net.IPNet {
-	ip := make(net.IP, len(m.ipNet.IP))
-	copy(ip, m.ipNet.IP)
-
-	mask := make(net.IPMask, len(m.ipNet.Mask))
-	copy(mask, m.ipNet.Mask)
-
-	return &net.IPNet{
-		IP:   ip,
-		Mask: mask,
-	}
+// Prefix returns the network range tested by this matcher.
+func (m ClientIPMatcher) Prefix() netip.Prefix {
+	return m.prefix
 }
 
 // Match reports whether the resolved client IP belongs to the configured CIDR range. It returns false if the resolver
-// returns an error or no resolver is configured.
+// returns an error or no resolver is configured. The resolved address is unmapped and stripped of any zone before
+// the range check.
 func (m ClientIPMatcher) Match(c RequestContext) bool {
 	addr, err := c.ClientIP()
 	if err != nil {
 		return false
 	}
-	return m.ipNet.Contains(addr.IP)
+	return m.prefix.Contains(addr.Unmap().WithZone(""))
 }
 
 // Equal reports whether matcher is a [ClientIPMatcher] with the same network range.
@@ -311,12 +302,12 @@ func (m ClientIPMatcher) Equal(matcher Matcher) bool {
 	if !ok {
 		return false
 	}
-	return m.ipNet.IP.Equal(om.ipNet.IP) && bytes.Equal(m.ipNet.Mask, om.ipNet.Mask)
+	return m.prefix == om.prefix
 }
 
 // String returns a textual representation of the matcher in the form "ip:CIDR".
 func (m ClientIPMatcher) String() string {
-	return "ip:" + m.ipNet.String()
+	return "ip:" + m.prefix.String()
 }
 
 // MatchScheme returns a [SchemeMatcher] that matches when the request connection scheme equals the given value. Only
