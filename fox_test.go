@@ -844,6 +844,17 @@ var wildcardHostnames = []route{
 	{"DELETE", "user.keys.{id}"},
 }
 
+func TestRouter_ServeHTTP_EmptyMethod(t *testing.T) {
+	f := MustRouter()
+	require.NoError(t, onlyError(f.Add([]string{http.MethodGet, http.MethodPost}, "/foo", emptyHandler)))
+
+	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+	req.Method = ""
+	w := httptest.NewRecorder()
+	f.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestRouter_ServeHTTP_Static(t *testing.T) {
 	f := MustRouter()
 

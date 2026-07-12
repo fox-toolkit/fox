@@ -618,6 +618,14 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.reset(w, r)
 	defer tree.pool.Put(c)
 
+	if r.Method == "" {
+		// This may only happen if a middleware set r.Method = "" before ServeHTTP is called
+		// but since it may produce unexpected match with fastMethod, let's be defensive here.
+		c.scope = NoRouteHandler
+		fox.noRoute(c)
+		return
+	}
+
 	path, ok := routingPath(r)
 	orig := r
 	rewritten := false
