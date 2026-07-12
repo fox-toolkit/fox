@@ -32,8 +32,9 @@ func StripHostPort(h string) string {
 }
 
 // ParsePrefix parses s as a CIDR prefix or a single IP address treated as a full-length prefix.
-// The result is in canonical form: host bits are masked and IPv4-mapped IPv6 values are normalized
-// to their IPv4 form, so "::ffff:10.0.0.0/104" behaves as "10.0.0.0/8". Zoned addresses are rejected.
+// It returns the prefix with host bits masked and IPv4-mapped IPv6 values normalized to their
+// IPv4 form, so "::ffff:10.0.0.0/104" behaves as "10.0.0.0/8". Addresses with a zone identifier
+// are rejected.
 func ParsePrefix(s string) (netip.Prefix, error) {
 	if strings.Contains(s, "/") {
 		prefix, err := netip.ParsePrefix(s)
