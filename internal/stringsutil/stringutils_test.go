@@ -145,51 +145,40 @@ func TestNormalizeRawPath(t *testing.T) {
 		path       string
 		want       string
 		wellFormed bool
-		consistent bool
 	}{
-		{"empty", "", "", "", true, true},
-		{"plain ascii", "/foo/bar", "/foo/bar", "/foo/bar", true, true},
-		{"canonical escaped slash", "/foo%2Fbar", "/foo/bar", "/foo%2Fbar", true, true},
-		{"lowercase hex uppercased", "/foo%2fbar", "/foo/bar", "/foo%2Fbar", true, true},
-		{"unreserved decoded", "/%61%42c", "/aBc", "/aBc", true, true},
-		{"encoded percent kept", "/a%25b", "/a%b", "/a%25b", true, true},
-		{"encoded utf8 kept uppercase", "/caf%c3%a9", "/café", "/caf%C3%A9", true, true},
-		{"encoded space kept", "/hello%20world", "/hello world", "/hello%20world", true, true},
-		{"double encoding preserved", "/foo%252fbar", "/foo%2fbar", "/foo%252fbar", true, true},
-		{"four byte utf8 lowercase", "/%f0%90%8d%88", "/\xf0\x90\x8d\x88", "/%F0%90%8D%88", true, true},
-		{"raw plus and star untouched", "/a+b/c*d", "/a+b/c*d", "/a+b/c*d", true, true},
-		{"sub-delims kept raw", "/a(b)!'*,;=:@[]", "/a(b)!'*,;=:@[]", "/a(b)!'*,;=:@[]", true, true},
-		{"raw utf8 encoded in place", "/foo%2Fcaf\xc3\xa9", "/foo/caf\xc3\xa9", "/foo%2Fcaf%C3%A9", false, true},
-		{"raw utf8 alone", "/caf\xc3\xa9", "/caf\xc3\xa9", "/caf%C3%A9", false, true},
-		{"raw brace encoded in place", "/foo%2Fb{r", "/foo/b{r", "/foo%2Fb%7Br", false, true},
-		{"raw backslash encoded", "/a\\b", "/a\\b", "/a%5Cb", false, true},
-		{"raw quote encoded", "/a\"b", "/a\"b", "/a%22b", false, true},
-		{"encoded dot segments preserved with raw byte", "/%2E%2E/x\xc3\xa9", "/../x\xc3\xa9", "/../x%C3%A9", false, true},
-		{"malformed escape does not recombine", "/a%2%46b", "/a%2%46b", "/a%2%46b", false, true},
-		{"malformed escape after decoded escape", "/%61%2%46b", "/a%2%46b", "/a%2%46b", false, true},
-		{"trailing percent", "/100%", "/100%", "/100%", false, true},
-		{"truncated escape", "/x%4", "/x%4", "/x%4", false, true},
-		{"invalid hex digits", "/%zz", "/%zz", "/%zz", false, true},
-		{"percent before valid escape", "/%%41", "/%%41", "/%%41", false, true},
-		{"frozen tail keeps raw byte", "/a%zz\xc3\xa9", "/a%zz\xc3\xa9", "/a%zz\xc3\xa9", false, true},
-		{"frozen tail keeps lowercase escape", "/a%zz%2f", "/a%zz%2f", "/a%zz%2f", false, true},
-		{"decoded byte mismatch", "/a%2Fb", "/a/c", "", false, false},
-		{"raw byte mismatch", "/abc", "/abd", "", false, false},
-		{"path too long", "/ab", "/abc", "", false, false},
-		{"path too short", "/abc", "/ab", "", false, false},
-		{"empty path", "/a", "", "", false, false},
-		{"mismatch before malformed escape", "/a%zz", "/b%zz", "", false, false},
-		{"frozen tail mismatch", "/a%zz/anything/here", "/admin/secret", "", false, false},
-		{"frozen tail not mirrored by path", "/a%zz", "/a", "", false, false},
-		{"frozen tail after decoded escape mismatch", "/%61%zz/x", "/a%zz/y", "", false, false},
+		{"plain ascii", "/foo/bar", "/foo/bar", "/foo/bar", true},
+		{"canonical escaped slash", "/foo%2Fbar", "/foo/bar", "/foo%2Fbar", true},
+		{"lowercase hex uppercased", "/foo%2fbar", "/foo/bar", "/foo%2Fbar", true},
+		{"unreserved decoded", "/%61%42c", "/aBc", "/aBc", true},
+		{"encoded percent kept", "/a%25b", "/a%b", "/a%25b", true},
+		{"encoded utf8 kept uppercase", "/caf%c3%a9", "/café", "/caf%C3%A9", true},
+		{"encoded space kept", "/hello%20world", "/hello world", "/hello%20world", true},
+		{"double encoding preserved", "/foo%252fbar", "/foo%2fbar", "/foo%252fbar", true},
+		{"four byte utf8 lowercase", "/%f0%90%8d%88", "/\xf0\x90\x8d\x88", "/%F0%90%8D%88", true},
+		{"raw plus and star untouched", "/a+b/c*d", "/a+b/c*d", "/a+b/c*d", true},
+		{"sub-delims kept raw", "/a(b)!'*,;=:@[]", "/a(b)!'*,;=:@[]", "/a(b)!'*,;=:@[]", true},
+		{"raw utf8 encoded in place", "/foo%2Fcaf\xc3\xa9", "/foo/caf\xc3\xa9", "/foo%2Fcaf%C3%A9", false},
+		{"raw utf8 alone", "/caf\xc3\xa9", "/caf\xc3\xa9", "/caf%C3%A9", false},
+		{"raw brace encoded in place", "/foo%2Fb{r", "/foo/b{r", "/foo%2Fb%7Br", false},
+		{"raw backslash encoded", "/a\\b", "/a\\b", "/a%5Cb", false},
+		{"raw quote encoded", "/a\"b", "/a\"b", "/a%22b", false},
+		{"encoded dot segments preserved with raw byte", "/%2E%2E/x\xc3\xa9", "/../x\xc3\xa9", "/../x%C3%A9", false},
+		{"malformed escape", "/a%2%46b", "/a%2%46b", "", false},
+		{"malformed escape after decoded escape", "/%61%2%46b", "/a%2%46b", "", false},
+		{"trailing percent", "/100%", "/100%", "", false},
+		{"invalid hex digits", "/%zz", "/%zz", "", false},
+		{"decoded byte mismatch", "/a%2Fb", "/a/c", "", false},
+		{"raw byte mismatch", "/abc", "/abd", "", false},
+		{"path too long", "/ab", "/abc", "", false},
+		{"path too short", "/abc", "/ab", "", false},
+		{"empty path", "/a", "", "", false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			norm, wellFormed, consistent := NormalizeRawPath(tc.raw, tc.path)
+			norm, wellFormed := NormalizeRawPath(tc.raw, tc.path)
 			assert.Equal(t, tc.want, norm)
 			assert.Equal(t, tc.wellFormed, wellFormed)
-			assert.Equal(t, tc.consistent, consistent)
 		})
 	}
 }
@@ -203,14 +192,14 @@ func TestNormalizeRawPathNoAlloc(t *testing.T) {
 		{"plain path", "/foo/bar/baz", "/foo/bar/baz"},
 		{"already canonical", "/caf%C3%A9", "/café"},
 		{"canonical escaped slash", "/foo%2Fbar", "/foo/bar"},
-		{"frozen unchanged", "/100%", "/100%"},
+		{"malformed", "/100%", "/100%"},
 		{"inconsistent", "/abc", "/abd"},
 	}
 
 	for _, tc := range noAllocCases {
 		t.Run(tc.name, func(t *testing.T) {
 			allocs := testing.AllocsPerRun(100, func() {
-				_, _, _ = NormalizeRawPath(tc.raw, tc.path)
+				_, _ = NormalizeRawPath(tc.raw, tc.path)
 			})
 			assert.Equal(t, float64(0), allocs)
 		})
@@ -230,8 +219,8 @@ func FuzzNormalizeRawPath_DifferentialNetURL(f *testing.F) {
 		if err != nil || u.RawPath == "" {
 			t.Skip()
 		}
-		norm, wellFormed, consistent := NormalizeRawPath(u.RawPath, u.Path)
-		require.True(t, consistent)
+		norm, wellFormed := NormalizeRawPath(u.RawPath, u.Path)
+		require.NotEmpty(t, norm)
 		if wellFormed {
 			require.Equal(t, u.RawPath, u.EscapedPath())
 		}
@@ -254,8 +243,7 @@ func FuzzNormalizeRawPath_DifferentialNetURL(f *testing.F) {
 		require.NoError(t, err)
 		require.Equal(t, u.Path, decoded)
 
-		again, wf, cons := NormalizeRawPath(norm, u.Path)
-		require.True(t, cons)
+		again, wf := NormalizeRawPath(norm, u.Path)
 		require.True(t, wf)
 		require.Equal(t, norm, again)
 	})

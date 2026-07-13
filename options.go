@@ -200,19 +200,6 @@ func WithCollapseDotSegments(opt NormalizeOption) GlobalOption {
 	})
 }
 
-// WithStrictPathEncoding rejects with a 400 response (see [WithRejectPathHandler]) any request
-// path containing an unescaped character that RFC 3986 forbids in a path, like é or {, a
-// malformed escape sequence, or a URL.RawPath that is not an encoding of URL.Path. The net/http
-// parser never produces the last two cases, they only appear in manually built requests.
-// When disabled, such requests are matched on their routing path (see [Context.RoutingPath]).
-// This option is disabled by default.
-func WithStrictPathEncoding(enable bool) GlobalOption {
-	return optionFunc(func(s sealedOption) error {
-		s.router.strictPathEncoding = enable
-		return nil
-	})
-}
-
 // WithMaxRouteParams set the maximum number of parameters allowed in a route. The default max is math.MaxUint8.
 // Routes exceeding this limit will fail with a [*PatternError].
 func WithMaxRouteParams(max uint16) GlobalOption {

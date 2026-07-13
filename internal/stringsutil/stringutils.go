@@ -90,7 +90,7 @@ func EqualASCIIIgnoreCase(s, t uint8) bool {
 }
 
 // ToLowerASCII converts an ASCII uppercase letter (A-Z) to lowercase (a-z).
-// All other bytes are returned unchanged. Does not validate ASCII range;
+// All other bytes are returned unchanged. Does not validate ASCII range.
 func ToLowerASCII(b byte) byte {
 	if 'A' <= b && b <= 'Z' {
 		return b + ('a' - 'A')
@@ -105,7 +105,7 @@ func IsUnreserved(b byte) bool {
 	return unreservedTab[b]
 }
 
-// IsRoutableRaw reports whether b can appear unescaped in a routing path, i.e. whether
+// IsRoutableRaw reports whether b is allowed unescaped in a routing path, i.e. whether
 // [NormalizeRawPath] can emit it unescaped.
 func IsRoutableRaw(b byte) bool {
 	return pathKeepRaw[b]
@@ -202,14 +202,15 @@ func escapeInto(t []byte, path string, i int) {
 }
 
 // NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
-// are decoded, hex is uppercased, bytes that cannot appear unescaped (see [IsRoutableRaw]) are
-// percent-encoded in place and the path is kept as-is from the first malformed escape.
-// It reports whether raw is well-formed and whether it is an encoding of the decoded path.
-// When consistent is false, the routing path must be derived from path instead.
-func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent bool) {
+// are decoded, hex is uppercased and bytes that must be escaped in a path are percent-encoded
+// in place. wellFormed reports that no such byte was found. In that case norm differs from raw
+// only by hex case or by a decoded unreserved escape, and RFC 3986 guarantees that both forms
+// identify the same resource. A transformation that breaks this guarantee must report wellFormed
+// false. It returns "" when raw contains a malformed escape or is not an encoding of path. The
+// routing form must then be derived from path.
+func NormalizeRawPath(raw, path string) (norm string, wellFormed bool) {
 	var buf strings.Builder
 	wellFormed = true
-	frozen := false
 	j := 0     // cursor into path, raw must decode to path byte for byte
 	start := 0 // start of the pending run copied as-is from raw
 	i := 0
@@ -222,14 +223,11 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 				b, ok = DecodeHexPair(raw[i+1], raw[i+2])
 			}
 			if !ok {
-				// Malformed or truncated escape. Past this point there is no correct decoded
-				// form, so the rest is kept exactly as sent: rewriting bytes after a
-				// dangling '%' could recombine them into a valid escape sequence the client never sent.
-				wellFormed, frozen = false, true
-				break
+				// Malformed or truncated escape, there is no correct decoded form.
+				return "", false
 			}
 			if j >= len(path) || path[j] != b {
-				return "", false, false
+				return "", false
 			}
 			j++
 			hi, lo := UpperHex(raw[i+1]), UpperHex(raw[i+2])
@@ -255,7 +253,7 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 			continue
 		}
 		if j >= len(path) || path[j] != c {
-			return "", false, false
+			return "", false
 		}
 		j++
 		if !pathKeepRaw[c] {
@@ -271,18 +269,12 @@ func NormalizeRawPath(raw, path string) (norm string, wellFormed, consistent boo
 		}
 		i++
 	}
-	// The frozen remainder cannot be decoded, raw stays authoritative only when
-	// path mirrors it byte for byte.
-	if frozen {
-		if raw[i:] != path[j:] {
-			return "", false, false
-		}
-	} else if j != len(path) {
-		return "", false, false
+	if j != len(path) {
+		return "", false
 	}
 	if buf.Len() == 0 {
-		return raw, wellFormed, true
+		return raw, wellFormed
 	}
 	buf.WriteString(raw[start:])
-	return buf.String(), wellFormed, true
+	return buf.String(), wellFormed
 }
