@@ -5065,9 +5065,9 @@ func TestRouter_NormalizePathBoth(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestRouter_StrictPathEncoding(t *testing.T) {
-	t.Run("well-formed paths unaffected", func(t *testing.T) {
-		f := MustRouter(WithStrictPathEncoding(true))
+func TestRouter_PathEncoding(t *testing.T) {
+	t.Run("well-formed paths normalized", func(t *testing.T) {
+		f := MustRouter()
 		require.NoError(t, onlyError(f.Add(MethodGet, "/foo%2Fbar", emptyHandler)))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/caf%C3%A9", emptyHandler)))
 
@@ -5075,17 +5075,6 @@ func TestRouter_StrictPathEncoding(t *testing.T) {
 			w := httptest.NewRecorder()
 			f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
 			assert.Equal(t, http.StatusOK, w.Code)
-		}
-	})
-
-	t.Run("non-routable raw byte rejected in strict mode", func(t *testing.T) {
-		f := MustRouter(WithStrictPathEncoding(true))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/{p}", emptyHandler)))
-
-		for _, target := range []string{"/foo%2Fcaf\xc3\xa9", "/caf\xc3\xa9", "/b{r", "/a\\b"} {
-			w := httptest.NewRecorder()
-			f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
-			assert.Equal(t, http.StatusBadRequest, w.Code)
 		}
 	})
 
@@ -5120,24 +5109,10 @@ func TestRouter_StrictPathEncoding(t *testing.T) {
 		assert.Equal(t, "caf%C3%A9", captured)
 	})
 
-	t.Run("malformed escape rejected in strict mode", func(t *testing.T) {
-		f := MustRouter(WithStrictPathEncoding(true))
-		require.NoError(t, onlyError(f.Add(MethodGet, "/{p}", emptyHandler)))
-
-		req := httptest.NewRequest(http.MethodGet, "/a", nil)
-		req.URL.Path = "/a%zz"
-		req.URL.RawPath = "/a%zz"
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-
-	t.Run("malformed escape frozen in lenient mode", func(t *testing.T) {
+	t.Run("malformed escape falls back to path", func(t *testing.T) {
 		f := MustRouter()
-		var captured string
 		var seen *http.Request
-		require.NoError(t, onlyError(f.Add(MethodGet, "/{p}", func(c *Context) {
-			captured = c.Param("p")
+		require.NoError(t, onlyError(f.Add(MethodGet, "/a%25zz", func(c *Context) {
 			seen = c.Request()
 		})))
 
@@ -5147,13 +5122,45 @@ func TestRouter_StrictPathEncoding(t *testing.T) {
 		w := httptest.NewRecorder()
 		f.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "a%zz", captured)
-		assert.Same(t, req, seen)
+		require.NotNil(t, seen)
+		assert.NotSame(t, req, seen)
+		assert.Equal(t, "/a%25zz", seen.URL.EscapedPath())
+		assert.Equal(t, "/a%zz", req.URL.Path)
+		assert.Equal(t, "/a%zz", req.URL.RawPath)
+	})
+
+	t.Run("malformed escape param capture", func(t *testing.T) {
+		f := MustRouter()
+		var captured string
+		require.NoError(t, onlyError(f.Add(MethodGet, "/{p}", func(c *Context) {
+			captured = c.Param("p")
+		})))
+
+		req := httptest.NewRequest(http.MethodGet, "/a", nil)
+		req.URL.Path = "/a%zz"
+		req.URL.RawPath = "/a%zz"
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "a%25zz", captured)
+	})
+
+	t.Run("malformed escape trailing slash redirect", func(t *testing.T) {
+		f := MustRouter(WithTrailingSlash(RedirectSlash))
+		require.NoError(t, onlyError(f.Add(MethodGet, "/a%25zz", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodGet, "/a", nil)
+		req.URL.Path = "/a%zz/"
+		req.URL.RawPath = "/a%zz/"
+		w := httptest.NewRecorder()
+		f.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusMovedPermanently, w.Code)
+		assert.Equal(t, "/a%25zz", w.Header().Get(HeaderLocation))
 	})
 
 	t.Run("inconsistent raw path falls back to path", func(t *testing.T) {
-		lenient := MustRouter()
-		require.NoError(t, onlyError(lenient.Add(MethodGet, "/other", func(c *Context) {
+		f := MustRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/other", func(c *Context) {
 			assert.Equal(t, "/other", c.Request().URL.EscapedPath())
 			assert.Empty(t, c.Request().URL.RawPath)
 		})))
@@ -5161,45 +5168,9 @@ func TestRouter_StrictPathEncoding(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/foo%2Fbar", nil)
 		req.URL.Path = "/other"
 		w := httptest.NewRecorder()
-		lenient.ServeHTTP(w, req)
+		f.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "/foo%2Fbar", req.URL.RawPath)
-
-		strict := MustRouter(WithStrictPathEncoding(true))
-		require.NoError(t, onlyError(strict.Add(MethodGet, "/other", emptyHandler)))
-
-		req = httptest.NewRequest(http.MethodGet, "/foo%2Fbar", nil)
-		req.URL.Path = "/other"
-		w = httptest.NewRecorder()
-		strict.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-
-	t.Run("custom reject handler and middleware scope", func(t *testing.T) {
-		var scoped int
-		f := MustRouter(
-			WithStrictPathEncoding(true),
-			WithRejectPathHandler(func(c *Context) {
-				assert.Equal(t, RejectPathHandler, c.Scope())
-				c.Writer().WriteHeader(http.StatusTeapot)
-			}),
-			WithMiddlewareFor(RejectPathHandler, func(next HandlerFunc) HandlerFunc {
-				return func(c *Context) {
-					scoped++
-					next(c)
-				}
-			}),
-		)
-
-		w := httptest.NewRecorder()
-		f.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/caf\xc3\xa9", nil))
-		assert.Equal(t, http.StatusTeapot, w.Code)
-		assert.Equal(t, 1, scoped)
-	})
-
-	t.Run("router info", func(t *testing.T) {
-		assert.True(t, MustRouter(WithStrictPathEncoding(true)).Info().StrictPathEncoding)
-		assert.False(t, MustRouter().Info().StrictPathEncoding)
 	})
 }
 

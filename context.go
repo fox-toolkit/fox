@@ -46,11 +46,12 @@ type RequestContext interface {
 	// Method returns the request method.
 	Method() string
 	// RoutingPath returns the canonical path that the router uses for matching. Percent-encoded
-	// RFC 3986 unreserved characters (A-Z a-z 0-9 - . _ ~) are decoded while the remaining escape
-	// sequences stay encoded, normalized to uppercase hex and distinct from their decoded form
-	// (%2F never matches /). Bytes that can never appear unescaped in a path are percent-encoded in
-	// place (e.g. é becomes %C3%A9). A typical use is when you need the exact path the router matched on, for example
-	// as a cache key.
+	// RFC 3986 unreserved characters (A-Z a-z 0-9 - . _ ~) are decoded and characters that must
+	// be escaped in a path are percent-encoded (e.g. é becomes %C3%A9). Every other escape
+	// sequence stays encoded, normalized to uppercase hex and distinct from its decoded form
+	// (%2F never matches /). If URL.RawPath has a malformed escape or is not an encoding of
+	// URL.Path, the routing path is the default encoding of URL.Path. A typical use is when you
+	// need the exact path the router matched on, for example as a cache key.
 	RoutingPath() string
 	// Host returns the request host.
 	Host() string
@@ -204,11 +205,12 @@ func (c *Context) Method() string {
 }
 
 // RoutingPath returns the canonical path that the router uses for matching. Percent-encoded
-// RFC 3986 unreserved characters (A-Z a-z 0-9 - . _ ~) are decoded while the remaining escape
-// sequences stay encoded, normalized to uppercase hex and distinct from their decoded form
-// (%2F never matches /). Bytes that can never appear unescaped in a path are percent-encoded in
-// place (e.g. é becomes %C3%A9). A typical use is when you need the exact path the router matched on, for example
-// as a cache key.
+// RFC 3986 unreserved characters (A-Z a-z 0-9 - . _ ~) are decoded and characters that must
+// be escaped in a path are percent-encoded (e.g. é becomes %C3%A9). Every other escape
+// sequence stays encoded, normalized to uppercase hex and distinct from its decoded form
+// (%2F never matches /). If URL.RawPath has a malformed escape or is not an encoding of
+// URL.Path, the routing path is the default encoding of URL.Path. A typical use is when you
+// need the exact path the router matched on, for example as a cache key.
 func (c *Context) RoutingPath() string {
 	path, _ := routingPath(c.req)
 	return path

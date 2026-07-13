@@ -118,7 +118,6 @@ type Router struct {
 	handleOPTIONS          bool
 	systemWideOPTIONS      bool
 	allowRegexp            bool
-	strictPathEncoding     bool
 }
 
 func initRouter() *Router {
@@ -153,7 +152,6 @@ type RouterInfo struct {
 	SystemWideOptions     bool
 	ClientIPResolver      bool
 	AllowRegexpParam      bool
-	StrictPathEncoding    bool
 }
 
 type middleware struct {
@@ -567,7 +565,6 @@ func (fox *Router) Info() RouterInfo {
 		ClientIPResolver:      !ok,
 		AllowRegexpParam:      fox.allowRegexp,
 		SystemWideOptions:     fox.systemWideOPTIONS,
-		StrictPathEncoding:    fox.strictPathEncoding,
 	}
 }
 
@@ -625,26 +622,15 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ok := routingPath(r)
+	path, rewrite := routingPath(r)
 	orig := r
 	rewritten := false
-	malformed := false
 	nonCanonical := false
-	if !ok {
-		if fox.strictPathEncoding {
-			c.scope = RejectPathHandler
-			fox.pathReject(c)
-			return
-		}
-		// Rewrite so downstream handlers (e.g. reverse proxies) forward the path the router
-		// routed on. No-op on a malformed path, which has no valid URL representation.
-		if req, rewrote := rewriteRequest(r, path, false); rewrote {
-			r = req
-			c.req = r
-			rewritten = true
-		} else {
-			malformed = true
-		}
+	if rewrite {
+		// Rewrite so downstream handlers (e.g. reverse proxies) forward the path the router routed on.
+		r = rewriteRequest(r, path, false)
+		c.req = r
+		rewritten = true
 	}
 
 	if fox.hasNormalize && r.Method != http.MethodConnect {
@@ -667,7 +653,7 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case redirect:
 			// A "." or ".." path element in the Location may be resolved by the client,
 			// redirecting to a different path.
-			if !malformed && (fox.collapseDots != ExactPath || !hasDotSegment(normalized)) {
+			if fox.collapseDots != ExactPath || !hasDotSegment(normalized) {
 				if idx, n, tsr := tree.lookup(r.Method, r.Host, normalized, c, true); n != nil && (!tsr || n.routes[idx].handleSlash != ExactSlash) {
 					r.Pattern = ""
 					orig.Pattern = ""
@@ -680,11 +666,9 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			goto NoMatch
 		case len(normalized) != len(path):
 			path = normalized
-			if req, rewrote := rewriteRequest(r, normalized, rewritten); rewrote {
-				r = req
-				c.req = r
-				rewritten = true
-			}
+			r = rewriteRequest(r, normalized, rewritten)
+			c.req = r
+			rewritten = true
 		}
 	}
 
@@ -700,14 +684,14 @@ func (fox *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			c.route = route
 			r.Pattern = route.pattern.str
 			orig.Pattern = r.Pattern
-			c.req, _ = rewriteRequest(r, fixTrailingSlash(path), rewritten)
+			c.req = rewriteRequest(r, fixTrailingSlash(path), rewritten)
 			c.route.hall(c)
 			return
 		}
 
 		// A "." or ".." path element in the Location may be resolved by the client,
 		// redirecting to a different path.
-		if route.handleSlash == RedirectSlash && !malformed && !hasDotSegment(path) {
+		if route.handleSlash == RedirectSlash && !hasDotSegment(path) {
 			*c.params = (*c.params)[:0]
 			r.Pattern = ""
 			orig.Pattern = ""
@@ -1015,12 +999,13 @@ func hexEscapeNonASCII(s string) string {
 
 // rewriteRequest returns a request whose URL is set to the escaped routing path, so downstream
 // handlers (e.g. reverse proxies) see the path the router matched on. Unless owned, the request
-// is shallow copied so the caller's request is never mutated. Note that a path containing malformed
-// escape sequence has no valid URL representation and returns r as-is.
-func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request, bool) {
+// is shallow copied so the caller's request is never mutated.
+func rewriteRequest(r *http.Request, escaped string, owned bool) *http.Request {
+	// escaped always comes from routingPath or the normalize passes, which only
+	// produce valid encodings, so PathUnescape cannot fail.
 	p, err := url.PathUnescape(escaped)
 	if err != nil {
-		return r, false
+		return r
 	}
 
 	if !owned {
@@ -1041,24 +1026,26 @@ func rewriteRequest(r *http.Request, escaped string, owned bool) (*http.Request,
 	if stringsutil.EscapePath(p) != escaped {
 		u.RawPath = escaped
 	}
-	return r, true
+	return r
 }
 
-// routingPath returns the canonical routing path for the request and reports whether the
-// escaped path is well-formed, i.e. free of malformed escapes and of bytes that can never
-// appear unescaped in a routing path. See [WithStrictPathEncoding].
-func routingPath(r *http.Request) (string, bool) {
+// routingPath returns the canonical routing path for the request and reports whether the request
+// URL must be rewritten so downstream handlers forward the form the router routed on. That is the
+// case when the escaped path contains bytes that can never appear unescaped in a routing path, a
+// malformed escape, or a URL.RawPath that is not an encoding of URL.Path.
+func routingPath(r *http.Request) (path string, rewrite bool) {
 	u := r.URL
 	if u.RawPath == "" {
 		// The wire path was the default encoding of Path, which is always canonical.
-		return stringsutil.EscapePath(u.Path), true
-	}
-	norm, wellFormed, consistent := stringsutil.NormalizeRawPath(u.RawPath, u.Path)
-	if !consistent {
-		// RawPath is not an encoding of Path, like net/url, Path is the source of truth.
 		return stringsutil.EscapePath(u.Path), false
 	}
-	return norm, wellFormed
+	norm, wellFormed := stringsutil.NormalizeRawPath(u.RawPath, u.Path)
+	if norm == "" {
+		// RawPath has a malformed escape or is not an encoding of Path, like net/url,
+		// Path is the source of truth.
+		return stringsutil.EscapePath(u.Path), true
+	}
+	return norm, !wellFormed
 }
 
 func applyMiddleware(scope HandlerScope, mws []middleware, h HandlerFunc) HandlerFunc {

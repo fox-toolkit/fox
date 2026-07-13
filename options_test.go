@@ -19,7 +19,6 @@ func TestNewRouter_Defaults(t *testing.T) {
 	assert.False(t, f.handleOPTIONS)
 	assert.False(t, f.handleMethodNotAllowed)
 	assert.False(t, f.allowRegexp)
-	assert.False(t, f.strictPathEncoding)
 	assert.Equal(t, ExactPath, f.mergeSlash)
 	assert.Equal(t, ExactPath, f.collapseDots)
 	assert.Equal(t, ExactSlash, f.handleSlash)
