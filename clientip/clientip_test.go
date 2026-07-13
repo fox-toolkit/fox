@@ -6,9 +6,9 @@ package clientip
 
 import (
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"slices"
 	"testing"
 
@@ -69,8 +69,8 @@ func TestRemoteAddr_ClientIP(t *testing.T) {
 				assert.ErrorIs(t, err, tc.wantErr)
 				return
 			}
-			assert.Equal(t, tc.wantIP, ipAddr.IP.String())
-			assert.Equal(t, tc.wantZone, ipAddr.Zone)
+			assert.Equal(t, tc.wantIP, ipAddr.WithZone("").String())
+			assert.Equal(t, tc.wantZone, ipAddr.Zone())
 
 		})
 	}
@@ -117,6 +117,18 @@ func TestLeftmostNonPrivate_ClientIP(t *testing.T) {
 	req.Header.Set("Forwarded", `for=192.168.1.1, for=10.0.0.1, for="[fd00::1]", for=172.16.0.1`)
 	_, err = s.ClientIP(c)
 	assert.ErrorIs(t, err, ErrLeftmostNonPrivate)
+
+	// IPv4-mapped IPv6 private address is blacklisted
+	req.Header.Set("Forwarded", `for="[::ffff:10.0.0.1]", for=1.1.1.1`)
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.1.1", ipAddr.String())
+
+	// Zoned link local address is blacklisted
+	req.Header.Set("Forwarded", `for="[fe80::abcd%eth0]", for=1.1.1.1`)
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.1.1", ipAddr.String())
 }
 
 func TestRightmostNonPrivate_ClientIP(t *testing.T) {
@@ -141,6 +153,18 @@ func TestRightmostNonPrivate_ClientIP(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "192.168.1.1, 10.0.0.1, [fd00::1], 172.16.0.1")
 	_, err = s.ClientIP(c)
 	assert.ErrorIs(t, err, ErrRightmostNonPrivate)
+
+	// IPv4-mapped IPv6 private address is trusted
+	req.Header.Set("X-Forwarded-For", "2.2.2.2, ::ffff:192.168.1.1")
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "2.2.2.2", ipAddr.String())
+
+	// Zoned link local address is trusted
+	req.Header.Set("X-Forwarded-For", "2.2.2.2, fe80::abcd%eth0")
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "2.2.2.2", ipAddr.String())
 }
 
 func TestRightmostTrustedCount_ClientIP(t *testing.T) {
@@ -171,8 +195,8 @@ func TestRightmostTrustedRange_ClientIP(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	c := fox.NewTestContextOnly(w, req)
-	trustedRanges, _ := AddressesAndRangesToIPNets([]string{"192.168.0.0/16", "3.3.3.3"}...)
-	s := must(NewRightmostTrustedRange(XForwardedForKey, TrustedIPRangeFunc(func() ([]net.IPNet, error) {
+	trustedRanges, _ := ParsePrefixes([]string{"192.168.0.0/16", "3.3.3.3"}...)
+	s := must(NewRightmostTrustedRange(XForwardedForKey, TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
 		return trustedRanges, nil
 	})))
 	ipAddr, err := s.ClientIP(c)
@@ -190,8 +214,16 @@ func TestRightmostTrustedRange_ClientIP(t *testing.T) {
 	assert.ErrorIs(t, err, ErrRightmostTrustedRange)
 	assert.ErrorContains(t, err, "unable to find a valid IP address")
 
+	req.Header.Set("X-Forwarded-For", "203.0.113.99, 10.0.0.5")
+	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
+		return []netip.Prefix{netip.MustParsePrefix("::ffff:10.0.0.0/104")}, nil
+	})
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "203.0.113.99", ipAddr.String())
+
 	var resolverErr = errors.New("resolver error")
-	s.resolver = TrustedIPRangeFunc(func() ([]net.IPNet, error) {
+	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
 		return nil, resolverErr
 	})
 	_, err = s.ClientIP(c)
@@ -228,10 +260,10 @@ func TestChain_ClientIP(t *testing.T) {
 
 	ipAddr, err = NewChain().ClientIP(c)
 	assert.ErrorIs(t, err, fox.ErrNoClientIPResolver)
-	assert.Nil(t, ipAddr)
+	assert.Equal(t, netip.Addr{}, ipAddr)
 }
 
-func TestAddressesAndRangesToIPNets(t *testing.T) {
+func TestParsePrefixes(t *testing.T) {
 	tests := []struct {
 		name    string
 		ranges  []string
@@ -296,6 +328,11 @@ func TestAddressesAndRangesToIPNets(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "Error: address with zone",
+			ranges:  []string{"fe80::abcd%nope"},
+			wantErr: true,
+		},
+		{
 			name:    "Error: garbage IP",
 			ranges:  []string{"1.1.1.nope"},
 			wantErr: true,
@@ -308,7 +345,7 @@ func TestAddressesAndRangesToIPNets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := AddressesAndRangesToIPNets(tt.ranges...)
+			got, err := ParsePrefixes(tt.ranges...)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -329,49 +366,54 @@ func TestAddressesAndRangesToIPNets(t *testing.T) {
 	}
 }
 
-func Test_mustParseIPAddr(t *testing.T) {
+func Test_mustParseAddr(t *testing.T) {
 	// We test the non-panic path elsewhere, but we need to specifically check the panic case
 	assert.Panics(t, func() {
-		mustParseIPAddr("nope")
+		mustParseAddr("nope")
 	})
 }
 
-func TestParseIPAddr(t *testing.T) {
+func TestParseAddr(t *testing.T) {
 	tests := []struct {
 		name    string
 		ipStr   string
-		want    net.IPAddr
+		want    netip.Addr
 		wantErr bool
 	}{
 		{
-			name:  "Empty zone",
-			ipStr: "1.1.1.1%",
-			want:  net.IPAddr{IP: net.ParseIP("1.1.1.1"), Zone: ""},
-		},
-		{
 			name:  "No zone",
 			ipStr: "1.1.1.1",
-			want:  net.IPAddr{IP: net.ParseIP("1.1.1.1"), Zone: ""},
+			want:  netip.MustParseAddr("1.1.1.1"),
 		},
 		{
 			name:  "With zone",
 			ipStr: "fe80::abcd%zone",
-			want:  net.IPAddr{IP: net.ParseIP("fe80::abcd"), Zone: "zone"},
+			want:  netip.MustParseAddr("fe80::abcd%zone"),
 		},
 		{
 			name:  "With zone and port",
 			ipStr: "[2607:f8b0:4004:83f::200e%zone]:4484",
-			want:  net.IPAddr{IP: net.ParseIP("2607:f8b0:4004:83f::200e"), Zone: "zone"},
+			want:  netip.MustParseAddr("2607:f8b0:4004:83f::200e%zone"),
 		},
 		{
 			name:  "With port",
 			ipStr: "1.1.1.1:48944",
-			want:  net.IPAddr{IP: net.ParseIP("1.1.1.1"), Zone: ""},
+			want:  netip.MustParseAddr("1.1.1.1"),
 		},
 		{
 			name:  "Bad port (is discarded)",
 			ipStr: "[fe80::abcd%eth0]:xyz",
-			want:  net.IPAddr{IP: net.ParseIP("fe80::abcd"), Zone: "eth0"},
+			want:  netip.MustParseAddr("fe80::abcd%eth0"),
+		},
+		{
+			name:  "IPv4-mapped IPv6",
+			ipStr: "::ffff:188.0.2.128",
+			want:  netip.MustParseAddr("188.0.2.128"),
+		},
+		{
+			name:  "IPv4-mapped IPv6 with port",
+			ipStr: "[::ffff:188.0.2.128]:48944",
+			want:  netip.MustParseAddr("188.0.2.128"),
 		},
 		{
 			name:    "Zero address",
@@ -381,6 +423,26 @@ func TestParseIPAddr(t *testing.T) {
 		{
 			name:    "Unspecified address",
 			ipStr:   "::",
+			wantErr: true,
+		},
+		{
+			name:    "IPv4-mapped unspecified address",
+			ipStr:   "::ffff:0.0.0.0",
+			wantErr: true,
+		},
+		{
+			name:    "Unspecified address with zone",
+			ipStr:   "::%eth0",
+			wantErr: true,
+		},
+		{
+			name:    "Error: empty zone",
+			ipStr:   "1.1.1.1%",
+			wantErr: true,
+		},
+		{
+			name:    "Error: zoned IPv4",
+			ipStr:   "1.1.1.1%eth0",
 			wantErr: true,
 		},
 		{
@@ -396,24 +458,16 @@ func TestParseIPAddr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseIPAddr(tt.ipStr)
+			got, err := ParseAddr(tt.ipStr)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
 
-			if !ipAddrsEqual(*got, tt.want) {
-				t.Fatalf("ParseIPAddr() = %v, want %v", got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
-}
-
-func Test_mustParseCIDR(t *testing.T) {
-	// We test the non-panic path elsewhere, but we need to specifically check the panic case
-	assert.Panics(t, func() {
-		mustParseCIDR("nope")
-	})
 }
 
 func Test_trimMatchedEnds(t *testing.T) {
@@ -427,186 +481,178 @@ func Test_parseForwardedListItem(t *testing.T) {
 	tests := []struct {
 		name string
 		fwd  string
-		want *net.IPAddr
+		want netip.Addr
 	}{
 		{
 			// This is the correct form for IPv6 wit port
 			name: "IPv6 with port and quotes",
 			fwd:  `For="[2607:f8b0:4004:83f::200e]:4711"`,
-			want: mustParseIPAddr("2607:f8b0:4004:83f::200e"),
+			want: mustParseAddr("2607:f8b0:4004:83f::200e"),
 		},
 		{
 			// This is the correct form for IP with no port
 			name: "IPv6 with quotes, brackets and no port",
 			fwd:  `fOR="[2607:f8b0:4004:83f::200e]"`,
-			want: mustParseIPAddr("2607:f8b0:4004:83f::200e"),
+			want: mustParseAddr("2607:f8b0:4004:83f::200e"),
 		},
 		{
 			// RFC deviation: missing brackets
 			name: "IPv6 with quotes, no brackets, and no port",
 			fwd:  `for="2607:f8b0:4004:83f::200e"`,
-			want: mustParseIPAddr("2607:f8b0:4004:83f::200e"),
+			want: mustParseAddr("2607:f8b0:4004:83f::200e"),
 		},
 		{
 			// RFC deviation: missing quotes
 			name: "IPv6 with brackets, no quotes, and no port",
 			fwd:  `FOR=[2607:f8b0:4004:83f::200e]`,
-			want: mustParseIPAddr("2607:f8b0:4004:83f::200e"),
+			want: mustParseAddr("2607:f8b0:4004:83f::200e"),
 		},
 		{
 			// RFC deviation: missing quotes
 			name: "IPv6 with port and no quotes",
 			fwd:  `For=[2607:f8b0:4004:83f::200e]:4711`,
-			want: mustParseIPAddr("2607:f8b0:4004:83f::200e"),
+			want: mustParseAddr("2607:f8b0:4004:83f::200e"),
 		},
 		{
 			name: "IPv6 with port, quotes, and zone",
 			fwd:  `For="[fe80::abcd%zone]:4711"`,
-			want: mustParseIPAddr("fe80::abcd%zone"),
+			want: mustParseAddr("fe80::abcd%zone"),
 		},
 		{
 			// RFC deviation: missing brackets
 			name: "IPv6 with zone, no quotes, no port",
 			fwd:  `For="fe80::abcd%zone"`,
-			want: mustParseIPAddr("fe80::abcd%zone"),
+			want: mustParseAddr("fe80::abcd%zone"),
 		},
 		{
 			// RFC deviation: missing quotes
 			name: "IPv4 with port",
 			fwd:  `FoR=192.0.2.60:4711`,
-			want: mustParseIPAddr("192.0.2.60"),
+			want: mustParseAddr("192.0.2.60"),
 		},
 		{
 			name: "IPv4 with no port",
 			fwd:  `for=192.0.2.60`,
-			want: mustParseIPAddr("192.0.2.60"),
+			want: mustParseAddr("192.0.2.60"),
 		},
 		{
 			name: "IPv4 with quotes",
 			fwd:  `for="192.0.2.60"`,
-			want: mustParseIPAddr("192.0.2.60"),
+			want: mustParseAddr("192.0.2.60"),
 		},
 		{
 			name: "IPv4 with port and quotes",
 			fwd:  `for="192.0.2.60:4823"`,
-			want: mustParseIPAddr("192.0.2.60"),
+			want: mustParseAddr("192.0.2.60"),
 		},
 		{
 			name: "Error: invalid IPv4",
 			fwd:  `for=192.0.2.999`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			name: "Error: invalid IPv6",
 			fwd:  `for="2607:f8b0:4004:83f::999999"`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			name: "Error: non-IP identifier",
 			fwd:  `for="_test"`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			name: "Error: empty IP value",
 			fwd:  `for=`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			name: "Multiple IPv4 directives",
 			fwd:  `by=1.1.1.1; for=2.2.2.2;host=myhost; proto=https`,
-			want: mustParseIPAddr("2.2.2.2"),
+			want: mustParseAddr("2.2.2.2"),
 		},
 		{
 			// RFC deviation: missing quotes around IPv6
 			name: "Multiple IPv6 directives",
 			fwd:  `by=1::1;host=myhost;for=2::2;proto=https`,
-			want: mustParseIPAddr("2::2"),
+			want: mustParseAddr("2::2"),
 		},
 		{
 			// RFC deviation: missing quotes around IPv6
 			name: "Multiple mixed directives",
 			fwd:  `by=1::1;host=myhost;proto=https;for=2.2.2.2`,
-			want: mustParseIPAddr("2.2.2.2"),
+			want: mustParseAddr("2.2.2.2"),
 		},
 		{
 			name: "IPv4-mapped IPv6",
 			fwd:  `for="[::ffff:188.0.2.128]"`,
-			want: mustParseIPAddr("188.0.2.128"),
+			want: mustParseAddr("188.0.2.128"),
 		},
 		{
 			name: "IPv4-mapped IPv6 with port and quotes",
 			fwd:  `for="[::ffff:188.0.2.128]:49428"`,
-			want: mustParseIPAddr("188.0.2.128"),
+			want: mustParseAddr("188.0.2.128"),
 		},
 		{
 			name: "IPv4-mapped IPv6 in IPv6 form",
 			fwd:  `for="[0:0:0:0:0:ffff:bc15:0006]"`,
-			want: mustParseIPAddr("188.21.0.6"),
+			want: mustParseAddr("188.21.0.6"),
 		},
 		{
 			name: "NAT64 IPv4-mapped IPv6",
 			fwd:  `for="[64:ff9b::188.0.2.128]"`,
-			want: mustParseIPAddr("64:ff9b::188.0.2.128"),
+			want: mustParseAddr("64:ff9b::188.0.2.128"),
 		},
 		{
 			name: "IPv4 loopback",
 			fwd:  `for=127.0.0.1`,
-			want: mustParseIPAddr("127.0.0.1"),
+			want: mustParseAddr("127.0.0.1"),
 		},
 		{
 			name: "IPv6 loopback",
 			fwd:  `for="[::1]"`,
-			want: mustParseIPAddr("::1"),
+			want: mustParseAddr("::1"),
 		},
 		{
 			// RFC deviation: quotes must be matched
 			name: "Error: Unmatched quote",
 			fwd:  `for="1.1.1.1`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			// RFC deviation: brackets must be matched
 			name: "Error: IPv6 loopback",
 			fwd:  `for="::1]"`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			name: "Error: misplaced quote",
 			fwd:  `for="[0:0:0:0:0:ffff:bc15:0006"]`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			name: "Error: garbage",
 			fwd:  "ads\x00jkl&#*(383fdljk",
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			// Per RFC 7230 section 3.2.6, this should not be an error, but we don't have
 			// full syntax support yet.
 			name: "RFC deviation: quoted pair",
 			fwd:  `for=1.1.1.\1`,
-			want: nil,
+			want: netip.Addr{},
 		},
 		{
 			// Per RFC 7239, this extraneous whitespace should be an error, but we don't
 			// have full syntax support yet.
 			name: "RFC deviation: Incorrect whitespace",
 			fwd:  `for= 1.1.1.1`,
-			want: mustParseIPAddr("1.1.1.1"),
+			want: mustParseAddr("1.1.1.1"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := parseForwardedListItem(tt.fwd)
-
-			if got == nil || tt.want == nil {
-				assert.Equal(t, tt.want, got)
-				return
-			}
-
-			if !ipAddrsEqual(*got, *tt.want) {
-				t.Fatalf("parseForwardedListItem() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -621,7 +667,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want []*net.IPAddr
+		want []netip.Addr
 	}{
 		{
 			// The value in quotes should be a single value but we split by comma, so it's not.
@@ -634,7 +680,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// There are really only two values, so we actually want: {nil, "4.4.4.4"}
-			want: []*net.IPAddr{nil, mustParseIPAddr("2.2.2.2"), nil, mustParseIPAddr("4.4.4.4")},
+			want: []netip.Addr{{}, mustParseAddr("2.2.2.2"), {}, mustParseAddr("4.4.4.4")},
 		},
 		{
 			// Per 7239, the opening unmatched quote makes the whole rest of the header invalid.
@@ -647,7 +693,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// There are really only two values, so the RFC would require: {nil} (or empty slice?)
-			want: []*net.IPAddr{nil, mustParseIPAddr("2.2.2.2")},
+			want: []netip.Addr{{}, mustParseAddr("2.2.2.2")},
 		},
 		{
 			// The invalid non-For parameter should invalidate the whole item, but we're
@@ -658,7 +704,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// Only the last value is valid, so it should be: {nil, "2.2.2.2"}
-			want: []*net.IPAddr{mustParseIPAddr("1.1.1.1"), mustParseIPAddr("2.2.2.2")},
+			want: []netip.Addr{mustParseAddr("1.1.1.1"), mustParseAddr("2.2.2.2")},
 		},
 		{
 			// The duplicate "For=" parameter should invalidate the whole item but we don't check for it
@@ -668,7 +714,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// Only the last value is valid, so it should be: {nil, "3.3.3.3"}
-			want: []*net.IPAddr{mustParseIPAddr("1.1.1.1"), mustParseIPAddr("3.3.3.3")},
+			want: []netip.Addr{mustParseAddr("1.1.1.1"), mustParseAddr("3.3.3.3")},
 		},
 		{
 			// An escaped character in quotes should be unescaped, but we're not doing it.
@@ -681,7 +727,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// The value is valid, so it should be: {nil, "3.3.3.3"}
-			want: []*net.IPAddr{nil},
+			want: []netip.Addr{{}},
 		},
 		{
 			// Spaces are not allowed around the equal signs, but due to the way we parse
@@ -692,7 +738,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// Neither value is valid, so it should be: {nil, nil}
-			want: []*net.IPAddr{nil, mustParseIPAddr("3.3.3.3")},
+			want: []netip.Addr{{}, mustParseAddr("3.3.3.3")},
 		},
 		{
 			// Disallowed characters are only allowed in quoted strings. This means
@@ -703,7 +749,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// Value is invalid without quotes, so should be {nil}
-			want: []*net.IPAddr{mustParseIPAddr("2607:f8b0:4004:83f::200e")},
+			want: []netip.Addr{mustParseAddr("2607:f8b0:4004:83f::200e")},
 		},
 		{
 			// IPv6 addresses are required to be contained in square brackets. We don't
@@ -714,7 +760,7 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// IPv6 is invalid without brackets, so should be {nil}
-			want: []*net.IPAddr{mustParseIPAddr("2607:f8b0:4004:83f::200e")},
+			want: []netip.Addr{mustParseAddr("2607:f8b0:4004:83f::200e")},
 		},
 		{
 			// IPv4 addresses are _not_ supposed to be in square brackets, but we trim
@@ -725,13 +771,13 @@ func Test_forwardedHeaderRFCDeviations(t *testing.T) {
 				headerName: "Forwarded",
 			},
 			// IPv4 is invalid with brackets, so should be {nil}
-			want: []*net.IPAddr{mustParseIPAddr("1.1.1.1")},
+			want: []netip.Addr{mustParseAddr("1.1.1.1")},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := slices.Collect(ipAddrSeq(tt.args.headers[tt.args.headerName], tt.args.headerName))
+			got := slices.Collect(addrSeq(tt.args.headers[tt.args.headerName], tt.args.headerName))
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -1948,23 +1994,23 @@ func TestNewRightmostTrustedRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			ranges, err := AddressesAndRangesToIPNets(tt.args.trustedRanges...)
+			ranges, err := ParsePrefixes(tt.args.trustedRanges...)
 			if err != nil {
-				// We're not testing AddressesAndRangesToIPNets here
-				t.Fatalf("AddressesAndRangesToIPNets failed")
+				// We're not testing ParsePrefixes here
+				t.Fatalf("ParsePrefixes failed")
 			}
 
 			var s fox.ClientIPResolver
 			if tt.wantErr {
 				require.Panics(t, func() {
-					s = must(NewRightmostTrustedRange(tt.args.headerType, TrustedIPRangeFunc(func() ([]net.IPNet, error) {
+					s = must(NewRightmostTrustedRange(tt.args.headerType, TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
 						return ranges, nil
 					})))
 				})
 				return
 			}
 
-			s = must(NewRightmostTrustedRange(tt.args.headerType, TrustedIPRangeFunc(func() ([]net.IPNet, error) {
+			s = must(NewRightmostTrustedRange(tt.args.headerType, TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
 				return ranges, nil
 			})))
 
@@ -2025,8 +2071,4 @@ func Test_orSlice(t *testing.T) {
 			assert.Equal(t, tc.want, orSlice(tc.s1, tc.s2))
 		})
 	}
-}
-
-func ipAddrsEqual(a, b net.IPAddr) bool {
-	return a.IP.Equal(b.IP) && a.Zone == b.Zone
 }

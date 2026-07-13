@@ -10,6 +10,7 @@ import (
 	"iter"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/fox-toolkit/fox"
@@ -45,17 +46,17 @@ var (
 // Implementations of this interface must be thread-safe as it will be invoked
 // whenever the client IP needs to be resolved, potentially from multiple goroutines.
 type TrustedIPRange interface {
-	TrustedIPRange() ([]net.IPNet, error)
+	TrustedIPRange() ([]netip.Prefix, error)
 }
 
 // The TrustedIPRangeFunc type is an adapter to allow the use of
 // ordinary functions as [TrustedIPRange]. If f is a function
 // with the appropriate signature, TrustedIPRangeFunc() is a
 // [TrustedIPRange] that calls f.
-type TrustedIPRangeFunc func() ([]net.IPNet, error)
+type TrustedIPRangeFunc func() ([]netip.Prefix, error)
 
 // TrustedIPRange calls f().
-func (f TrustedIPRangeFunc) TrustedIPRange() ([]net.IPNet, error) {
+func (f TrustedIPRangeFunc) TrustedIPRange() ([]netip.Prefix, error) {
 	return f()
 }
 
@@ -87,21 +88,21 @@ func NewChain(resolvers ...fox.ClientIPResolver) Chain {
 }
 
 // ClientIP try to derive the client IP using this resolver chain.
-func (s Chain) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
+func (s Chain) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	if len(s.resolvers) == 0 {
-		return nil, fox.ErrNoClientIPResolver
+		return netip.Addr{}, fox.ErrNoClientIPResolver
 	}
 
 	var errs error
 	for _, sub := range s.resolvers {
-		ipAddr, err := sub.ClientIP(c)
+		addr, err := sub.ClientIP(c)
 		if err == nil {
-			return ipAddr, nil
+			return addr, nil
 		}
 		errs = errors.Join(errs, err)
 	}
 
-	return nil, errs
+	return netip.Addr{}, errs
 }
 
 // RemoteAddr returns the client socket IP, stripped of port.
@@ -113,15 +114,14 @@ func NewRemoteAddr() RemoteAddr {
 	return RemoteAddr{}
 }
 
-// ClientIP derives the client IP using the [RemoteAddr] resolver. The returned [net.IPAddr] may contain a zone identifier.
-// This should only happen if the remote address has been modified to something illegal, or if the server is accepting connections
-// on a Unix domain socket (in which case [RemoteAddr] is "@"). If no valid IP can be derived, an error is returned.
-func (s RemoteAddr) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
-	ipAddr, err := ParseIPAddr(c.Request().RemoteAddr)
+// ClientIP derives the client IP using the [RemoteAddr] resolver. The returned [netip.Addr] may contain
+// a zone identifier. If no valid IP can be derived, an error is returned.
+func (s RemoteAddr) ClientIP(c fox.RequestContext) (netip.Addr, error) {
+	addr, err := ParseAddr(c.Request().RemoteAddr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrRemoteAddress, err)
+		return netip.Addr{}, fmt.Errorf("%w: %w", ErrRemoteAddress, err)
 	}
-	return ipAddr, nil
+	return addr, nil
 }
 
 // SingleIPHeader derives an IP address from a single-IP header. A non-exhaustive list of such single-IP headers
@@ -148,9 +148,9 @@ func NewSingleIPHeader(headerName string) (SingleIPHeader, error) {
 	return SingleIPHeader{headerName: headerName}, nil
 }
 
-// ClientIP derives the client IP using the [SingleIPHeader] resolver. The returned [net.IPAddr] may contain a zone identifier.
+// ClientIP derives the client IP using the [SingleIPHeader] resolver. The returned [netip.Addr] may contain a zone identifier.
 // If no valid IP can be derived, an error is returned.
-func (s SingleIPHeader) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
+func (s SingleIPHeader) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	// RFC 2616 does not allow multiple instances of single-IP headers (or any non-list header).
 	// It is debatable whether it is better to treat multiple such headers as an error
 	// (more correct) or simply pick one of them (more flexible). As we've already
@@ -159,14 +159,14 @@ func (s SingleIPHeader) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
 	// in theory it should be the newest value.)
 	ipStr := lastHeader(c.Request().Header, s.headerName)
 	if ipStr == "" {
-		return nil, errSingleIPHeader
+		return netip.Addr{}, errSingleIPHeader
 	}
 
-	ipAddr, err := ParseIPAddr(ipStr)
+	addr, err := ParseAddr(ipStr)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrSingleIPHeader, err)
+		return netip.Addr{}, fmt.Errorf("%w: %w", ErrSingleIPHeader, err)
 	}
-	return ipAddr, nil
+	return addr, nil
 }
 
 // LeftmostNonPrivate derives the client IP from the leftmost valid and non-private/non-internal IP address in the X-Forwarded-For
@@ -175,7 +175,7 @@ func (s SingleIPHeader) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
 // This IP can be TRIVIALLY SPOOFED.
 type LeftmostNonPrivate struct {
 	headerName        string
-	blacklistedRanges []net.IPNet
+	blacklistedRanges []netip.Prefix
 	limit             uint
 }
 
@@ -202,19 +202,19 @@ func NewLeftmostNonPrivate(key HeaderKey, limit uint, opts ...BlacklistRangeOpti
 	}, nil
 }
 
-// ClientIP derives the client IP using the [LeftmostNonPrivate] resolver. The returned [net.IPAddr] may contain a
+// ClientIP derives the client IP using the [LeftmostNonPrivate] resolver. The returned [netip.Addr] may contain a
 // zone identifier. If no valid IP can be derived, an error returned.
-func (s LeftmostNonPrivate) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
+func (s LeftmostNonPrivate) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	if values, ok := c.Request().Header[s.headerName]; ok && len(values) > 0 {
-		for ip := range iterutil.Take(ipAddrSeq(values, s.headerName), s.limit) {
-			if ip != nil && !isIPContainedInRanges(ip.IP, s.blacklistedRanges) {
+		for ip := range iterutil.Take(addrSeq(values, s.headerName), s.limit) {
+			if ip.IsValid() && !isContainedInRanges(ip, s.blacklistedRanges) {
 				// This is the leftmost valid, non-private IP
 				return ip, nil
 			}
 		}
 	}
 	// We failed to find any valid, non-private IP
-	return nil, errLeftmostNonPrivate
+	return netip.Addr{}, errLeftmostNonPrivate
 }
 
 // RightmostNonPrivate derives the client IP from the rightmost valid, non-private/non-internal IP address in
@@ -222,7 +222,7 @@ func (s LeftmostNonPrivate) ClientIP(c fox.RequestContext) (*net.IPAddr, error) 
 // and the server have private-space IP addresses. By default, loopback, link local and private net ip range are trusted.
 type RightmostNonPrivate struct {
 	headerName    string
-	trustedRanges []net.IPNet
+	trustedRanges []netip.Prefix
 }
 
 // NewRightmostNonPrivate creates a [RightmostNonPrivate] resolver. By default, loopback, link local and private net ip range
@@ -243,18 +243,18 @@ func NewRightmostNonPrivate(key HeaderKey, opts ...TrustedRangeOption) (Rightmos
 	}, nil
 }
 
-// ClientIP derives the client IP using the [RightmostNonPrivate] resolver. The returned [net.IPAddr] may contain a
+// ClientIP derives the client IP using the [RightmostNonPrivate] resolver. The returned [netip.Addr] may contain a
 // zone identifier. If no valid IP can be derived, an error returned.
-func (s RightmostNonPrivate) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
+func (s RightmostNonPrivate) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	if values, ok := c.Request().Header[s.headerName]; ok && len(values) > 0 {
-		for ip := range backwardIpAddrSeq(values, s.headerName) {
-			if ip != nil && !isIPContainedInRanges(ip.IP, s.trustedRanges) {
+		for ip := range backwardAddrSeq(values, s.headerName) {
+			if ip.IsValid() && !isContainedInRanges(ip, s.trustedRanges) {
 				return ip, nil
 			}
 		}
 	}
 	// We failed to find any valid, non-private IP
-	return nil, errRightmostNonPrivate
+	return netip.Addr{}, errRightmostNonPrivate
 }
 
 // RightmostTrustedCount derives the client IP from the valid IP address added by the first trusted reverse
@@ -279,19 +279,19 @@ func NewRightmostTrustedCount(key HeaderKey, trustedCount uint) (RightmostTruste
 	return RightmostTrustedCount{headerName: key.String(), trustedCount: trustedCount}, nil
 }
 
-// ClientIP derives the client IP using the [RightmostTrustedCount] resolver. The returned [net.IPAddr] may contain a
+// ClientIP derives the client IP using the [RightmostTrustedCount] resolver. The returned [netip.Addr] may contain a
 // zone identifier. If no valid IP can be derived, an error returned.
-func (s RightmostTrustedCount) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
-	ip, ok := iterutil.At(backwardIpAddrSeq(c.Request().Header[s.headerName], s.headerName), s.trustedCount-1)
+func (s RightmostTrustedCount) ClientIP(c fox.RequestContext) (netip.Addr, error) {
+	ip, ok := iterutil.At(backwardAddrSeq(c.Request().Header[s.headerName], s.headerName), s.trustedCount-1)
 	if !ok {
 		// This is a misconfiguration error. There were fewer IPs than we expected.
-		return nil, fmt.Errorf("%w: expected at least %d IP(s)", ErrRightmostTrustedCount, s.trustedCount)
+		return netip.Addr{}, fmt.Errorf("%w: expected at least %d IP(s)", ErrRightmostTrustedCount, s.trustedCount)
 	}
 
-	if ip == nil {
+	if !ip.IsValid() {
 		// This is a misconfiguration error. Our first trusted proxy didn't add a
 		// valid IP address to the header.
-		return nil, fmt.Errorf("%w: invalid IP address from the first trusted proxy", ErrRightmostTrustedCount)
+		return netip.Addr{}, fmt.Errorf("%w: invalid IP address from the first trusted proxy", ErrRightmostTrustedCount)
 	}
 
 	return ip, nil
@@ -324,40 +324,41 @@ func NewRightmostTrustedRange(key HeaderKey, resolver TrustedIPRange) (Rightmost
 	return RightmostTrustedRange{headerName: key.String(), resolver: resolver}, nil
 }
 
-// ClientIP derives the client IP using the [RightmostTrustedRange] resolver. The returned [net.IPAddr] may contain a
+// ClientIP derives the client IP using the [RightmostTrustedRange] resolver. The returned [netip.Addr] may contain a
 // zone identifier. If no valid IP can be derived, an error is returned.
-func (s RightmostTrustedRange) ClientIP(c fox.RequestContext) (*net.IPAddr, error) {
+func (s RightmostTrustedRange) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	trustedRange, err := s.resolver.TrustedIPRange()
 	if err != nil {
-		return nil, fmt.Errorf("%w: unable to resolve trusted ip range: %w", ErrRightmostTrustedRange, err)
+		return netip.Addr{}, fmt.Errorf("%w: unable to resolve trusted ip range: %w", ErrRightmostTrustedRange, err)
 	}
 
-	for ip := range backwardIpAddrSeq(c.Request().Header[s.headerName], s.headerName) {
-		if ip != nil && isIPContainedInRanges(ip.IP, trustedRange) {
+	for ip := range backwardAddrSeq(c.Request().Header[s.headerName], s.headerName) {
+		if ip.IsValid() && isContainedInRanges(ip, trustedRange) {
 			// This IP is trusted
 			continue
 		}
 
 		// At this point we have found the first-from-the-rightmost untrusted IP
-		if ip == nil {
-			return nil, fmt.Errorf("%w: unable to find a valid IP address", ErrRightmostTrustedRange)
+		if !ip.IsValid() {
+			return netip.Addr{}, fmt.Errorf("%w: unable to find a valid IP address", ErrRightmostTrustedRange)
 		}
 
 		return ip, nil
 	}
 
 	// Either there are no addresses or they are all in our trusted ranges
-	return nil, fmt.Errorf("%w: unable to find a valid IP address", ErrRightmostTrustedRange)
+	return netip.Addr{}, fmt.Errorf("%w: unable to find a valid IP address", ErrRightmostTrustedRange)
 }
 
-// ParseIPAddr safely parses the given string into a [net.IPAddr]. It also returns an error for unspecified (like "::")
-// and zero-value addresses (like "0.0.0.0"). These are nominally valid IPs ([net.ParseIP] will accept them), but they
-// are never valid "real" client IPs.
+// ParseAddr safely parses the given string into a [netip.Addr]. The port and any surrounding square brackets are
+// stripped, IPv4-mapped IPv6 addresses are unmapped to their IPv4 form and IPv6 zone identifiers are preserved.
+// It also returns an error for unspecified addresses (like "::" or "0.0.0.0"). These are nominally valid IPs,
+// but they are never valid "real" client IPs.
 //
 // The function returns the following errors:
 // - [ErrInvalidIPAddress]: if the IP address cannot be parsed.
 // - [ErrUnspecifiedIPAddress]: if the IP address is unspecified (e.g., "::" or "0.0.0.0").
-func ParseIPAddr(ip string) (*net.IPAddr, error) {
+func ParseAddr(ip string) (netip.Addr, error) {
 	host, _, err := net.SplitHostPort(ip)
 	if err == nil {
 		ip = host
@@ -365,69 +366,39 @@ func ParseIPAddr(ip string) (*net.IPAddr, error) {
 
 	// We continue even if net.SplitHostPort returned an error. This is because it may
 	// complain that there are "too many colons" in an IPv6 address that has no brackets
-	// and no port. net.ParseIP will be the final arbiter of validity.
+	// and no port. netip.ParseAddr will be the final arbiter of validity.
 
 	// Square brackets around IPv6 addresses may be used in the Forwarded header.
-	// net.ParseIP doesn't like them, so we'll trim them off.
+	// netip.ParseAddr doesn't like them, so we'll trim them off.
 	ip = trimMatchedEnds(ip, "[]")
 
-	ipStr, zone := netutil.SplitHostZone(ip)
-	ipAddr := &net.IPAddr{
-		IP:   net.ParseIP(ipStr),
-		Zone: zone,
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return netip.Addr{}, ErrInvalidIPAddress
 	}
 
-	if ipAddr.IP == nil {
-		return nil, ErrInvalidIPAddress
+	addr = addr.Unmap()
+	if addr.WithZone("").IsUnspecified() {
+		return netip.Addr{}, ErrUnspecifiedIPAddress
 	}
 
-	if ipAddr.IP.IsUnspecified() {
-		return nil, ErrUnspecifiedIPAddress
-	}
-
-	return ipAddr, nil
+	return addr, nil
 }
 
-// AddressesAndRangesToIPNets converts a slice of strings with IPv4 and IPv6 addresses and CIDR ranges (prefixes) to
-// [net.IPNet] instances. If [net.ParseCIDR] or [net.ParseIP] fail, an error will be returned. Zones in addresses or ranges
-// are not allowed and will result in an error.
-func AddressesAndRangesToIPNets(ranges ...string) ([]net.IPNet, error) {
-	var result []net.IPNet
+// ParsePrefixes converts a slice of strings with IPv4 and IPv6 addresses and CIDR ranges (prefixes) to
+// [netip.Prefix] instances. Single addresses are treated as full-length prefixes and IPv4-mapped IPv6 values
+// are normalized to their IPv4 form. Zones in addresses or ranges are not allowed and will result in an error.
+func ParsePrefixes(ranges ...string) ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(ranges))
 	for _, r := range ranges {
-		if strings.Contains(r, "%") {
-			return nil, fmt.Errorf("zones are not allowed: %q", r)
+		prefix, err := netutil.ParsePrefix(r)
+		if err != nil {
+			return nil, fmt.Errorf("invalid address or prefix %q: %w", r, err)
 		}
-
-		if strings.Contains(r, "/") {
-			// This is a CIDR/prefix
-			_, ipNet, err := net.ParseCIDR(r)
-			if err != nil {
-				return nil, fmt.Errorf("net.ParseCIDR failed for %q: %w", r, err)
-			}
-			result = append(result, *ipNet)
-		} else {
-			// This is a single IP; convert it to a range including only itself
-			ip := net.ParseIP(r)
-			if ip == nil {
-				return nil, fmt.Errorf("net.ParseIP failed for %q", r)
-			}
-
-			// To use the right size IP and  mask, we need to know if the address is IPv4 or v6.
-			// Attempt to convert it to IPv4 to find out.
-			if ipv4 := ip.To4(); ipv4 != nil {
-				ip = ipv4
-			}
-
-			// Mask all the bits
-			mask := len(ip) * 8
-			result = append(result, net.IPNet{
-				IP:   ip,
-				Mask: net.CIDRMask(mask, mask),
-			})
-		}
+		prefixes = append(prefixes, prefix)
 	}
 
-	return result, nil
+	return prefixes, nil
 }
 
 // trimMatchedEnds trims s if and only if the first and last bytes in s are in chars.
@@ -480,26 +451,26 @@ func lastHeader(headers http.Header, headerName string) string {
 	return matches[len(matches)-1]
 }
 
-// backwardIpAddrSeq returns a range iterator over the X-Forwarded-For or Forwarded header
-// values, in reverse order. Any invalid IPs will result in nil elements. headerName must already
+// backwardAddrSeq returns a range iterator over the X-Forwarded-For or Forwarded header
+// values, in reverse order. Any invalid IPs will result in zero [netip.Addr] elements. headerName must already
 // be in canonical form.
-func backwardIpAddrSeq(values []string, headerName string) iter.Seq[*net.IPAddr] {
-	return func(yield func(*net.IPAddr) bool) {
+func backwardAddrSeq(values []string, headerName string) iter.Seq[netip.Addr] {
+	return func(yield func(netip.Addr) bool) {
 		for i := len(values) - 1; i >= 0; i-- {
 			for rawListItem := range iterutil.BackwardSplitStringSeq(values[i], ",") {
 				// The IPs are often comma-space separated, so we'll need to trim the string
 				rawListItem = strings.TrimSpace(rawListItem)
 
-				var ipAddr *net.IPAddr
+				var addr netip.Addr
 				// If this is the XFF header, rawListItem is just an IP;
 				// if it's the Forwarded header, then there's more parsing to do.
 				if headerName == forwardedHdr {
-					ipAddr = parseForwardedListItem(rawListItem)
+					addr = parseForwardedListItem(rawListItem)
 				} else { // == XFF
-					ipAddr, _ = ParseIPAddr(rawListItem)
+					addr, _ = ParseAddr(rawListItem)
 				}
 
-				if !yield(ipAddr) {
+				if !yield(addr) {
 					return
 				}
 			}
@@ -507,28 +478,28 @@ func backwardIpAddrSeq(values []string, headerName string) iter.Seq[*net.IPAddr]
 	}
 }
 
-// ipAddrSeq returns a range iterator over the X-Forwarded-For or Forwarded header
-// values, in order. Any invalid IPs will result in nil elements. headerName must already
+// addrSeq returns a range iterator over the X-Forwarded-For or Forwarded header
+// values, in order. Any invalid IPs will result in zero [netip.Addr] elements. headerName must already
 // be in canonical form.
-func ipAddrSeq(values []string, headerName string) iter.Seq[*net.IPAddr] {
-	return func(yield func(*net.IPAddr) bool) {
+func addrSeq(values []string, headerName string) iter.Seq[netip.Addr] {
+	return func(yield func(netip.Addr) bool) {
 		for _, v := range values {
 			// We now have a sequence of comma-separated list items.
 			for rawListItem := range iterutil.SplitStringSeq(v, ",") {
 				// The IPs are often comma-space separated, so we'll need to trim the string
 				rawListItem = strings.TrimSpace(rawListItem)
 
-				var ipAddr *net.IPAddr
+				var addr netip.Addr
 				// If this is the XFF header, rawListItem is just an IP;
 				// if it's the Forwarded header, then there's more parsing to do.
 				if headerName == forwardedHdr {
-					ipAddr = parseForwardedListItem(rawListItem)
+					addr = parseForwardedListItem(rawListItem)
 				} else { // == XFF
-					ipAddr, _ = ParseIPAddr(rawListItem)
+					addr, _ = ParseAddr(rawListItem)
 				}
 
-				// ipAddr is nil if not valid
-				if !yield(ipAddr) {
+				// addr is the zero Addr if not valid
+				if !yield(addr) {
 					return
 				}
 			}
@@ -537,8 +508,8 @@ func ipAddrSeq(values []string, headerName string) iter.Seq[*net.IPAddr] {
 }
 
 // parseForwardedListItem parses a Forwarded header list item, and returns the "for" IP
-// address. Nil is returned if the "for" IP is absent or invalid.
-func parseForwardedListItem(fwd string) *net.IPAddr {
+// address. The zero [netip.Addr] is returned if the "for" IP is absent or invalid.
+func parseForwardedListItem(fwd string) netip.Addr {
 	// The header list item can look like these kinds of thing:
 	//	For="[2001:db8:cafe::17%zone]:4711"
 	//	For="[2001:db8:cafe::17%zone]"
@@ -580,34 +551,21 @@ func parseForwardedListItem(fwd string) *net.IPAddr {
 
 	if forPart == "" {
 		// We failed to find a "for=" part
-		return nil
+		return netip.Addr{}
 	}
 
-	ipAddr, _ := ParseIPAddr(forPart)
-	if ipAddr == nil {
-		// The IP extracted from the "for=" part isn't valid
-		return nil
-	}
-
-	return ipAddr
+	// The zero Addr is returned if the IP extracted from the "for=" part isn't valid
+	addr, _ := ParseAddr(forPart)
+	return addr
 }
 
-// mustParseIPAddr panics if [ParseIPAddr] fails.
-func mustParseIPAddr(ipStr string) *net.IPAddr {
-	ipAddr, err := ParseIPAddr(ipStr)
+// mustParseAddr panics if [ParseAddr] fails.
+func mustParseAddr(ipStr string) netip.Addr {
+	addr, err := ParseAddr(ipStr)
 	if err != nil {
-		panic(fmt.Sprintf("ParseIPAddr failed: %v", err))
+		panic(fmt.Sprintf("ParseAddr failed: %v", err))
 	}
-	return ipAddr
-}
-
-// mustParseCIDR panics if net.ParseCIDR fails
-func mustParseCIDR(s string) net.IPNet {
-	_, ipNet, err := net.ParseCIDR(s)
-	if err != nil {
-		panic(err)
-	}
-	return *ipNet
+	return addr
 }
 
 func must[T fox.ClientIPResolver](s T, err error) T {
@@ -617,85 +575,92 @@ func must[T fox.ClientIPResolver](s T, err error) T {
 	return s
 }
 
-// privateAndLocalRanges net.IPNets that are loopback, private, link local, default unicast.
+// privateAndLocalRanges netip.Prefix that are loopback, private, link local, default unicast.
 // Based on https://github.com/wader/filtertransport/blob/bdd9e61eee7804e94ceb927c896b59920345c6e4/filter.go#L36-L64
 // which is based on https://github.com/letsencrypt/boulder/blob/master/bdns/dns.go
-var privateAndLocalRanges = []net.IPNet{
-	mustParseCIDR("10.0.0.0/8"),         // RFC1918
-	mustParseCIDR("172.16.0.0/12"),      // private
-	mustParseCIDR("192.168.0.0/16"),     // private
-	mustParseCIDR("127.0.0.0/8"),        // RFC5735
-	mustParseCIDR("0.0.0.0/8"),          // RFC1122 Section 3.2.1.3
-	mustParseCIDR("169.254.0.0/16"),     // RFC3927
-	mustParseCIDR("192.0.0.0/24"),       // RFC 5736
-	mustParseCIDR("192.0.2.0/24"),       // RFC 5737
-	mustParseCIDR("198.51.100.0/24"),    // Assigned as TEST-NET-2
-	mustParseCIDR("203.0.113.0/24"),     // Assigned as TEST-NET-3
-	mustParseCIDR("192.88.99.0/24"),     // RFC 3068
-	mustParseCIDR("192.18.0.0/15"),      // RFC 2544
-	mustParseCIDR("224.0.0.0/4"),        // RFC 3171
-	mustParseCIDR("240.0.0.0/4"),        // RFC 1112
-	mustParseCIDR("255.255.255.255/32"), // RFC 919 Section 7
-	mustParseCIDR("100.64.0.0/10"),      // RFC 6598
-	mustParseCIDR("::/128"),             // RFC 4291: Unspecified Address
-	mustParseCIDR("::1/128"),            // RFC 4291: Loopback Address
-	mustParseCIDR("100::/64"),           // RFC 6666: Discard Address Block
-	mustParseCIDR("2001::/23"),          // RFC 2928: IETF Protocol Assignments
-	mustParseCIDR("2001:2::/48"),        // RFC 5180: Benchmarking
-	mustParseCIDR("2001:db8::/32"),      // RFC 3849: Documentation
-	mustParseCIDR("2001::/32"),          // RFC 4380: TEREDO
-	mustParseCIDR("fc00::/7"),           // RFC 4193: Unique-Local
-	mustParseCIDR("fe80::/10"),          // RFC 4291: Section 2.5.6 Link-Scoped Unicast
-	mustParseCIDR("ff00::/8"),           // RFC 4291: Section 2.7
-	mustParseCIDR("2002::/16"),          // RFC 7526: 6to4 anycast prefix deprecated
+var privateAndLocalRanges = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),         // RFC1918
+	netip.MustParsePrefix("172.16.0.0/12"),      // private
+	netip.MustParsePrefix("192.168.0.0/16"),     // private
+	netip.MustParsePrefix("127.0.0.0/8"),        // RFC5735
+	netip.MustParsePrefix("0.0.0.0/8"),          // RFC1122 Section 3.2.1.3
+	netip.MustParsePrefix("169.254.0.0/16"),     // RFC3927
+	netip.MustParsePrefix("192.0.0.0/24"),       // RFC 5736
+	netip.MustParsePrefix("192.0.2.0/24"),       // RFC 5737
+	netip.MustParsePrefix("198.51.100.0/24"),    // Assigned as TEST-NET-2
+	netip.MustParsePrefix("203.0.113.0/24"),     // Assigned as TEST-NET-3
+	netip.MustParsePrefix("192.88.99.0/24"),     // RFC 3068
+	netip.MustParsePrefix("192.18.0.0/15"),      // RFC 2544
+	netip.MustParsePrefix("224.0.0.0/4"),        // RFC 3171
+	netip.MustParsePrefix("240.0.0.0/4"),        // RFC 1112
+	netip.MustParsePrefix("255.255.255.255/32"), // RFC 919 Section 7
+	netip.MustParsePrefix("100.64.0.0/10"),      // RFC 6598
+	netip.MustParsePrefix("::/128"),             // RFC 4291: Unspecified Address
+	netip.MustParsePrefix("::1/128"),            // RFC 4291: Loopback Address
+	netip.MustParsePrefix("100::/64"),           // RFC 6666: Discard Address Block
+	netip.MustParsePrefix("2001::/23"),          // RFC 2928: IETF Protocol Assignments
+	netip.MustParsePrefix("2001:2::/48"),        // RFC 5180: Benchmarking
+	netip.MustParsePrefix("2001:db8::/32"),      // RFC 3849: Documentation
+	netip.MustParsePrefix("2001::/32"),          // RFC 4380: TEREDO
+	netip.MustParsePrefix("fc00::/7"),           // RFC 4193: Unique-Local
+	netip.MustParsePrefix("fe80::/10"),          // RFC 4291: Section 2.5.6 Link-Scoped Unicast
+	netip.MustParsePrefix("ff00::/8"),           // RFC 4291: Section 2.7
+	netip.MustParsePrefix("2002::/16"),          // RFC 7526: 6to4 anycast prefix deprecated
 }
 
-var privateRange = []net.IPNet{
-	mustParseCIDR("10.0.0.0/8"),         // RFC1918
-	mustParseCIDR("172.16.0.0/12"),      // private
-	mustParseCIDR("192.168.0.0/16"),     // private
-	mustParseCIDR("0.0.0.0/8"),          // RFC1122 Section 3.2.1.3
-	mustParseCIDR("192.0.0.0/24"),       // RFC 5736
-	mustParseCIDR("192.0.2.0/24"),       // RFC 5737
-	mustParseCIDR("198.51.100.0/24"),    // Assigned as TEST-NET-2
-	mustParseCIDR("203.0.113.0/24"),     // Assigned as TEST-NET-3
-	mustParseCIDR("192.88.99.0/24"),     // RFC 3068
-	mustParseCIDR("192.18.0.0/15"),      // RFC 2544
-	mustParseCIDR("224.0.0.0/4"),        // RFC 3171
-	mustParseCIDR("240.0.0.0/4"),        // RFC 1112
-	mustParseCIDR("255.255.255.255/32"), // RFC 919 Section 7
-	mustParseCIDR("100.64.0.0/10"),      // RFC 6598
-	mustParseCIDR("::/128"),             // RFC 4291: Unspecified Address
-	mustParseCIDR("100::/64"),           // RFC 6666: Discard Address Block
-	mustParseCIDR("2001::/23"),          // RFC 2928: IETF Protocol Assignments
-	mustParseCIDR("2001:2::/48"),        // RFC 5180: Benchmarking
-	mustParseCIDR("2001:db8::/32"),      // RFC 3849: Documentation
-	mustParseCIDR("2001::/32"),          // RFC 4380: TEREDO
-	mustParseCIDR("fc00::/7"),           // RFC 4193: Unique-Local
-	mustParseCIDR("ff00::/8"),           // RFC 4291: Section 2.7
-	mustParseCIDR("2002::/16"),          // RFC 7526: 6to4 anycast prefix deprecated
+var privateRange = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),         // RFC1918
+	netip.MustParsePrefix("172.16.0.0/12"),      // private
+	netip.MustParsePrefix("192.168.0.0/16"),     // private
+	netip.MustParsePrefix("0.0.0.0/8"),          // RFC1122 Section 3.2.1.3
+	netip.MustParsePrefix("192.0.0.0/24"),       // RFC 5736
+	netip.MustParsePrefix("192.0.2.0/24"),       // RFC 5737
+	netip.MustParsePrefix("198.51.100.0/24"),    // Assigned as TEST-NET-2
+	netip.MustParsePrefix("203.0.113.0/24"),     // Assigned as TEST-NET-3
+	netip.MustParsePrefix("192.88.99.0/24"),     // RFC 3068
+	netip.MustParsePrefix("192.18.0.0/15"),      // RFC 2544
+	netip.MustParsePrefix("224.0.0.0/4"),        // RFC 3171
+	netip.MustParsePrefix("240.0.0.0/4"),        // RFC 1112
+	netip.MustParsePrefix("255.255.255.255/32"), // RFC 919 Section 7
+	netip.MustParsePrefix("100.64.0.0/10"),      // RFC 6598
+	netip.MustParsePrefix("::/128"),             // RFC 4291: Unspecified Address
+	netip.MustParsePrefix("100::/64"),           // RFC 6666: Discard Address Block
+	netip.MustParsePrefix("2001::/23"),          // RFC 2928: IETF Protocol Assignments
+	netip.MustParsePrefix("2001:2::/48"),        // RFC 5180: Benchmarking
+	netip.MustParsePrefix("2001:db8::/32"),      // RFC 3849: Documentation
+	netip.MustParsePrefix("2001::/32"),          // RFC 4380: TEREDO
+	netip.MustParsePrefix("fc00::/7"),           // RFC 4193: Unique-Local
+	netip.MustParsePrefix("ff00::/8"),           // RFC 4291: Section 2.7
+	netip.MustParsePrefix("2002::/16"),          // RFC 7526: 6to4 anycast prefix deprecated
 }
 
-// loopbackRanges net.IPNets that are loopback.
+// loopbackRanges netip.Prefix that are loopback.
 // Based on https://github.com/wader/filtertransport/blob/bdd9e61eee7804e94ceb927c896b59920345c6e4/filter.go#L36-L64
 // which is based on https://github.com/letsencrypt/boulder/blob/master/bdns/dns.go
-var loopbackRanges = []net.IPNet{
-	mustParseCIDR("127.0.0.0/8"), // RFC5735, Loopback
-	mustParseCIDR("::1/128"),     // RFC4291, Loopback Address
+var loopbackRanges = []netip.Prefix{
+	netip.MustParsePrefix("127.0.0.0/8"), // RFC5735, Loopback
+	netip.MustParsePrefix("::1/128"),     // RFC4291, Loopback Address
 }
 
-// linkLocalRanges net.IPNets that are link local.
+// linkLocalRanges netip.Prefix that are link local.
 // Based on https://github.com/wader/filtertransport/blob/bdd9e61eee7804e94ceb927c896b59920345c6e4/filter.go#L36-L64
 // which is based on https://github.com/letsencrypt/boulder/blob/master/bdns/dns.go
-var linkLocalRanges = []net.IPNet{
-	mustParseCIDR("169.254.0.0/16"), // RFC3927, Link Local
-	mustParseCIDR("fe80::/10"),      // RFC4291 Section 2.5.6, Link-Scoped Unicast
+var linkLocalRanges = []netip.Prefix{
+	netip.MustParsePrefix("169.254.0.0/16"), // RFC3927, Link Local
+	netip.MustParsePrefix("fe80::/10"),      // RFC4291 Section 2.5.6, Link-Scoped Unicast
 }
 
-// isIPContainedInRanges returns true if the given IP is contained in at least one of the given ranges
-func isIPContainedInRanges(ip net.IP, ranges []net.IPNet) bool {
+// isContainedInRanges returns true if the given address is contained in at least one of the given ranges.
+// The zone is stripped before the check since [netip.Prefix.Contains] never matches a zoned address, while
+// range membership only depends on the address bits. IPv4-mapped IPv6 prefixes are rewritten to their IPv4
+// form since [netip.Prefix.Contains] never matches across families and addresses are unmapped at parse time.
+func isContainedInRanges(addr netip.Addr, ranges []netip.Prefix) bool {
+	addr = addr.WithZone("")
 	for _, r := range ranges {
-		if r.Contains(ip) {
+		if r.Addr().Is4In6() && r.Bits() >= 96 {
+			r = netip.PrefixFrom(r.Addr().Unmap(), r.Bits()-96)
+		}
+		if r.Contains(addr) {
 			return true
 		}
 	}

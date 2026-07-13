@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"slices"
 	"testing"
@@ -285,6 +286,18 @@ func TestContext_RemoteIP(t *testing.T) {
 	r.RemoteAddr = "[::1]:80"
 	c = NewTestContextOnly(w, r)
 	assert.Equal(t, "::1", c.RemoteIP().String())
+
+	r.RemoteAddr = "[::ffff:192.0.2.1]:8080"
+	c = NewTestContextOnly(w, r)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), c.RemoteIP())
+
+	r.RemoteAddr = "[fe80::1%eth0]:8080"
+	c = NewTestContextOnly(w, r)
+	assert.Equal(t, netip.MustParseAddr("fe80::1%eth0"), c.RemoteIP())
+
+	r.RemoteAddr = "invalid"
+	c = NewTestContextOnly(w, r)
+	assert.False(t, c.RemoteIP().IsValid())
 }
 
 func TestContext_ClientIP(t *testing.T) {

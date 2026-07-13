@@ -5,11 +5,11 @@
 package clientip
 
 import (
-	"net"
+	"net/netip"
 )
 
 type config struct {
-	ipRanges []net.IPNet
+	ipRanges []netip.Prefix
 }
 
 type TrustedRangeOption interface {

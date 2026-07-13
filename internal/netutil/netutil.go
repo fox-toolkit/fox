@@ -5,22 +5,11 @@
 package netutil
 
 import (
+	"errors"
 	"net"
+	"net/netip"
 	"strings"
 )
-
-func SplitHostZone(s string) (host, zone string) {
-	// This is copied from an unexported function in the Go stdlib:
-	// https://github.com/golang/go/blob/5c9b6e8e63e012513b1cb1a4a08ff23dec4137a1/src/net/ipsock.go#L219-L228
-
-	// The IPv6 scoped addressing zone identifier starts after the last percent sign.
-	if i := strings.LastIndexByte(s, '%'); i > 0 {
-		host, zone = s[:i], s[i+1:]
-	} else {
-		host = s
-	}
-	return
-}
 
 // StripHostPort returns h without any trailing ":<port>". It also removes trailing period in the hostname.
 // Per RFC 3696, The DNS specification permits a trailing period to be used to denote the root, e.g., "a.b.c" and "a.b.c."
@@ -42,29 +31,29 @@ func StripHostPort(h string) string {
 	return strings.TrimSuffix(host, ".")
 }
 
-func ParseCIDR(cidr string) (*net.IPNet, error) {
-	// Try parsing as CIDR first
-	_, ipNet, err := net.ParseCIDR(cidr)
-	if err == nil {
-		return ipNet, nil
+// ParsePrefix parses s as a CIDR prefix or a single IP address treated as a full-length prefix.
+// It returns the prefix with host bits masked and IPv4-mapped IPv6 values normalized to their
+// IPv4 form, so "::ffff:10.0.0.0/104" behaves as "10.0.0.0/8". Addresses with a zone identifier
+// are rejected.
+func ParsePrefix(s string) (netip.Prefix, error) {
+	if strings.Contains(s, "/") {
+		prefix, err := netip.ParsePrefix(s)
+		if err != nil {
+			return netip.Prefix{}, err
+		}
+		if prefix.Addr().Is4In6() && prefix.Bits() >= 96 {
+			prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
+		}
+		return prefix.Masked(), nil
 	}
 
-	// If not a CIDR, try parsing as a plain IP address
-	ip := net.ParseIP(cidr)
-	if ip == nil {
-		return nil, err // return original CIDR parsing error
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Prefix{}, err
 	}
-
-	// Create a /32 or /128 network for the single IP
-	var mask net.IPMask
-	if ip.To4() != nil {
-		mask = net.CIDRMask(32, 32) // IPv4
-	} else {
-		mask = net.CIDRMask(128, 128) // IPv6
+	if addr.Zone() != "" {
+		return netip.Prefix{}, errors.New("zones are not allowed")
 	}
-
-	return &net.IPNet{
-		IP:   ip,
-		Mask: mask,
-	}, nil
+	addr = addr.Unmap()
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
 }

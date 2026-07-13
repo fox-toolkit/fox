@@ -2,9 +2,9 @@ package fox
 
 import (
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"reflect"
 	"slices"
 	"strings"
@@ -26,14 +26,14 @@ func TestNewRouter_Defaults(t *testing.T) {
 }
 
 func TestWithClientIPResolver(t *testing.T) {
-	c1 := ClientIPResolverFunc(func(c RequestContext) (*net.IPAddr, error) {
+	c1 := ClientIPResolverFunc(func(c RequestContext) (netip.Addr, error) {
 		return c.RemoteIP(), nil
 	})
 	f, _ := NewRouter(WithClientIPResolver(c1), WithNoRouteHandler(func(c *Context) {
 		assert.Empty(t, c.Pattern())
 		ip, err := c.ClientIP()
 		assert.NoError(t, err)
-		assert.NotNil(t, ip)
+		assert.True(t, ip.IsValid())
 		DefaultNoRouteHandler(c)
 	}))
 	f.MustAdd(MethodGet, "/foo", emptyHandler)

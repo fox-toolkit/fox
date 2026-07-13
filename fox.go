@@ -8,8 +8,8 @@ import (
 	"cmp"
 	"fmt"
 	"math"
-	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"slices"
@@ -58,15 +58,15 @@ type ClientIPResolver interface {
 	// ClientIP returns the "real" client IP according to the implemented resolver. It returns an error if no valid IP
 	// address can be derived. This is typically considered a misconfiguration error, unless the resolver involves
 	// obtaining an untrustworthy or optional value.
-	ClientIP(c RequestContext) (*net.IPAddr, error)
+	ClientIP(c RequestContext) (netip.Addr, error)
 }
 
 // The ClientIPResolverFunc type is an adapter to allow the use of ordinary functions as [ClientIPResolver]. If f is a
 // function with the appropriate signature, ClientIPResolverFunc(f) is a ClientIPResolverFunc that calls f.
-type ClientIPResolverFunc func(c RequestContext) (*net.IPAddr, error)
+type ClientIPResolverFunc func(c RequestContext) (netip.Addr, error)
 
 // ClientIP calls f(c).
-func (f ClientIPResolverFunc) ClientIP(c RequestContext) (*net.IPAddr, error) {
+func (f ClientIPResolverFunc) ClientIP(c RequestContext) (netip.Addr, error) {
 	return f(c)
 }
 
@@ -1088,8 +1088,8 @@ func applyRouteMiddleware(mws []middleware, base HandlerFunc) (HandlerFunc, Hand
 
 type noClientIPResolver struct{}
 
-func (s noClientIPResolver) ClientIP(_ RequestContext) (*net.IPAddr, error) {
-	return nil, ErrNoClientIPResolver
+func (s noClientIPResolver) ClientIP(_ RequestContext) (netip.Addr, error) {
+	return netip.Addr{}, ErrNoClientIPResolver
 }
 
 // firstHeader returns the first value and true if k is present in headers. It assumes that k is in canonical
