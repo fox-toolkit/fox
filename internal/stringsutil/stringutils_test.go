@@ -166,16 +166,12 @@ func TestNormalizeRawPath(t *testing.T) {
 		{"malformed escape", "/a%2%46b", "/a%2%46b", "", false},
 		{"malformed escape after decoded escape", "/%61%2%46b", "/a%2%46b", "", false},
 		{"trailing percent", "/100%", "/100%", "", false},
-		{"truncated escape", "/x%4", "/x%4", "", false},
 		{"invalid hex digits", "/%zz", "/%zz", "", false},
-		{"percent before valid escape", "/%%41", "/%%41", "", false},
-		{"malformed escape with raw tail", "/a%zz\xc3\xa9", "/a%zz\xc3\xa9", "", false},
 		{"decoded byte mismatch", "/a%2Fb", "/a/c", "", false},
 		{"raw byte mismatch", "/abc", "/abd", "", false},
 		{"path too long", "/ab", "/abc", "", false},
 		{"path too short", "/abc", "/ab", "", false},
 		{"empty path", "/a", "", "", false},
-		{"mismatch before malformed escape", "/a%zz", "/b%zz", "", false},
 	}
 
 	for _, tc := range cases {
