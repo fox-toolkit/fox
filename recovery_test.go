@@ -102,7 +102,7 @@ func TestRecoveryWithFunc_OtherScope(t *testing.T) {
 	})
 
 	f, _ := NewRouter(
-		WithHandleTrailingSlash(RedirectSlash),
+		WithTrailingSlash(RedirectSlash),
 		WithMergeSlashes(RedirectPath),
 		WithCollapseDotSegments(RedirectPath),
 		WithMiddleware(m),

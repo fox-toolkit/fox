@@ -108,7 +108,7 @@ func TestLeftmostNonPrivate_ClientIP(t *testing.T) {
 	c := fox.NewTestContextOnly(w, req)
 
 	s := must(NewLeftmostNonPrivate(ForwardedKey, 100, ExcludeLoopback(true), ExcludeLinkLocal(true), ExcludePrivateNet(true)))
-	assert.ElementsMatch(t, privateAndLocalRanges, s.blacklistedRanges)
+	assert.ElementsMatch(t, privateAndLocalRanges, s.excludedRanges)
 	ipAddr, err := s.ClientIP(c)
 	require.NoError(t, err)
 	assert.Equal(t, "188.0.2.128", ipAddr.String())
@@ -118,13 +118,13 @@ func TestLeftmostNonPrivate_ClientIP(t *testing.T) {
 	_, err = s.ClientIP(c)
 	assert.ErrorIs(t, err, ErrLeftmostNonPrivate)
 
-	// IPv4-mapped IPv6 private address is blacklisted
+	// IPv4-mapped IPv6 private address is excluded
 	req.Header.Set("Forwarded", `for="[::ffff:10.0.0.1]", for=1.1.1.1`)
 	ipAddr, err = s.ClientIP(c)
 	require.NoError(t, err)
 	assert.Equal(t, "1.1.1.1", ipAddr.String())
 
-	// Zoned link local address is blacklisted
+	// Zoned link local address is excluded
 	req.Header.Set("Forwarded", `for="[fe80::abcd%eth0]", for=1.1.1.1`)
 	ipAddr, err = s.ClientIP(c)
 	require.NoError(t, err)

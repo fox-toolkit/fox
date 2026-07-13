@@ -260,7 +260,7 @@ func TestTxn_WriteOrReadAfterFinalized(t *testing.T) {
 }
 
 func TestTxn_Add_ConflictWithName(t *testing.T) {
-	f, _ := NewRouter(AllowRegexpParam(true))
+	f, _ := NewRouter(WithAllowRegexpParam(true))
 	f.MustAdd(MethodGet, "/users", emptyHandler,
 		WithQueryMatcher("version", "v1"),
 		WithHeaderMatcher("Authorization", "secret"),
@@ -489,7 +489,7 @@ func TestTxn_Update_WithName(t *testing.T) {
 }
 
 func TestTxn_HasWithMatchers(t *testing.T) {
-	f, _ := NewRouter(AllowRegexpParam(true))
+	f, _ := NewRouter(WithAllowRegexpParam(true))
 
 	m1, _ := MatchQuery("version", "v1")
 	m2, _ := MatchQuery("version", "v2")

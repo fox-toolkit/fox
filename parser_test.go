@@ -14,7 +14,7 @@ import (
 )
 
 func Test_parsePattern(t *testing.T) {
-	f := MustRouter(AllowRegexpParam(true))
+	f := MustRouter(WithAllowRegexpParam(true))
 
 	staticToken := func(v string, hsplit bool) token {
 		return token{
@@ -1331,7 +1331,7 @@ func Test_parsePattern_ParamsConstraint(t *testing.T) {
 		assert.Error(t, err)
 	})
 	t.Run("param key limit with regexp", func(t *testing.T) {
-		f, _ := NewRouter(WithMaxRouteParamKeyBytes(3), AllowRegexpParam(true))
+		f, _ := NewRouter(WithMaxRouteParamKeyBytes(3), WithAllowRegexpParam(true))
 		_, _, err := f.parsePattern("/{abc:a}/{abc:a}/{abc:a}")
 		assert.NoError(t, err)
 		_, _, err = f.parsePattern("/{abcd:a}/{abc:a}/{abc:a}")
@@ -1854,7 +1854,7 @@ func TestPatternError_Position(t *testing.T) {
 		{
 			name:       "regexp missing expression",
 			pattern:    "/foo/{a:}",
-			options:    []GlobalOption{AllowRegexpParam(true)},
+			options:    []GlobalOption{WithAllowRegexpParam(true)},
 			wantType:   "path",
 			wantReason: "regexp",
 			wantStart:  8,
@@ -1864,7 +1864,7 @@ func TestPatternError_Position(t *testing.T) {
 		{
 			name:       "regexp compile error",
 			pattern:    "/foo/{a:a{5,2}}",
-			options:    []GlobalOption{AllowRegexpParam(true)},
+			options:    []GlobalOption{WithAllowRegexpParam(true)},
 			wantType:   "path",
 			wantReason: "regexp",
 			wantStart:  8,
@@ -1874,7 +1874,7 @@ func TestPatternError_Position(t *testing.T) {
 		{
 			name:       "regexp capture group not allowed",
 			pattern:    "/foo/{a:(foo|bar)}",
-			options:    []GlobalOption{AllowRegexpParam(true)},
+			options:    []GlobalOption{WithAllowRegexpParam(true)},
 			wantType:   "path",
 			wantReason: "regexp",
 			wantStart:  8,
@@ -1884,7 +1884,7 @@ func TestPatternError_Position(t *testing.T) {
 		{
 			name:       "regexp anchor escape rejected",
 			pattern:    "/foo/{a:a)|(?:}",
-			options:    []GlobalOption{AllowRegexpParam(true)},
+			options:    []GlobalOption{WithAllowRegexpParam(true)},
 			wantType:   "path",
 			wantReason: "regexp",
 			wantStart:  8,
@@ -1939,7 +1939,7 @@ func TestPatternError_Position(t *testing.T) {
 		{
 			name:       "path control character in regex constraint",
 			pattern:    "/x/{a:a\nb}",
-			options:    []GlobalOption{AllowRegexpParam(true)},
+			options:    []GlobalOption{WithAllowRegexpParam(true)},
 			wantType:   "path",
 			wantReason: "regexp",
 			wantStart:  7,
@@ -2007,7 +2007,7 @@ func TestPatternError_PointerLine(t *testing.T) {
 
 func TestPatternError_Unwrap(t *testing.T) {
 	t.Run("regexp compile error wraps underlying error", func(t *testing.T) {
-		f := MustRouter(AllowRegexpParam(true))
+		f := MustRouter(WithAllowRegexpParam(true))
 		_, _, err := f.parsePattern("/foo/{a:a{5,2}}")
 		require.Error(t, err)
 		var pe *PatternError

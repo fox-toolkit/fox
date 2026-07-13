@@ -397,7 +397,7 @@ func TestContext_Scope(t *testing.T) {
 	t.Parallel()
 
 	f, _ := NewRouter(
-		WithHandleTrailingSlash(RedirectSlash),
+		WithTrailingSlash(RedirectSlash),
 		WithMiddlewareFor(RedirectSlashHandler, func(next HandlerFunc) HandlerFunc {
 			return func(c *Context) {
 				assert.Equal(t, RedirectSlashHandler, c.Scope())

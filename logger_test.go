@@ -14,7 +14,7 @@ import (
 func TestLogger(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	f, _ := NewRouter(
-		WithHandleTrailingSlash(RedirectSlash),
+		WithTrailingSlash(RedirectSlash),
 		WithMiddleware(Logger(slog.NewTextHandler(buf, &slog.HandlerOptions{
 			Level: slog.LevelDebug,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {

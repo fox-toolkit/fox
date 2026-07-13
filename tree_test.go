@@ -1394,7 +1394,7 @@ func Test_iTree_lookup_Domain(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true), WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithAllowRegexpParam(true), WithTrailingSlash(RelaxedSlash))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
@@ -1665,7 +1665,7 @@ func Test_iTree_lookup_Matchers(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true), WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithAllowRegexpParam(true), WithTrailingSlash(RelaxedSlash))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte.pattern, emptyHandler, WithMatcher(rte.matchers...))))
 			}
@@ -1811,7 +1811,7 @@ func Test_iTree_lookup_MatchersPriority(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true))
+			f, _ := NewRouter(WithAllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte.pattern, emptyHandler, WithMatcher(rte.matchers...), WithMatchersPriority(rte.priority))))
 			}
@@ -1980,7 +1980,7 @@ func Test_iTree_lookup_EmptyCatchAll(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true))
+			f, _ := NewRouter(WithAllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
@@ -2029,7 +2029,7 @@ func Test_iTree_lookup_WithParams(t *testing.T) {
 }
 
 func Test_iTree_lookup_ParamEmptySegment(t *testing.T) {
-	f, _ := NewRouter(AllowRegexpParam(true))
+	f, _ := NewRouter(WithAllowRegexpParam(true))
 	cases := []struct {
 		name  string
 		route string
@@ -3101,7 +3101,7 @@ func Test_iTree_lookup_Overlapping(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true))
+			f, _ := NewRouter(WithAllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
@@ -4256,7 +4256,7 @@ func Test_iTree_lookup_InfixWildcard(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true))
+			f, _ := NewRouter(WithAllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
@@ -4624,7 +4624,7 @@ func Test_iTree_lookup_InfixWildcardTsr(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true), WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithAllowRegexpParam(true), WithTrailingSlash(RelaxedSlash))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
@@ -4821,7 +4821,7 @@ func Test_iTree_lookup_Tsr(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
+			f, _ := NewRouter(WithTrailingSlash(RelaxedSlash), WithAllowRegexpParam(true))
 			for _, path := range tc.paths {
 				require.NoError(t, onlyError(f.Add(MethodGet, path, emptyHandler)))
 			}
@@ -4923,7 +4923,7 @@ func Test_iTree_lookup_TsrMatchers(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithTrailingSlash(RelaxedSlash))
 			for _, r := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, r.pattern, emptyHandler, r.opts...)))
 			}

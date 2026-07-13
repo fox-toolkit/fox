@@ -16,7 +16,7 @@ type TrustedRangeOption interface {
 	applyRight(*config)
 }
 
-type BlacklistRangeOption interface {
+type ExcludedRangeOption interface {
 	applyLeft(*config)
 }
 
@@ -59,8 +59,8 @@ func TrustPrivateNet(enable bool) TrustedRangeOption {
 	})
 }
 
-// ExcludeLoopback enables or disables the inclusion of loopback ip ranges in the blacklisted ip ranges.
-func ExcludeLoopback(enable bool) BlacklistRangeOption {
+// ExcludeLoopback enables or disables the inclusion of loopback ip ranges in the excluded ip ranges.
+func ExcludeLoopback(enable bool) ExcludedRangeOption {
 	return leftmostNonPrivateOptionFunc(func(c *config) {
 		if enable {
 			c.ipRanges = append(c.ipRanges, loopbackRanges...)
@@ -68,8 +68,8 @@ func ExcludeLoopback(enable bool) BlacklistRangeOption {
 	})
 }
 
-// ExcludeLinkLocal enables or disables the inclusion of link local ip ranges in the blacklisted ip ranges.
-func ExcludeLinkLocal(enable bool) BlacklistRangeOption {
+// ExcludeLinkLocal enables or disables the inclusion of link local ip ranges in the excluded ip ranges.
+func ExcludeLinkLocal(enable bool) ExcludedRangeOption {
 	return leftmostNonPrivateOptionFunc(func(c *config) {
 		if enable {
 			c.ipRanges = append(c.ipRanges, linkLocalRanges...)
@@ -77,8 +77,8 @@ func ExcludeLinkLocal(enable bool) BlacklistRangeOption {
 	})
 }
 
-// ExcludePrivateNet enables or disables the inclusion of private-space ip ranges in the blacklisted ip ranges.
-func ExcludePrivateNet(enable bool) BlacklistRangeOption {
+// ExcludePrivateNet enables or disables the inclusion of private-space ip ranges in the excluded ip ranges.
+func ExcludePrivateNet(enable bool) ExcludedRangeOption {
 	return leftmostNonPrivateOptionFunc(func(c *config) {
 		if enable {
 			c.ipRanges = append(c.ipRanges, privateRange...)

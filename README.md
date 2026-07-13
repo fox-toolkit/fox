@@ -113,7 +113,7 @@ func proxy(backend string) fox.HandlerFunc {
 }
 
 func main() {
-	f := fox.MustRouter(fox.AllowRegexpParam(true))
+	f := fox.MustRouter(fox.WithAllowRegexpParam(true))
 
 	f.MustAdd(fox.MethodAny, "api.example.com/orders/{id:[0-9]+}", proxy("http://orders.internal"))
 	f.MustAdd(fox.MethodAny, "api.example.com/orders/{ref}", proxy("http://legacy.internal"))
@@ -161,7 +161,7 @@ example.com/avengers           no matches
 
 Named parameters can include regular expression using the syntax `{name:regexp}`. Regular expressions cannot 
 contain capturing groups, but can use non-capturing groups `(?:pattern)` instead. Regexp support is opt-in via
-`fox.AllowRegexpParam(true)` option.
+`fox.WithAllowRegexpParam(true)` option.
 
 ````
 Pattern /products/{name:[A-Za-z]+}
@@ -222,7 +222,7 @@ Pattern /src/file=*{path}
 
 Named wildcards can include a regular expression constraint using the syntax `+{name:regexp}`. Regular expressions cannot
 contain capturing groups, but can use non-capturing groups `(?:pattern)` instead. Optional wildcards (`*{param}`) do not
-support regular expressions. Regexp support is opt-in via `fox.AllowRegexpParam(true)` option.
+support regular expressions. Regexp support is opt-in via `fox.WithAllowRegexpParam(true)` option.
 
 ````
 Pattern /src/+{filepath:[A-Za-z/]+\.json}

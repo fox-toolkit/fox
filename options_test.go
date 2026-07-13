@@ -128,7 +128,7 @@ func TestWithOptionsHandler(t *testing.T) {
 }
 
 func TestRouter_ServeHTTP_AllowedMethodWithIgnoreTsEnable(t *testing.T) {
-	f, _ := NewRouter(WithNoMethod(true), WithHandleTrailingSlash(RelaxedSlash))
+	f, _ := NewRouter(WithNoMethod(true), WithTrailingSlash(RelaxedSlash))
 
 	// Support for ignore Trailing slash
 	cases := []struct {
@@ -247,7 +247,7 @@ func TestRouter_ServeHTTP_AutomaticOptionsWithIgnoreTsEnable(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithAutoOptions(true), WithHandleTrailingSlash(RelaxedSlash))
+			f := MustRouter(WithAutoOptions(true), WithTrailingSlash(RelaxedSlash))
 			for _, method := range tc.methods {
 				require.NoError(t, onlyError(f.Add([]string{method}, tc.path, func(c *Context) {
 					req := httptest.NewRequest(http.MethodGet, c.Request().URL.Path, nil)
@@ -716,12 +716,12 @@ func TestWithAnnotation_Invalid(t *testing.T) {
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotation(unhashableKey, nil))), ErrInvalidConfig)
 }
 
-func TestWithHandleTrailingSlash_LeadingDoubleSlash(t *testing.T) {
+func TestWithTrailingSlash_LeadingDoubleSlash(t *testing.T) {
 	f := MustRouter()
-	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
-	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "example.com//foo", emptyHandler, WithHandleTrailingSlash(RedirectSlash))), ErrInvalidRoute)
-	assert.NoError(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithHandleTrailingSlash(RelaxedSlash))))
-	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithHandleTrailingSlash(ExactSlash))))
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithTrailingSlash(RedirectSlash))), ErrInvalidRoute)
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "example.com//foo", emptyHandler, WithTrailingSlash(RedirectSlash))), ErrInvalidRoute)
+	assert.NoError(t, onlyError(f.Add(MethodGet, "//foo", emptyHandler, WithTrailingSlash(RelaxedSlash))))
+	assert.NoError(t, onlyError(f.Add(MethodGet, "//bar", emptyHandler, WithTrailingSlash(ExactSlash))))
 }
 
 func TestWithQueryMatcher(t *testing.T) {

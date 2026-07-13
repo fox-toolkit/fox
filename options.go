@@ -118,7 +118,7 @@ func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 	})
 }
 
-// WithHandleTrailingSlash configures how the router handles trailing slashes in request paths.
+// WithTrailingSlash configures how the router handles trailing slashes in request paths.
 //
 // Available slash handling modes:
 //   - ExactSlash: Routes are matched exactly as registered. /foo/bar and /foo/bar/ are treated as different routes.
@@ -133,7 +133,7 @@ func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 //
 // If both /foo/bar and /foo/bar/ are explicitly registered, the exact match always takes precedence.
 // Otherwise a trailing slash match keeps the route's normal priority, like a direct match.
-func WithHandleTrailingSlash(opt TrailingSlashOption) interface {
+func WithTrailingSlash(opt TrailingSlashOption) interface {
 	GlobalOption
 	RouteOption
 } {
@@ -239,9 +239,9 @@ func WithMaxRouteMatchers(max uint16) GlobalOption {
 	})
 }
 
-// AllowRegexpParam enables support for regular expressions in route parameters. When enabled, parameters can include
+// WithAllowRegexpParam enables support for regular expressions in route parameters. When enabled, parameters can include
 // regex patterns (e.g., {id:[0-9]+}). When disabled, routes containing regex patterns will fail with a [*PatternError].
-func AllowRegexpParam(enable bool) GlobalOption {
+func WithAllowRegexpParam(enable bool) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.allowRegexp = enable
 		return nil

@@ -1265,7 +1265,7 @@ func TestRouter_ServeHTTP_Handle(t *testing.T) {
 	f, _ := NewRouter()
 
 	t.Run("handle and update route with some option", func(t *testing.T) {
-		want, err := f.NewRoute(MethodGet, "/foo", emptyHandler, WithAnnotation("foo", "bar"), WithHandleTrailingSlash(RedirectSlash))
+		want, err := f.NewRoute(MethodGet, "/foo", emptyHandler, WithAnnotation("foo", "bar"), WithTrailingSlash(RedirectSlash))
 		require.NoError(t, err)
 		require.NoError(t, f.AddRoute(want))
 		got := f.Route(MethodGet, "/foo")
@@ -1337,7 +1337,7 @@ func TestOverlappingRouteMalloc(t *testing.T) {
 }
 
 func TestWildcardSuffix(t *testing.T) {
-	r, _ := NewRouter(AllowRegexpParam(true))
+	r, _ := NewRouter(WithAllowRegexpParam(true))
 
 	routes := []struct {
 		path string
@@ -1365,7 +1365,7 @@ func TestWildcardSuffix(t *testing.T) {
 }
 
 func TestRegexpParamAlternationPrecedence(t *testing.T) {
-	r := MustRouter(AllowRegexpParam(true))
+	r := MustRouter(WithAllowRegexpParam(true))
 	require.NoError(t, onlyError(r.Add(MethodGet, "/role/{role:admin|user|guest}", pathHandler)))
 	require.NoError(t, onlyError(r.Add(MethodGet, "/scope/{scope:read|write}/items", pathHandler)))
 
@@ -1873,7 +1873,7 @@ func TestRouter_Add_Conflict(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(AllowRegexpParam(true))
+			f, _ := NewRouter(WithAllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 			}
@@ -2409,7 +2409,7 @@ func TestRouter_ServeHTTP_IgnoreTrailingSlash(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+			f, _ := NewRouter(WithTrailingSlash(RelaxedSlash))
 			rf := f.Info()
 			assert.Equal(t, RelaxedSlash, rf.TrailingSlashOption)
 			for _, path := range tc.paths {
@@ -2625,7 +2625,7 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, _ := NewRouter(WithHandleTrailingSlash(RedirectSlash))
+			f, _ := NewRouter(WithTrailingSlash(RedirectSlash))
 			rf := f.Info()
 			assert.Equal(t, RedirectSlash, rf.TrailingSlashOption)
 
@@ -2648,7 +2648,7 @@ func TestRouter_ServeHTTP_RedirectTrailingSlash(t *testing.T) {
 			}
 
 			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithHandleTrailingSlash(RedirectSlash))
+				f := MustRouter(WithTrailingSlash(RedirectSlash))
 
 				for _, path := range tc.paths {
 					require.NoError(t, onlyError(f.Add(MethodAny, path, emptyHandler)))
@@ -2810,7 +2810,7 @@ func TestRouter_ServeHTTP_RedirectPath(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
+			f := MustRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RedirectPath), WithTrailingSlash(tc.slashMode))
 			rf := f.Info()
 			assert.Equal(t, RedirectPath, rf.MergeSlashes)
 			assert.Equal(t, RedirectPath, rf.CollapseDotSegments)
@@ -2826,7 +2826,7 @@ func TestRouter_ServeHTTP_RedirectPath(t *testing.T) {
 			}
 
 			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RedirectPath), WithHandleTrailingSlash(tc.slashMode))
+				f := MustRouter(WithMergeSlashes(RedirectPath), WithCollapseDotSegments(RedirectPath), WithTrailingSlash(tc.slashMode))
 
 				require.NoError(t, onlyError(f.Add(MethodAny, tc.path, emptyHandler)))
 
@@ -2870,7 +2870,7 @@ func TestRouter_NormalizePathTrailingSlash(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithMergeSlashes(NormalizePath), WithHandleTrailingSlash(tc.slashMode))
+			f := MustRouter(WithMergeSlashes(NormalizePath), WithTrailingSlash(tc.slashMode))
 			require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", emptyHandler)))
 
 			req := httptest.NewRequest(http.MethodGet, "/foo//bar/", nil)
@@ -2947,7 +2947,7 @@ func TestRouter_ServeHTTP_NormalizeRewriteURL(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithMergeSlashes(tc.fixedMode), WithCollapseDotSegments(tc.fixedMode), WithHandleTrailingSlash(tc.slashMode))
+			f := MustRouter(WithMergeSlashes(tc.fixedMode), WithCollapseDotSegments(tc.fixedMode), WithTrailingSlash(tc.slashMode))
 
 			wantEscaped := tc.wantRawPath
 			if wantEscaped == "" {
@@ -2974,7 +2974,7 @@ func TestRouter_ServeHTTP_NormalizeRewriteURL(t *testing.T) {
 	}
 
 	t.Run("caller url untouched on panic", func(t *testing.T) {
-		f := MustRouter(WithHandleTrailingSlash(RelaxedSlash))
+		f := MustRouter(WithTrailingSlash(RelaxedSlash))
 		require.NoError(t, onlyError(f.Add(MethodGet, "/foo", func(c *Context) {
 			panic("boom")
 		})))
@@ -3146,7 +3146,7 @@ func TestRouter_ServeHTTP_EncodedRedirectTrailingSlash(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r, _ := NewRouter(WithHandleTrailingSlash(RedirectSlash))
+			r, _ := NewRouter(WithTrailingSlash(RedirectSlash))
 			require.NoError(t, onlyError(r.Add(MethodGet, tc.path, emptyHandler)))
 
 			req := httptest.NewRequest(http.MethodGet, tc.req, nil)
@@ -3381,7 +3381,7 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := MustRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
+			f := MustRouter(WithTrailingSlash(RelaxedSlash), WithAllowRegexpParam(true))
 			for _, rte := range tc.routes {
 				require.NoError(t, onlyError(f.Add(MethodGet, rte, func(c *Context) {
 					assert.Equal(t, tc.wantPath, c.Pattern())
@@ -3395,7 +3395,7 @@ func TestRouter_ServeHTTP_TsrParams(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code)
 
 			t.Run("with any", func(t *testing.T) {
-				f := MustRouter(WithHandleTrailingSlash(RelaxedSlash), AllowRegexpParam(true))
+				f := MustRouter(WithTrailingSlash(RelaxedSlash), WithAllowRegexpParam(true))
 				for _, rte := range tc.routes {
 					require.NoError(t, onlyError(f.Add(MethodAny, rte, func(c *Context) {
 						assert.Equal(t, tc.wantPath, c.Pattern())
@@ -3581,7 +3581,7 @@ func TestRouter_Reverse(t *testing.T) {
 	})
 
 	t.Run("reverse with tsr", func(t *testing.T) {
-		f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+		f, _ := NewRouter(WithTrailingSlash(RelaxedSlash))
 		for _, rte := range staticRoutes {
 			if rte.path == "/" {
 				continue
@@ -3661,7 +3661,7 @@ func TestRouter_Has(t *testing.T) {
 		"/glob/+a{id}",
 	}
 
-	f, _ := NewRouter(AllowRegexpParam(true))
+	f, _ := NewRouter(WithAllowRegexpParam(true))
 	for _, rte := range routes {
 		require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 	}
@@ -3798,7 +3798,7 @@ func TestRouter_Has(t *testing.T) {
 }
 
 func TestRouter_HasWithMatchers(t *testing.T) {
-	f, _ := NewRouter(AllowRegexpParam(true))
+	f, _ := NewRouter(WithAllowRegexpParam(true))
 
 	m1, _ := MatchQuery("version", "v1")
 	m2, _ := MatchQuery("version", "v2")
@@ -3951,7 +3951,7 @@ func TestRouter_Match_Reverse(t *testing.T) {
 		"/users/uid_{id}",
 	}
 
-	f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+	f, _ := NewRouter(WithTrailingSlash(RelaxedSlash))
 	for _, rte := range routes {
 		require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 	}
@@ -4011,7 +4011,7 @@ func TestRouter_ReverseWithIgnoreTrailingSlashEnable(t *testing.T) {
 		"/users/uid_{id}",
 	}
 
-	f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+	f, _ := NewRouter(WithTrailingSlash(RelaxedSlash))
 	for _, rte := range routes {
 		require.NoError(t, onlyError(f.Add(MethodGet, rte, emptyHandler)))
 	}
@@ -4196,7 +4196,7 @@ func TestRouter_ServeHTTP_UnreservedDecoding(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, err := NewRouter(AllowRegexpParam(true))
+			f, err := NewRouter(WithAllowRegexpParam(true))
 			require.NoError(t, err)
 
 			var gotParams Params
@@ -5284,7 +5284,7 @@ func TestRouter_RedirectPathAboveRootRejected(t *testing.T) {
 
 func TestRouter_ConnectExactMatch(t *testing.T) {
 	for _, opt := range []NormalizeOption{NormalizePath, RedirectPath} {
-		f := MustRouter(WithMergeSlashes(opt), WithCollapseDotSegments(opt), WithHandleTrailingSlash(RedirectSlash))
+		f := MustRouter(WithMergeSlashes(opt), WithCollapseDotSegments(opt), WithTrailingSlash(RedirectSlash))
 		require.NoError(t, onlyError(f.Add(MethodConnect, "/a/b", emptyHandler)))
 		require.NoError(t, onlyError(f.Add(MethodConnect, "/c/d/", emptyHandler)))
 
@@ -5431,7 +5431,7 @@ func TestRouter_RedirectPathAutoOptions(t *testing.T) {
 }
 
 func TestRouter_NormalizeRewriteReuseOwnedCopy(t *testing.T) {
-	f := MustRouter(WithMergeSlashes(NormalizePath), WithHandleTrailingSlash(RelaxedSlash))
+	f := MustRouter(WithMergeSlashes(NormalizePath), WithTrailingSlash(RelaxedSlash))
 	var seen *http.Request
 	require.NoError(t, onlyError(f.Add(MethodGet, "/foo/bar", func(c *Context) {
 		seen = c.Request()

@@ -152,7 +152,7 @@ type RouterInfo struct {
 	AutoOptions           bool
 	SystemWideOptions     bool
 	ClientIPResolver      bool
-	AllowRegexp           bool
+	AllowRegexpParam      bool
 	StrictPathEncoding    bool
 }
 
@@ -565,7 +565,7 @@ func (fox *Router) Info() RouterInfo {
 		MergeSlashes:          fox.mergeSlash,
 		CollapseDotSegments:   fox.collapseDots,
 		ClientIPResolver:      !ok,
-		AllowRegexp:           fox.allowRegexp,
+		AllowRegexpParam:      fox.allowRegexp,
 		SystemWideOptions:     fox.systemWideOPTIONS,
 		StrictPathEncoding:    fox.strictPathEncoding,
 	}

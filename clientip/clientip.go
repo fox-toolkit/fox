@@ -171,18 +171,18 @@ func (s SingleIPHeader) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 
 // LeftmostNonPrivate derives the client IP from the leftmost valid and non-private/non-internal IP address in the X-Forwarded-For
 // or Forwarded header. This resolver should be used when a valid, non-private IP closest to the client is desired. By default,
-// loopback, link local and private net ip range are blacklisted. Note that this MUST NOT BE USED FOR SECURITY PURPOSES.
+// loopback, link local and private net ip range are excluded. Note that this MUST NOT BE USED FOR SECURITY PURPOSES.
 // This IP can be TRIVIALLY SPOOFED.
 type LeftmostNonPrivate struct {
-	headerName        string
-	blacklistedRanges []netip.Prefix
-	limit             uint
+	headerName     string
+	excludedRanges []netip.Prefix
+	limit          uint
 }
 
 // NewLeftmostNonPrivate creates a [LeftmostNonPrivate] resolver. By default, loopback, link local and private net ip range
-// are blacklisted. A reasonable limit on the number of IPs to parse must be provided to prevent excessive resource usage from
+// are excluded. A reasonable limit on the number of IPs to parse must be provided to prevent excessive resource usage from
 // adversarial headers.
-func NewLeftmostNonPrivate(key HeaderKey, limit uint, opts ...BlacklistRangeOption) (LeftmostNonPrivate, error) {
+func NewLeftmostNonPrivate(key HeaderKey, limit uint, opts ...ExcludedRangeOption) (LeftmostNonPrivate, error) {
 	if key > 1 {
 		return LeftmostNonPrivate{}, errors.New("invalid header key")
 	}
@@ -196,9 +196,9 @@ func NewLeftmostNonPrivate(key HeaderKey, limit uint, opts ...BlacklistRangeOpti
 	}
 
 	return LeftmostNonPrivate{
-		headerName:        key.String(),
-		blacklistedRanges: orSlice(cfg.ipRanges, privateAndLocalRanges),
-		limit:             limit,
+		headerName:     key.String(),
+		excludedRanges: orSlice(cfg.ipRanges, privateAndLocalRanges),
+		limit:          limit,
 	}, nil
 }
 
@@ -207,7 +207,7 @@ func NewLeftmostNonPrivate(key HeaderKey, limit uint, opts ...BlacklistRangeOpti
 func (s LeftmostNonPrivate) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	if values, ok := c.Request().Header[s.headerName]; ok && len(values) > 0 {
 		for ip := range iterutil.Take(addrSeq(values, s.headerName), s.limit) {
-			if ip.IsValid() && !isContainedInRanges(ip, s.blacklistedRanges) {
+			if ip.IsValid() && !isContainedInRanges(ip, s.excludedRanges) {
 				// This is the leftmost valid, non-private IP
 				return ip, nil
 			}

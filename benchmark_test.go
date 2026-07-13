@@ -220,7 +220,7 @@ func BenchmarkOverlappingRoute(b *testing.B) {
 }
 
 func BenchmarkWithIgnoreTrailingSlash(b *testing.B) {
-	f, _ := NewRouter(WithHandleTrailingSlash(RelaxedSlash))
+	f, _ := NewRouter(WithTrailingSlash(RelaxedSlash))
 	f.MustAdd(MethodGet, "/{a}/{b}/e", emptyHandler)
 	f.MustAdd(MethodGet, "/{a}/{b}/d", emptyHandler)
 	f.MustAdd(MethodGet, "/foo/{b}", emptyHandler)
