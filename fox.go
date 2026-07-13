@@ -1031,8 +1031,8 @@ func rewriteRequest(r *http.Request, escaped string, owned bool) *http.Request {
 
 // routingPath returns the canonical routing path for the request and reports whether the request
 // URL must be rewritten so downstream handlers see the form the router routed on. That is the
-// case when the escaped path contains bytes that can never appear unescaped in a routing path, a
-// malformed escape, or a URL.RawPath that is not an encoding of URL.Path.
+// case when the wire form contains a byte that must be escaped in a routing path, a malformed
+// escape, or a URL.RawPath that is not an encoding of URL.Path.
 // A wire form that differs from the routing path only by hex case (%2f vs %2F) or by an encoded
 // unreserved character (%61 vs a) is not rewritten. RFC 3986 (sections 6.2.2.1 and 6.2.2.2)
 // guarantees both forms identify the same resource.

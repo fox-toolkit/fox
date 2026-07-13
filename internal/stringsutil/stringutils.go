@@ -105,7 +105,7 @@ func IsUnreserved(b byte) bool {
 	return unreservedTab[b]
 }
 
-// IsRoutableRaw reports whether b can appear unescaped in a routing path, i.e. whether
+// IsRoutableRaw reports whether b is allowed unescaped in a routing path, i.e. whether
 // [NormalizeRawPath] can emit it unescaped.
 func IsRoutableRaw(b byte) bool {
 	return pathKeepRaw[b]
@@ -202,9 +202,12 @@ func escapeInto(t []byte, path string, i int) {
 }
 
 // NormalizeRawPath returns the canonical routing form of an escaped path. Unreserved escapes
-// are decoded, hex is uppercased and bytes that cannot appear unescaped are percent-encoded in place.
-// wellFormed reports that no such byte was encountered. It returns "" when raw contains a malformed
-// escape or is not an encoding of path. The routing form must then be derived from path.
+// are decoded, hex is uppercased and bytes that must be escaped in a path are percent-encoded
+// in place. wellFormed reports that no such byte was found. In that case norm differs from raw
+// only by hex case or by a decoded unreserved escape, and RFC 3986 guarantees that both forms
+// identify the same resource. A transformation that breaks this guarantee must report wellFormed
+// false. It returns "" when raw contains a malformed escape or is not an encoding of path. The
+// routing form must then be derived from path.
 func NormalizeRawPath(raw, path string) (norm string, wellFormed bool) {
 	var buf strings.Builder
 	wellFormed = true
