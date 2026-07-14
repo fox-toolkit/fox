@@ -105,8 +105,8 @@ func WithOptionsHandler(handler HandlerFunc) GlobalOption {
 	})
 }
 
-// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the
-// request, e.g. a ".." segment escaping above the root with [WithCollapseDotSegments] enabled.
+// WithRejectPathHandler register an [HandlerFunc] which is called when path normalization rejects the request.
+// This happens when [WithCollapseDotSegments] is enabled and a ".." segment escapes above the root.
 // By default, the [DefaultRejectPathHandler] replies with a 400 Bad Request.
 func WithRejectPathHandler(handler HandlerFunc) GlobalOption {
 	return optionFunc(func(s sealedOption) error {
