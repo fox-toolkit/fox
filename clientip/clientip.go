@@ -26,6 +26,7 @@ const (
 var (
 	ErrInvalidIPAddress      = errors.New("invalid ip address")
 	ErrUnspecifiedIPAddress  = errors.New("unspecified ip address")
+	ErrTrustedPeer           = errors.New("trusted peer resolver")
 	ErrRemoteAddress         = errors.New("remote address resolver")
 	ErrSingleIPHeader        = errors.New("single ip header resolver")
 	ErrLeftmostNonPrivate    = errors.New("leftmost non private resolver")
@@ -40,6 +41,7 @@ var (
 	errLeftmostNonPrivate  = fmt.Errorf("%w: unable to find a valid or non-private IP", ErrLeftmostNonPrivate)
 	errRightmostNonPrivate = fmt.Errorf("%w: unable to find a valid or non-private IP", ErrRightmostNonPrivate)
 	errSingleIPHeader      = fmt.Errorf("%w: header not found", ErrSingleIPHeader)
+	errTrustedPeer         = fmt.Errorf("%w: untrusted connecting peer", ErrTrustedPeer)
 )
 
 // TrustedIPRange returns a set of trusted IP ranges.
@@ -105,6 +107,58 @@ func (s Chain) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	return netip.Addr{}, errs
 }
 
+// TrustedPeer wraps another resolver and only consults it when the connecting peer is a trusted
+// reverse proxy. It protects header-only resolvers such as [SingleIPHeader] and [RightmostTrustedCount],
+// which derive the client IP purely from a header and cannot verify themselves that the request actually
+// came through a trusted proxy. On a server that is reachable both through a proxy and directly from the
+// internet, an attacker connecting directly could otherwise forge the header and spoof the result.
+// [RightmostTrustedRange] does not need this wrapper: it already holds the trusted ranges and verifies
+// the peer itself.
+type TrustedPeer struct {
+	resolver TrustedIPRange
+	inner    fox.ClientIPResolver
+}
+
+// NewTrustedPeer creates a [TrustedPeer] resolver. resolver must provide the IP ranges of all trusted
+// reverse proxies that connect directly to this server. inner is the resolver consulted once the peer
+// is found to be trusted.
+func NewTrustedPeer(resolver TrustedIPRange, inner fox.ClientIPResolver) (TrustedPeer, error) {
+	if resolver == nil {
+		return TrustedPeer{}, errors.New("invalid nil resolver")
+	}
+
+	if inner == nil {
+		return TrustedPeer{}, errors.New("invalid nil inner resolver")
+	}
+
+	return TrustedPeer{resolver: resolver, inner: inner}, nil
+}
+
+// ClientIP derives the client IP using the [TrustedPeer] resolver. The connecting peer (the request's
+// RemoteAddr) is classified first:
+//   - a valid IP inside the trusted ranges is a trusted proxy: the inner resolver is consulted and its
+//     result returned.
+//   - a valid IP outside the trusted ranges did not arrive through a trusted proxy: the header cannot
+//     be trusted and an error is returned. To also serve direct clients, chain a [RemoteAddr] resolver
+//     after this one with [NewChain].
+//   - anything else (empty, a Unix domain socket peer or otherwise unparseable) cannot be classified
+//     and the inner resolver is consulted as normal; a Unix socket is unreachable from the network and
+//     cannot be a spoofing vector.
+func (s TrustedPeer) ClientIP(c fox.RequestContext) (netip.Addr, error) {
+	trustedRange, err := s.resolver.TrustedIPRange()
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("%w: unable to resolve trusted ip range: %w", ErrTrustedPeer, err)
+	}
+
+	// If the connecting peer is a valid IP outside the trusted ranges, the request did not come
+	// through a trusted proxy, so the header is untrustworthy and must not be used.
+	if peer, err := ParseAddr(c.Request().RemoteAddr); err == nil && !isContainedInRanges(peer, trustedRange) {
+		return netip.Addr{}, errTrustedPeer
+	}
+
+	return s.inner.ClientIP(c)
+}
+
 // RemoteAddr returns the client socket IP, stripped of port.
 // This resolver should be used if the server accept direct connections, rather than through a reverse proxy.
 type RemoteAddr struct{}
@@ -128,7 +182,8 @@ func (s RemoteAddr) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 // is: X-Real-IP, CF-Connecting-IP, True-Client-IP, Fastly-Client-IP, X-Azure-ClientIP, X-Azure-SocketIP. This resolver
 // should be used when the given header is added by a trusted reverse proxy. You must ensure that this header is not
 // spoofable (as is possible with Akamai's use of True-Client-IP, Fastly's default use of Fastly-Client-IP,
-// and Azure's X-Azure-ClientIP).
+// and Azure's X-Azure-ClientIP). This resolver trusts the header without checking the connecting peer:
+// if the server is also reachable directly from the internet, wrap it in a [TrustedPeer].
 type SingleIPHeader struct {
 	headerName string
 }
@@ -259,7 +314,9 @@ func (s RightmostNonPrivate) ClientIP(c fox.RequestContext) (netip.Addr, error) 
 
 // RightmostTrustedCount derives the client IP from the valid IP address added by the first trusted reverse
 // proxy to the X-Forwarded-For or Forwarded header. This resolver should be used when there is a fixed number of
-// trusted reverse proxies that are appending IP addresses to the header.
+// trusted reverse proxies that are appending IP addresses to the header. It assumes the request arrived
+// through those proxies but does not verify it: if the server is also reachable directly from the
+// internet, wrap it in a [TrustedPeer].
 type RightmostTrustedCount struct {
 	headerName   string
 	trustedCount uint
@@ -299,7 +356,15 @@ func (s RightmostTrustedCount) ClientIP(c fox.RequestContext) (netip.Addr, error
 
 // RightmostTrustedRange derives the client IP from the rightmost valid IP address in the X-Forwarded-For or Forwarded
 // header which is not in a set of trusted IP ranges. This resolver should be used when the IP ranges of the reverse
-// proxies between the internet and the server are known. If a third-party WAF, CDN, etc., is used, you SHOULD use a
+// proxies between the internet and the server are known.
+//
+// This resolver also verifies the connecting peer (the request's RemoteAddr): if the peer is a valid IP
+// that is not in the trusted ranges, the request did not arrive through a trusted proxy, the header is
+// ignored and the peer itself is returned. This makes the resolver safe to use on a server that is
+// reachable both through a trusted proxy and directly (an attacker connecting directly cannot spoof the
+// client IP via a forged header). See ClientIP for the exact peer-handling rules.
+//
+// If a third-party WAF, CDN, etc., is used, you SHOULD use a
 // method of verifying its access to your origin that is stronger than checking its IP address (e.g., using authenticated pulls).
 // Failure to do so can result in scenarios like: You use AWS CloudFront in front of a server you host elsewhere. An
 // attacker creates a CF distribution that points at your origin server. The attacker uses Lambda@Edge to spoof the Host
@@ -326,10 +391,22 @@ func NewRightmostTrustedRange(key HeaderKey, resolver TrustedIPRange) (Rightmost
 
 // ClientIP derives the client IP using the [RightmostTrustedRange] resolver. The returned [netip.Addr] may contain a
 // zone identifier. If no valid IP can be derived, an error is returned.
+//
+// The connecting peer (the request's RemoteAddr) is checked first: a valid IP outside the trusted
+// ranges is returned as is, since the request did not arrive through a trusted proxy and the peer is
+// the rightmost untrusted address. A trusted or unclassifiable peer (empty, a Unix domain socket peer
+// or otherwise unparseable) falls through to the header walk.
 func (s RightmostTrustedRange) ClientIP(c fox.RequestContext) (netip.Addr, error) {
 	trustedRange, err := s.resolver.TrustedIPRange()
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("%w: unable to resolve trusted ip range: %w", ErrRightmostTrustedRange, err)
+	}
+
+	// If the connecting peer is a valid IP outside the trusted ranges, the request did not come
+	// through a trusted proxy: the header is untrustworthy and the peer is the rightmost untrusted
+	// address, so return it.
+	if peer, err := ParseAddr(c.Request().RemoteAddr); err == nil && !isContainedInRanges(peer, trustedRange) {
+		return peer, nil
 	}
 
 	for ip := range backwardAddrSeq(c.Request().Header[s.headerName], s.headerName) {
@@ -590,7 +667,7 @@ var privateAndLocalRanges = []netip.Prefix{
 	netip.MustParsePrefix("198.51.100.0/24"),    // Assigned as TEST-NET-2
 	netip.MustParsePrefix("203.0.113.0/24"),     // Assigned as TEST-NET-3
 	netip.MustParsePrefix("192.88.99.0/24"),     // RFC 3068
-	netip.MustParsePrefix("192.18.0.0/15"),      // RFC 2544
+	netip.MustParsePrefix("198.18.0.0/15"),      // RFC 2544
 	netip.MustParsePrefix("224.0.0.0/4"),        // RFC 3171
 	netip.MustParsePrefix("240.0.0.0/4"),        // RFC 1112
 	netip.MustParsePrefix("255.255.255.255/32"), // RFC 919 Section 7
@@ -618,7 +695,7 @@ var privateRange = []netip.Prefix{
 	netip.MustParsePrefix("198.51.100.0/24"),    // Assigned as TEST-NET-2
 	netip.MustParsePrefix("203.0.113.0/24"),     // Assigned as TEST-NET-3
 	netip.MustParsePrefix("192.88.99.0/24"),     // RFC 3068
-	netip.MustParsePrefix("192.18.0.0/15"),      // RFC 2544
+	netip.MustParsePrefix("198.18.0.0/15"),      // RFC 2544
 	netip.MustParsePrefix("224.0.0.0/4"),        // RFC 3171
 	netip.MustParsePrefix("240.0.0.0/4"),        // RFC 1112
 	netip.MustParsePrefix("255.255.255.255/32"), // RFC 919 Section 7
@@ -650,10 +727,11 @@ var linkLocalRanges = []netip.Prefix{
 	netip.MustParsePrefix("fe80::/10"),      // RFC4291 Section 2.5.6, Link-Scoped Unicast
 }
 
-// isContainedInRanges returns true if the given address is contained in at least one of the given ranges.
-// The zone is stripped before the check since [netip.Prefix.Contains] never matches a zoned address, while
-// range membership only depends on the address bits. IPv4-mapped IPv6 prefixes are rewritten to their IPv4
-// form since [netip.Prefix.Contains] never matches across families and addresses are unmapped at parse time.
+// isContainedInRanges reports whether addr is in at least one of the given ranges.
+// The zone is stripped because [netip.Prefix.Contains] returns false when the address has an
+// IPv6 zone, and the zone plays no role in matching. IPv4-mapped IPv6 prefixes are rewritten to
+// their IPv4 form because Contains never matches an IPv4 address against an IPv6 prefix, and
+// addresses are unmapped at parse time.
 func isContainedInRanges(addr netip.Addr, ranges []netip.Prefix) bool {
 	addr = addr.WithZone("")
 	for _, r := range ranges {

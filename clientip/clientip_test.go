@@ -192,6 +192,8 @@ func TestRightmostTrustedCount_ClientIP(t *testing.T) {
 func TestRightmostTrustedRange_ClientIP(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
 	req.Header.Add("X-Forwarded-For", "1.1.1.1, 2001:db8:cafe::99%eth0, 3.3.3.3, 192.168.1.1")
+	// The connecting peer must be a trusted proxy for the header to be walked.
+	req.RemoteAddr = "192.168.1.5:4444"
 	w := httptest.NewRecorder()
 
 	c := fox.NewTestContextOnly(w, req)
@@ -215,12 +217,19 @@ func TestRightmostTrustedRange_ClientIP(t *testing.T) {
 	assert.ErrorContains(t, err, "unable to find a valid IP address")
 
 	req.Header.Set("X-Forwarded-For", "203.0.113.99, 10.0.0.5")
+	c.Request().RemoteAddr = "10.0.0.9:333"
 	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
 		return []netip.Prefix{netip.MustParsePrefix("::ffff:10.0.0.0/104")}, nil
 	})
 	ipAddr, err = s.ClientIP(c)
 	require.NoError(t, err)
 	assert.Equal(t, "203.0.113.99", ipAddr.String())
+
+	// Untrusted peer: the (spoofed) header is ignored and the peer itself is returned.
+	c.Request().RemoteAddr = "9.9.9.9:1234"
+	ipAddr, err = s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "9.9.9.9", ipAddr.String())
 
 	var resolverErr = errors.New("resolver error")
 	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
@@ -233,6 +242,46 @@ func TestRightmostTrustedRange_ClientIP(t *testing.T) {
 	assert.Panics(t, func() {
 		s = must(NewRightmostTrustedRange(XForwardedForKey, nil))
 	})
+}
+
+func TestTrustedPeer_ClientIP(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	// Same forged header for every scenario; only the peer differs.
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1")
+	w := httptest.NewRecorder()
+
+	c := fox.NewTestContextOnly(w, req)
+	trustedRanges, _ := ParsePrefixes("10.0.0.0/8")
+	s := must(NewTrustedPeer(TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
+		return trustedRanges, nil
+	}), must(NewRightmostTrustedCount(XForwardedForKey, 2))))
+
+	// Proxied request: the gate delegates to the inner resolver.
+	c.Request().RemoteAddr = "10.0.0.9:555"
+	ipAddr, err := s.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.3.4", ipAddr.String())
+
+	// Direct connection: the gate refuses without consulting the header.
+	c.Request().RemoteAddr = "9.9.9.9:1234"
+	_, err = s.ClientIP(c)
+	assert.ErrorIs(t, err, ErrTrustedPeer)
+	assert.ErrorContains(t, err, "untrusted connecting peer")
+
+	// Chained with RemoteAddr, a direct client gets its own (unspoofable) IP,
+	// NOT the "1.2.3.4" the attacker tried to inject.
+	chain := NewChain(s, NewRemoteAddr())
+	ipAddr, err = chain.ClientIP(c)
+	require.NoError(t, err)
+	assert.Equal(t, "9.9.9.9", ipAddr.String())
+
+	var resolverErr = errors.New("resolver error")
+	s.resolver = TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
+		return nil, resolverErr
+	})
+	_, err = s.ClientIP(c)
+	assert.ErrorIs(t, err, ErrTrustedPeer)
+	assert.ErrorIs(t, err, resolverErr)
 }
 
 func TestChain_ClientIP(t *testing.T) {
@@ -1928,6 +1977,100 @@ func TestNewRightmostTrustedRange(t *testing.T) {
 			want: "4.4.4.4",
 		},
 		{
+			// Peer is a valid IP outside the trusted ranges: the request did not
+			// arrive through a trusted proxy, so the (spoofed) header is ignored and
+			// the peer is returned -- NOT the victim the header tries to inject.
+			name: "Peer untrusted: returns peer, ignores spoofed header",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{`1.2.3.4, 10.0.0.1`},
+				},
+				remoteAddr:    "9.9.9.9:1234",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "9.9.9.9",
+		},
+		{
+			// The direct-client case: untrusted peer, no header.
+			name: "Peer untrusted, no header: returns peer",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{},
+				},
+				remoteAddr:    "9.9.9.9",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "9.9.9.9",
+		},
+		{
+			// Untrusted IPv6 peer with a zone is returned canonically, zone retained.
+			name: "Peer untrusted IPv6 with zone: returns peer with zone",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{`1.2.3.4`},
+				},
+				remoteAddr:    "[fe80::1%eth0]:9999",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "fe80::1%eth0",
+		},
+		{
+			// Trusted peer: behaves exactly as the header-only walk (regression guard
+			// that normal proxy deployments are unaffected by peer verification).
+			name: "Peer trusted: walks header as normal",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 10.0.0.1`},
+				},
+				remoteAddr:    "10.0.0.5:555",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "3.3.3.3",
+		},
+		{
+			// Unix domain socket peer ("@") is not an IP; fall through to the header.
+			name: "Peer Unix socket: walks header as normal",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 10.0.0.1`},
+				},
+				remoteAddr:    "@",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "3.3.3.3",
+		},
+		{
+			name: "Peer garbage: walks header as normal",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 10.0.0.1`},
+				},
+				remoteAddr:    "ohno",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "3.3.3.3",
+		},
+		{
+			// Unspecified peer IP (0.0.0.0) is rejected by ParseAddr, so we cannot
+			// classify it and fall through to the header.
+			name: "Peer unspecified IP: walks header as normal",
+			args: args{
+				headerType: XForwardedForKey,
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 10.0.0.1`},
+				},
+				remoteAddr:    "0.0.0.0",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "3.3.3.3",
+		},
+		{
 			name: "Fail: no non-trusted IP",
 			args: args{
 				headerType: XForwardedForKey,
@@ -2022,6 +2165,283 @@ func TestNewRightmostTrustedRange(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tt.want, ipAddr.String())
+		})
+	}
+}
+
+func TestNewTrustedPeer(t *testing.T) {
+	var _ fox.ClientIPResolver = TrustedPeer{}
+
+	type args struct {
+		inner         fox.ClientIPResolver
+		headers       http.Header
+		remoteAddr    string
+		trustedRanges []string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			// Peer is a trusted proxy: the inner resolver is consulted as normal.
+			name: "Trusted peer: delegates to inner (Count)",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 2)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 10.0.0.1`},
+				},
+				remoteAddr:    "10.0.0.5:555",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "3.3.3.3",
+		},
+		{
+			// The core fix: peer is a valid IP outside the trusted ranges, so the request
+			// did not arrive through a proxy. The (spoofed) header is NOT consulted.
+			name: "Untrusted peer: refuses, ignores spoofed header (Count)",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 2)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`1.2.3.4, 10.0.0.1`},
+				},
+				remoteAddr:    "9.9.9.9:1234",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "",
+		},
+		{
+			// The same gap exists for SingleIPHeader; the wrapper protects it too.
+			name: "Untrusted peer: refuses, ignores spoofed header (SingleIPHeader)",
+			args: args{
+				inner: must(NewSingleIPHeader("X-Real-IP")),
+				headers: http.Header{
+					"X-Real-Ip": []string{`1.2.3.4`},
+				},
+				remoteAddr:    "9.9.9.9",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "",
+		},
+		{
+			name: "Trusted peer: delegates to inner (SingleIPHeader)",
+			args: args{
+				inner: must(NewSingleIPHeader("X-Real-IP")),
+				headers: http.Header{
+					"X-Real-Ip": []string{`1.2.3.4`},
+				},
+				remoteAddr:    "10.0.0.5:5",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "1.2.3.4",
+		},
+		{
+			name: "Trusted IPv6 peer: delegates to inner",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 1)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3`},
+				},
+				remoteAddr:    "[fc00::1]:5",
+				trustedRanges: []string{`fc00::/7`},
+			},
+			want: "3.3.3.3",
+		},
+		{
+			// Untrusted IPv6 peer (with a zone) is classified and refused.
+			name: "Untrusted IPv6 peer with zone: refuses",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 1)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3`},
+				},
+				remoteAddr:    "[fe80::1%eth0]:9999",
+				trustedRanges: []string{`fc00::/7`},
+			},
+			want: "",
+		},
+		{
+			// Unix domain socket peer ("@") is not an IP and cannot be a network spoofing
+			// vector, so the peer cannot be classified and the inner resolver is consulted.
+			name: "Peer Unix socket: delegates to inner",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 1)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 4.4.4.4`},
+				},
+				remoteAddr:    "@",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "4.4.4.4",
+		},
+		{
+			name: "Peer empty: delegates to inner",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 1)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 4.4.4.4`},
+				},
+				remoteAddr:    "",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "4.4.4.4",
+		},
+		{
+			name: "Peer garbage: delegates to inner",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 1)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 4.4.4.4`},
+				},
+				remoteAddr:    "ohno",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "4.4.4.4",
+		},
+		{
+			// Unspecified peer IP (0.0.0.0) is rejected by ParseAddr, so we cannot
+			// classify it and delegate to the inner resolver.
+			name: "Peer unspecified IP: delegates to inner",
+			args: args{
+				inner: must(NewRightmostTrustedCount(XForwardedForKey, 1)),
+				headers: http.Header{
+					"X-Forwarded-For": []string{`3.3.3.3, 4.4.4.4`},
+				},
+				remoteAddr:    "0.0.0.0",
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			want: "4.4.4.4",
+		},
+		{
+			name: "Error: nil inner",
+			args: args{
+				inner:         nil,
+				trustedRanges: []string{`10.0.0.0/8`},
+			},
+			wantErr: true,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	w := httptest.NewRecorder()
+	c := fox.NewTestContextOnly(w, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			ranges, err := ParsePrefixes(tt.args.trustedRanges...)
+			if err != nil {
+				// We're not testing ParsePrefixes here
+				t.Fatalf("ParsePrefixes failed")
+			}
+
+			var s fox.ClientIPResolver
+			if tt.wantErr {
+				require.Panics(t, func() {
+					s = must(NewTrustedPeer(TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
+						return ranges, nil
+					}), tt.args.inner))
+				})
+				return
+			}
+
+			s = must(NewTrustedPeer(TrustedIPRangeFunc(func() ([]netip.Prefix, error) {
+				return ranges, nil
+			}), tt.args.inner))
+
+			c.Request().Header = tt.args.headers
+			c.Request().RemoteAddr = tt.args.remoteAddr
+			ipAddr, err := s.ClientIP(c)
+			if tt.want == "" {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, ipAddr.String())
+		})
+	}
+
+	assert.Panics(t, func() {
+		must(NewTrustedPeer(nil, must(NewRightmostTrustedCount(XForwardedForKey, 1))))
+	})
+}
+
+// Test_isContainedInRanges validates the bundled privateAndLocalRanges against the RFCs,
+// not just against itself.
+func Test_isContainedInRanges(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want bool
+	}{
+		{
+			name: "bad (zero) addr",
+			ip:   `nope`,
+			want: false,
+		},
+		{
+			name: "IPv4 loopback",
+			ip:   `127.0.0.2`,
+			want: true,
+		},
+		{
+			name: "IPv6 loopback",
+			ip:   `::1`,
+			want: true,
+		},
+		{
+			name: "IPv4 10.*",
+			ip:   `10.0.0.1`,
+			want: true,
+		},
+		{
+			name: "IPv4 192.168.*",
+			ip:   `192.168.1.1`,
+			want: true,
+		},
+		{
+			name: "IPv6 unique local address",
+			ip:   `fd12:3456:789a:1::1`,
+			want: true,
+		},
+		{
+			name: "IPv4 link-local",
+			ip:   `169.254.1.1`,
+			want: true,
+		},
+		{
+			name: "IPv6 link-local",
+			ip:   `fe80::abcd`,
+			want: true,
+		},
+		{
+			name: "Non-local IPv4",
+			ip:   `1.1.1.1`,
+			want: false,
+		},
+		{
+			name: "Non-local IPv4-mapped IPv6",
+			ip:   `::ffff:188.0.2.128`,
+			want: false,
+		},
+		{
+			// RFC 2544 benchmarking range is 198.18.0.0/15.
+			name: "IPv4 RFC 2544 benchmarking",
+			ip:   `198.18.5.5`,
+			want: true,
+		},
+		{
+			// 192.18.0.0/15 is routable public space, not a reserved range.
+			// Guards against the 198.18/192.18 typo.
+			name: "IPv4 192.18.0.0/15 is public",
+			ip:   `192.18.5.5`,
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, _ := ParseAddr(tt.ip)
+			assert.Equal(t, tt.want, isContainedInRanges(addr, privateAndLocalRanges))
 		})
 	}
 }
