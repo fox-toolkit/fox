@@ -160,7 +160,6 @@ type RouterInfo struct {
 type middleware struct {
 	m     MiddlewareFunc
 	scope HandlerScope
-	g     bool
 }
 
 var _ http.Handler = (*Router)(nil)
@@ -184,9 +183,6 @@ func NewRouter(opts ...GlobalOption) (*Router, error) {
 			return nil, err
 		}
 	}
-
-	// Clip so NewRoute's append(fox.mws, rte.mws...) can never write into the shared backing array.
-	router.mws = slices.Clip(router.mws)
 
 	router.hasNormalize = router.mergeSlash != ExactPath || router.collapseDots != ExactPath
 	router.hasRedirectPath = router.mergeSlash == RedirectPath || router.collapseDots == RedirectPath
@@ -483,7 +479,8 @@ func (fox *Router) NewRoute(methods []string, pattern string, handler HandlerFun
 	}
 
 	rte.priority = cmp.Or(rte.priority, uint(len(rte.matchers)))
-	rte.hself, rte.hall = applyRouteMiddleware(append(fox.mws, rte.mws...), handler)
+	rte.hself = applyMiddleware(RouteHandler, rte.mws, handler)
+	rte.hall = applyMiddleware(RouteHandler, fox.mws, rte.hself)
 
 	if len(methods) > 0 {
 		// As a defensive mesure, keep our own copy of the provided slice.
@@ -1082,21 +1079,6 @@ func applyMiddleware(scope HandlerScope, mws []middleware, h HandlerFunc) Handle
 		}
 	}
 	return m
-}
-
-func applyRouteMiddleware(mws []middleware, base HandlerFunc) (HandlerFunc, HandlerFunc) {
-	rte := base
-	all := base
-	for i := len(mws) - 1; i >= 0; i-- {
-		if mws[i].scope&RouteHandler != 0 {
-			all = mws[i].m(all)
-			// route specific only
-			if !mws[i].g {
-				rte = mws[i].m(rte)
-			}
-		}
-	}
-	return rte, all
 }
 
 type noClientIPResolver struct{}

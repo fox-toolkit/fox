@@ -263,7 +263,7 @@ func WithMiddleware(m ...MiddlewareFunc) interface {
 				if m[i] == nil {
 					return fmt.Errorf("%w: middleware cannot be nil", ErrInvalidConfig)
 				}
-				s.router.mws = append(s.router.mws, middleware{m[i], AllHandlers, true})
+				s.router.mws = append(s.router.mws, middleware{m[i], AllHandlers})
 			}
 			return nil
 		}
@@ -272,7 +272,7 @@ func WithMiddleware(m ...MiddlewareFunc) interface {
 				if m[i] == nil {
 					return fmt.Errorf("%w: middleware cannot be nil", ErrInvalidConfig)
 				}
-				s.route.mws = append(s.route.mws, middleware{m[i], RouteHandler, false})
+				s.route.mws = append(s.route.mws, middleware{m[i], RouteHandler})
 			}
 		}
 		return nil
@@ -293,7 +293,7 @@ func WithMiddlewareFor(scope HandlerScope, m ...MiddlewareFunc) GlobalOption {
 			if m[i] == nil {
 				return fmt.Errorf("%w: middleware cannot be nil", ErrInvalidConfig)
 			}
-			s.router.mws = append(s.router.mws, middleware{m[i], scope, true})
+			s.router.mws = append(s.router.mws, middleware{m[i], scope})
 		}
 		return nil
 	})
@@ -552,8 +552,8 @@ func WithMatcher(matchers ...Matcher) interface {
 func WithPrettyLogs() GlobalOption {
 	return optionFunc(func(s sealedOption) error {
 		s.router.mws = append([]middleware{
-			{Recovery(slogpretty.DefaultHandler), RouteHandler, true},
-			{Logger(slogpretty.DefaultHandler), AllHandlers, true},
+			{Recovery(slogpretty.DefaultHandler), RouteHandler},
+			{Logger(slogpretty.DefaultHandler), AllHandlers},
 		}, s.router.mws...)
 		return nil
 	})
