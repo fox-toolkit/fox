@@ -238,3 +238,33 @@ func TestRoute_Middleware(t *testing.T) {
 	assert.False(t, c1)
 	assert.True(t, c2)
 }
+
+func TestRoute_MiddlewareSingleInstance(t *testing.T) {
+	var built int
+	var trace []string
+	mw := func(name string) MiddlewareFunc {
+		return func(next HandlerFunc) HandlerFunc {
+			built++
+			return func(c *Context) {
+				trace = append(trace, name)
+				next(c)
+			}
+		}
+	}
+
+	f := MustRouter(
+		WithMiddleware(mw("g1")),
+		WithMiddlewareFor(NoRouteHandler, mw("nr")),
+		WithMiddlewareFor(RouteHandler, mw("g2")),
+	)
+	built = 0
+	rte := f.MustAdd(MethodGet, "/foo", emptyHandler, WithMiddleware(mw("r1"), mw("r2")))
+	assert.Equal(t, 4, built)
+
+	f.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/foo", nil))
+	assert.Equal(t, []string{"g1", "g2", "r1", "r2"}, trace)
+
+	trace = nil
+	rte.HandleMiddleware(newTestContext(f))
+	assert.Equal(t, []string{"r1", "r2"}, trace)
+}
