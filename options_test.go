@@ -977,6 +977,17 @@ func TestWithMaxRegexpSize(t *testing.T) {
 	assert.Equal(t, 4, f.Info().MaxRegexpSize)
 }
 
+func TestWithUniqueParamNames(t *testing.T) {
+	f := MustRouter(WithUniqueParamNames(true))
+	assert.True(t, f.Info().UniqueParamNames)
+	require.NoError(t, onlyError(f.Add(MethodGet, "a.example.com/a/{a}/{b}", emptyHandler)))
+	var pe *PatternError
+	assert.ErrorAs(t, onlyError(f.Add(MethodGet, "{a}.example.com/{a}", emptyHandler)), &pe)
+
+	f = MustRouter()
+	assert.NoError(t, onlyError(f.Add(MethodGet, "{a}.example.com/{a}", emptyHandler)))
+}
+
 func TestWithMaxRegexpSize_RejectBeforeCompile(t *testing.T) {
 	f := MustRouter(WithAllowRegexpParam(true))
 	expr := strings.Repeat("a{1000}", 3000)

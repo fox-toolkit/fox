@@ -119,6 +119,7 @@ type Router struct {
 	handleOPTIONS          bool
 	systemWideOPTIONS      bool
 	allowRegexp            bool
+	uniqueParamNames       bool
 }
 
 func initRouter() *Router {
@@ -155,6 +156,7 @@ type RouterInfo struct {
 	SystemWideOptions     bool
 	ClientIPResolver      bool
 	AllowRegexpParam      bool
+	UniqueParamNames      bool
 }
 
 type middleware struct {
@@ -569,6 +571,7 @@ func (fox *Router) Info() RouterInfo {
 		CollapseDotSegments:   fox.collapseDots,
 		ClientIPResolver:      !ok,
 		AllowRegexpParam:      fox.allowRegexp,
+		UniqueParamNames:      fox.uniqueParamNames,
 		SystemWideOptions:     fox.systemWideOPTIONS,
 	}
 }

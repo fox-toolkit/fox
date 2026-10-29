@@ -246,6 +246,15 @@ func WithAllowRegexpParam(enable bool) GlobalOption {
 	})
 }
 
+// WithUniqueParamNames enforces unique parameter names in route patterns. When enabled, route patterns using the same
+// parameter name more than once (e.g., /{id}/{id}) will fail with a [*PatternError].
+func WithUniqueParamNames(enable bool) GlobalOption {
+	return optionFunc(func(s sealedOption) error {
+		s.router.uniqueParamNames = enable
+		return nil
+	})
+}
+
 // WithMiddleware attaches middleware to the router or to a specific route. The middlewares are executed
 // in the order they are added. When applied globally, the middleware affects all handlers, including the NoRoute,
 // NoMethod, Options and RejectPath handlers and the internal redirect handlers (see [AllHandlers]).

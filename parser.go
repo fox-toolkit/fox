@@ -53,7 +53,7 @@ func (fox *Router) parsePattern(raw string) (pattern, int, error) {
 	}
 
 	hostParams := paramCount
-	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(path, paramCount)
+	pathTokens, optCatchAll, paramCount, pe := fox.parsePath(path, hostTokens, paramCount)
 	if pe != nil {
 		pe.Pattern = raw
 		pe.Type = "path"
@@ -126,6 +126,9 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 			paramCount++
 			if paramCount > fox.maxParams {
 				return nil, 0, newPatternError("constraint", paramStart, i+n, "too many parameters")
+			}
+			if fox.uniqueParamNames && hasParamName(tokens, name) {
+				return nil, 0, newPatternError("parameter", i+1, i+1+len(name), "duplicate name")
 			}
 
 			kind := nodeParam
@@ -222,7 +225,7 @@ func (fox *Router) parseHostname(hostname string) ([]token, int, *PatternError) 
 	return tokens, paramCount, nil
 }
 
-func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *PatternError) {
+func (fox *Router) parsePath(path string, hostTokens []token, paramCount int) ([]token, bool, int, *PatternError) {
 	var sb strings.Builder
 	sb.Grow(len(path))
 	tokens := make([]token, 0, 5)
@@ -276,6 +279,9 @@ func (fox *Router) parsePath(path string, paramCount int) ([]token, bool, int, *
 			paramCount++
 			if paramCount > fox.maxParams {
 				return nil, false, 0, newPatternError("constraint", paramStart, i+n, "too many parameters")
+			}
+			if fox.uniqueParamNames && (hasParamName(hostTokens, name) || hasParamName(tokens, name)) {
+				return nil, false, 0, newPatternError("parameter", i+1, i+1+len(name), "duplicate name")
 			}
 
 			kind := nodeParam
@@ -535,6 +541,15 @@ func minRegexpSize(re *syntax.Regexp, limit int) int {
 		}
 	}
 	return n
+}
+
+func hasParamName(tokens []token, name string) bool {
+	for _, tk := range tokens {
+		if tk.typ != nodeStatic && tk.value == name {
+			return true
+		}
+	}
+	return false
 }
 
 // isASCIIControl reports whether c is an ASCII control character: a C0 byte
