@@ -408,7 +408,10 @@ func (fox *Router) Lookup(w ResponseWriter, r *http.Request) (route *Route, cc *
 	c := tree.pool.Get().(*Context)
 	c.resetWithWriter(w, r)
 
-	path := c.RoutingPath()
+	path, rewrite := routingPath(r)
+	if rewrite {
+		c.req = rewriteRequest(r, path, false)
+	}
 
 	idx, n, tsr := tree.lookup(r.Method, r.Host, path, c, false)
 	if n != nil && (!tsr || r.URL.Opaque == "") {
