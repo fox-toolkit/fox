@@ -371,11 +371,8 @@ func WithClientIPResolver(resolver ClientIPResolver) interface {
 // packages that use route annotation.
 func WithAnnotation(key, value any) RouteOption {
 	return optionFunc(func(s sealedOption) error {
-		if key == nil {
-			return fmt.Errorf("%w: annotation key is nil", ErrInvalidConfig)
-		}
-		if !reflect.ValueOf(key).Comparable() {
-			return fmt.Errorf("%w: annotation key is not comparable", ErrInvalidConfig)
+		if err := validateAnnotationKey(key); err != nil {
+			return err
 		}
 		if s.route.annots == nil {
 			s.route.annots = make(map[any]any, 1)
@@ -391,22 +388,32 @@ func WithAnnotation(key, value any) RouteOption {
 // If the function returns an error, route registration fails with that error wrapped in [ErrInvalidConfig].
 func WithAnnotationFunc(key any, fn func(prev any) (value any, err error)) RouteOption {
 	return optionFunc(func(s sealedOption) error {
-		if key == nil {
-			return fmt.Errorf("%w: annotation key is nil", ErrInvalidConfig)
+		if err := validateAnnotationKey(key); err != nil {
+			return err
 		}
-		if !reflect.TypeOf(key).Comparable() {
-			return fmt.Errorf("%w: annotation key is not comparable", ErrInvalidConfig)
-		}
-		if s.route.annots == nil {
-			s.route.annots = make(map[any]any, 1)
+		if fn == nil {
+			return fmt.Errorf("%w: annotation func is nil", ErrInvalidConfig)
 		}
 		value, err := fn(s.route.annots[key])
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 		}
+		if s.route.annots == nil {
+			s.route.annots = make(map[any]any, 1)
+		}
 		s.route.annots[key] = value
 		return nil
 	})
+}
+
+func validateAnnotationKey(key any) error {
+	if key == nil {
+		return fmt.Errorf("%w: annotation key is nil", ErrInvalidConfig)
+	}
+	if !reflect.ValueOf(key).Comparable() {
+		return fmt.Errorf("%w: annotation key is not comparable", ErrInvalidConfig)
+	}
+	return nil
 }
 
 // WithName assigns a name to a route for identification and lookup purposes.

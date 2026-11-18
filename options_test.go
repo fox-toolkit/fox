@@ -691,6 +691,7 @@ func TestWithAnnotationFunc_Invalid(t *testing.T) {
 	fn := func(prev any) (any, error) { return nil, nil }
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotationFunc(nonComparableKey, fn))), ErrInvalidConfig)
 	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotationFunc(nil, fn))), ErrInvalidConfig)
+	assert.ErrorIs(t, onlyError(f.Add(MethodGet, "/foo/{bar}", emptyHandler, WithAnnotationFunc("key", nil))), ErrInvalidConfig)
 }
 
 func TestWithAnnotationFunc_FnError(t *testing.T) {
