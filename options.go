@@ -535,11 +535,11 @@ func WithClientIPMatcher(ip string) interface {
 // only routed to the handler if the connection scheme matches the given value. Only "http" and "https"
 // are accepted. The scheme is ONLY derived from the TLS state of the connection between the client and
 // the server. Behind a TLS-terminating reverse proxy, this matcher therefore reflects the proxy-to-server
-// hop, not the original client connection; to route on the original client scheme (e.g. via
+// hop, not the original client connection. To route on the original client scheme (e.g. via
 // X-Forwarded-Proto), implement a custom [Matcher] that reads the header within a trust boundary you
-// control. Note that r.URL.Scheme is intentionally ignored: it can be set by an attacker via HTTP/1.1
-// absolute-form requests. Multiple matchers can be attached to the same route. All matchers
-// must match for the route to be eligible.
+// control. Note that r.URL.Scheme should never be used to determine the scheme, as it can be set by an
+// attacker via HTTP/1.1 absolute-form requests. Multiple matchers can be attached to the same route.
+// All matchers must match for the route to be eligible.
 func WithSchemeMatcher(scheme string) interface {
 	RouteOption
 	MatcherOption
