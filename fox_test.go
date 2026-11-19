@@ -5249,6 +5249,27 @@ func TestRouter_PathEncoding(t *testing.T) {
 		assert.Equal(t, "/foo%2Fcaf\xc3\xa9", req.URL.RawPath)
 	})
 
+	t.Run("lookup context request preserves escaped slash", func(t *testing.T) {
+		f := MustRouter()
+		require.NoError(t, onlyError(f.Add(MethodGet, "/foo/{name}", emptyHandler)))
+
+		req := httptest.NewRequest(http.MethodGet, "/foo/bar%2Fcaf\xc3\xa9", nil)
+		route, cc, _ := f.Lookup(&recorder{ResponseWriter: httptest.NewRecorder()}, req)
+		require.NotNil(t, route)
+		assert.Equal(t, "/foo/bar%2Fcaf%C3%A9", cc.Request().URL.EscapedPath())
+		assert.Equal(t, "/foo/bar%2Fcaf\xc3\xa9", req.URL.RawPath)
+		cc.Close()
+
+		require.NoError(t, f.View(func(txn *Txn) error {
+			route, cc, _ := txn.Lookup(&recorder{ResponseWriter: httptest.NewRecorder()}, req)
+			require.NotNil(t, route)
+			assert.Equal(t, "/foo/bar%2Fcaf%C3%A9", cc.Request().URL.EscapedPath())
+			cc.Close()
+			return nil
+		}))
+		assert.Equal(t, "/foo/bar%2Fcaf\xc3\xa9", req.URL.RawPath)
+	})
+
 	t.Run("param captures encoded raw byte", func(t *testing.T) {
 		f := MustRouter()
 		var captured string
