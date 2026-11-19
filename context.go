@@ -449,27 +449,46 @@ type wrapM struct {
 
 func (mw wrapM) handle(c *Context) {
 	r := c.Request()
-	if route := c.Route(); route != nil && route.ParamsLen() > 0 {
-		params := slices.AppendSeq(make(Params, 0, route.ParamsLen()), c.Params())
-		ctx := context.WithValue(r.Context(), paramsKey, params)
+	// m may call its handler after handle returns (e.g. http.TimeoutHandler), when c is already released.
+	h := &wrapMHandler{next: mw.next, tree: c.tree, route: c.route, scope: c.scope}
+	if h.tree == nil {
+		h.tree = c.fox.getTree()
+	}
+	if h.route != nil && h.route.ParamsLen() > 0 {
+		h.params = slices.AppendSeq(make(Params, 0, h.route.ParamsLen()), c.Params())
+		ctx := context.WithValue(r.Context(), paramsKey, h.params)
 		r = r.WithContext(ctx)
 	}
+	mw.m(h).ServeHTTP(flusherWriter{c.Writer()}, r)
+}
 
-	mw.m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Avoid allocation if w has not been wrapped by m.
-		var rec *recorder
-		switch v := w.(type) {
-		case flusherWriter:
-			rec, _ = v.ResponseWriter.(*recorder)
-		case *recorder:
-			rec = v
-		}
-		if rec == nil {
-			rec = new(recorder)
-			rec.reset(w)
-		}
-		cc := c.CloneWith(rec, r)
-		defer cc.Close()
-		mw.next(cc)
-	})).ServeHTTP(flusherWriter{c.Writer()}, r)
+type wrapMHandler struct {
+	next   HandlerFunc
+	tree   *iTree
+	route  *Route
+	params Params
+	scope  HandlerScope
+}
+
+func (h *wrapMHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Avoid allocation if w has not been wrapped by m.
+	var rec *recorder
+	switch v := w.(type) {
+	case flusherWriter:
+		rec, _ = v.ResponseWriter.(*recorder)
+	case *recorder:
+		rec = v
+	}
+	if rec == nil {
+		rec = new(recorder)
+		rec.reset(w)
+	}
+	cc := h.tree.pool.Get().(*Context)
+	cc.req, cc.w, cc.route, cc.scope, cc.cachedQueries = r, rec, h.route, h.scope, nil
+	*cc.params = (*cc.params)[:0]
+	for _, p := range h.params {
+		*cc.params = append(*cc.params, p.Value)
+	}
+	defer cc.Close()
+	h.next(cc)
 }
