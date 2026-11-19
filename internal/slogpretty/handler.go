@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fox-toolkit/fox/internal/ansi"
 )
@@ -225,7 +227,7 @@ func appendAttr(level slog.Level, buf []byte, keyPrefix string, attr slog.Attr) 
 func appendValue(buf []byte, v slog.Value) []byte {
 	switch v.Kind() {
 	case slog.KindString:
-		return append(buf, v.String()...)
+		return appendSafe(buf, v.String())
 	case slog.KindInt64:
 		return strconv.AppendInt(buf, v.Int64(), 10)
 	case slog.KindUint64:
@@ -239,8 +241,28 @@ func appendValue(buf []byte, v slog.Value) []byte {
 	case slog.KindTime:
 		return v.Time().AppendFormat(buf, time.RFC3339Nano)
 	default:
-		return append(buf, v.String()...)
+		return appendSafe(buf, v.String())
 	}
+}
+
+// appendSafe appends s, quoted if it contains control bytes, invalid UTF-8 or non-printable runes.
+func appendSafe(buf []byte, s string) []byte {
+	for i := 0; i < len(s); {
+		b := s[i]
+		if b < utf8.RuneSelf {
+			if b < 0x20 || b == 0x7f {
+				return strconv.AppendQuote(buf, s)
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError || !unicode.IsPrint(r) {
+			return strconv.AppendQuote(buf, s)
+		}
+		i += size
+	}
+	return append(buf, s...)
 }
 
 type lockedWriter struct {

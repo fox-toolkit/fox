@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,4 +45,30 @@ func TestHandler_Handle(t *testing.T) {
 	require.NoError(t, h.Handle(context.Background(), record))
 	record.Message = "unknown"
 	require.NoError(t, h.Handle(context.Background(), record))
+}
+
+func TestAppendSafe(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "/home", want: "/home"},
+		{in: "bad input: x", want: "bad input: x"},
+		{in: "/caf%C3%A9", want: "/caf%C3%A9"},
+		{in: "café 日本 🦊", want: "café 日本 🦊"},
+		{in: "/home\n[FOX] fake", want: `"/home\n[FOX] fake"`},
+		{in: "a\x1b[2J", want: `"a\x1b[2J"`},
+		{in: "a\tb", want: `"a\tb"`},
+		{in: "a\x7fb", want: `"a\x7fb"`},
+		{in: "a\u009b2J", want: `"a\u009b2J"`},
+		{in: "a\u202eb", want: `"a\u202eb"`},
+		{in: "a\xffb", want: `"a\xffb"`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.want, string(appendSafe(nil, tc.in)))
+		})
+	}
 }
