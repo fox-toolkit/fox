@@ -744,6 +744,33 @@ func TestWrapM_UnwrapOnlyMiddleware(t *testing.T) {
 	}
 }
 
+func TestWrapM_DeferredHandler(t *testing.T) {
+	var later func()
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+			later = func() { h.ServeHTTP(httptest.NewRecorder(), r) }
+		})
+	}
+
+	var pattern, id string
+	f := MustRouter()
+	f.MustAdd(MethodPost, "/jobs/{id}", emptyHandler, WithMiddleware(WrapM(mw), func(next HandlerFunc) HandlerFunc {
+		return func(c *Context) {
+			pattern, id = c.Route().Pattern(), c.Param("id")
+			next(c)
+		}
+	}))
+	f.MustAdd(MethodGet, "/public/{id}", emptyHandler)
+
+	f.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/jobs/job-1", nil))
+	f.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/public/other", nil))
+	later()
+
+	assert.Equal(t, "/jobs/{id}", pattern)
+	assert.Equal(t, "job-1", id)
+}
+
 func BenchmarkWrapH(b *testing.B) {
 	req := httptest.NewRequest(http.MethodGet, "https://example.com/a/b/c", nil)
 	w := httptest.NewRecorder()
