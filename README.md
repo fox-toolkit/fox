@@ -573,9 +573,16 @@ f.MustAdd(fox.MethodGet, "/foo", SomeOtherHandler)
 ````
 
 ### Official middlewares
-* [fox-toolkit/oteltracing](https://github.com/fox-toolkit/oteltracing): Distributed tracing with [OpenTelemetry](https://opentelemetry.io/)
+#### Stable
+* [fox-toolkit/oteltracing](https://github.com/fox-toolkit/oteltracing): Distributed tracing with [OpenTelemetry](https://opentelemetry.io/).
 * [fox-toolkit/timeout](https://github.com/fox-toolkit/timeout): Better `http.TimeoutHandler` middleware.
-* [fox-toolkit/waf](https://github.com/fox-toolkit/waf): Coraza WAF middleware (experimental).
+
+#### Experimental
+The API of these middlewares is not yet stable and may change before v1.
+* [fox-toolkit/breaker](https://github.com/fox-toolkit/breaker): Circuit breaker middleware with adaptive throttling.
+* [fox-toolkit/compress](https://github.com/fox-toolkit/compress): Compression middleware with zstd, brotli and gzip support.
+* [fox-toolkit/rp](https://github.com/fox-toolkit/rp): OpenID Connect Relying Party to build authentication gateways (BFF, IAP).
+* [fox-toolkit/waf](https://github.com/fox-toolkit/waf): Coraza WAF middleware.
 
 ## Working with http.Handler
 Fox itself implements the `http.Handler` interface which make easy to chain any compatible middleware before the router. Moreover, the router
